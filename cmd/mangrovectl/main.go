@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -22,13 +23,19 @@ func main() {
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:7777"
 	}
-	c := &client{baseURL: baseURL}
+	c := &client{baseURL: baseURL, sessionPath: sessionFilePath()}
 
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
 	var err error
 	switch cmd {
+	case "setup":
+		err = setupCmd(c, args)
+	case "login":
+		err = loginCmd(c, args)
+	case "logout":
+		err = logoutCmd(c, args)
 	case "project":
 		err = projectCmd(c, args)
 	case "deployment":
@@ -56,6 +63,9 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `mangrovectl <command> [flags]
 
 Commands:
+  setup --email EMAIL --password PASSWORD   (first-run admin account creation)
+  login --email EMAIL --password PASSWORD
+  logout
   project create --name NAME --slug SLUG [--description TEXT]
   project list
   deployment create --project SLUG --name NAME --slug SLUG --strategy dockerfile|nixpacks|compose|image
@@ -72,7 +82,21 @@ Commands:
 
 // ---- HTTP client ----
 
-type client struct{ baseURL string }
+// sessionFilePath returns where the CLI persists its session cookie
+// between invocations -- each `mangrovectl` call is a fresh process, so
+// login state has to live on disk, not in memory.
+func sessionFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".mangrove", "session")
+}
+
+type client struct {
+	baseURL     string
+	sessionPath string
+}
 
 func (c *client) do(method, path string, body any, out any) error {
 	var reqBody io.Reader
@@ -88,6 +112,9 @@ func (c *client) do(method, path string, body any, out any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token, err := os.ReadFile(c.sessionPath); err == nil {
+		req.AddCookie(&http.Cookie{Name: "mangrove_session", Value: string(token)})
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -95,13 +122,70 @@ func (c *client) do(method, path string, body any, out any) error {
 	}
 	defer resp.Body.Close()
 
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "mangrove_session" {
+			c.saveSession(ck.Value)
+		}
+	}
+
 	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("not authenticated -- run `mangrovectl login` (or `mangrovectl setup` on a fresh install) first")
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, string(respBody))
 	}
 	if out != nil && len(respBody) > 0 {
 		return json.Unmarshal(respBody, out)
 	}
+	return nil
+}
+
+func (c *client) saveSession(token string) {
+	if token == "" {
+		os.Remove(c.sessionPath)
+		return
+	}
+	os.MkdirAll(filepath.Dir(c.sessionPath), 0700)
+	os.WriteFile(c.sessionPath, []byte(token), 0600)
+}
+
+// ---- setup / login / logout ----
+
+func setupCmd(c *client, args []string) error {
+	fs := flag.NewFlagSet("setup", flag.ExitOnError)
+	email := fs.String("email", "", "admin email")
+	password := fs.String("password", "", "admin password (min 8 characters)")
+	fs.Parse(args)
+
+	var out map[string]any
+	if err := c.do("POST", "/api/auth/setup", map[string]string{"email": *email, "password": *password}, &out); err != nil {
+		return err
+	}
+	fmt.Println("admin account created and logged in as", out["email"])
+	return nil
+}
+
+func loginCmd(c *client, args []string) error {
+	fs := flag.NewFlagSet("login", flag.ExitOnError)
+	email := fs.String("email", "", "email")
+	password := fs.String("password", "", "password")
+	fs.Parse(args)
+
+	var out map[string]any
+	if err := c.do("POST", "/api/auth/login", map[string]string{"email": *email, "password": *password}, &out); err != nil {
+		return err
+	}
+	fmt.Println("logged in as", out["email"])
+	return nil
+}
+
+func logoutCmd(c *client, args []string) error {
+	if err := c.do("POST", "/api/auth/logout", nil, nil); err != nil {
+		return err
+	}
+	c.saveSession("")
+	fmt.Println("logged out")
 	return nil
 }
 

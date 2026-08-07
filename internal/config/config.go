@@ -30,6 +30,10 @@ type Config struct {
 	// local development doesn't require the slice units to be installed.
 	CgroupParent string
 
+	// CaddyAdminAddr is Caddy's local admin API. Empty uses the client's
+	// built-in default (http://127.0.0.1:2019).
+	CaddyAdminAddr string
+
 	// DeploymentMemoryCeilingMB mirrors mangrove-deployments.slice's
 	// MemoryMax; admission control rejects a deploy that would push the sum
 	// of configured service memory limits past this.
@@ -54,6 +58,7 @@ func Load() Config {
 		PortRangeMax:              getEnvInt("MANGROVE_PORT_RANGE_MAX", portregistry.DefaultRangeMax),
 		NetworkName:               getEnv("MANGROVE_NETWORK", "mangrove-net"),
 		CgroupParent:              os.Getenv("MANGROVE_CGROUP_PARENT"),
+		CaddyAdminAddr:            os.Getenv("MANGROVE_CADDY_ADMIN_ADDR"),
 		DeploymentMemoryCeilingMB: getEnvInt("MANGROVE_DEPLOYMENT_MEMORY_CEILING_MB", 1536),
 		ResendAPIKey:              os.Getenv("MANGROVE_RESEND_API_KEY"),
 		NotifyToEmail:             os.Getenv("MANGROVE_NOTIFY_EMAIL"),

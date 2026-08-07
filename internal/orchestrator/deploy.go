@@ -16,6 +16,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
+	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
@@ -35,6 +36,7 @@ type Orchestrator struct {
 	Store   *store.Store
 	Exec    executor.Executor
 	Compose *executor.ComposeExecutor
+	Proxy   *proxy.Client // nil is valid: routing is skipped (e.g. Caddy not installed yet in a dev environment)
 	Secrets *secrets.Box
 	Config  config.Config
 	Log     *slog.Logger
@@ -154,10 +156,13 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	// Caddy is wired, a public service is reachable only via its internal
 	// container address -- see plan §3, "services needing raw TCP host-port
 	// exposure opt out explicitly", which is not the default path here.
-	if !svc.IsInternalOnly && svc.HostPort == nil {
-		if _, err := portregistry.AllocateForService(ctx, o.Store.DB, svc.ID, o.Config.PortRangeMin, o.Config.PortRangeMax); err != nil {
+	registeredPort := svc.HostPort
+	if !svc.IsInternalOnly && registeredPort == nil {
+		p, err := portregistry.AllocateForService(ctx, o.Store.DB, svc.ID, o.Config.PortRangeMin, o.Config.PortRangeMax)
+		if err != nil {
 			return fail(fmt.Errorf("allocate port: %w", err))
 		}
+		registeredPort = &p
 	}
 
 	env, err := o.resolveEnv(ctx, svc.ID)
@@ -189,6 +194,17 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		o.Exec.Stop(ctx, newContainerName, 5*time.Second)
 		o.Exec.Remove(ctx, newContainerName)
 		return fail(fmt.Errorf("new container failed health check within %s; old container (if any) left running", healthCheckSwapTimeout))
+	}
+
+	// Repoint Caddy at the new container BEFORE tearing down the old one --
+	// this is the atomic part of the swap (see internal/proxy). Only after
+	// traffic is flowing to the new container is it safe to remove the old.
+	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil && runResult.ContainerAddr != "" {
+		if err := o.Proxy.PutRoute(ctx, *registeredPort, runResult.ContainerAddr, proxy.RouteOptions{}); err != nil {
+			o.Exec.Stop(ctx, newContainerName, 5*time.Second)
+			o.Exec.Remove(ctx, newContainerName)
+			return fail(fmt.Errorf("update proxy route: %w", err))
+		}
 	}
 
 	if oldContainerID != "" {

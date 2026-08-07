@@ -22,6 +22,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
+	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
 	"github.com/evanxdsouza/mangrove/internal/sysinfo"
@@ -75,11 +76,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	composeExec := &executor.ComposeExecutor{NetworkName: cfg.NetworkName}
 
+	proxyClient := proxy.NewClient(cfg.CaddyAdminAddr)
+	if err := proxyClient.EnsureBaseConfig(ctx); err != nil {
+		log.Warn("caddy admin API not reachable; deployed services will not be publicly routed until it is", "error", err)
+	}
+
 	st := store.New(db)
 	orch := &orchestrator.Orchestrator{
 		Store:   st,
 		Exec:    dockerExec,
 		Compose: composeExec,
+		Proxy:   proxyClient,
 		Secrets: box,
 		Config:  cfg,
 		Log:     log,
