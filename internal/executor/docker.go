@@ -290,7 +290,7 @@ func (e *DockerExecutor) Logs(ctx context.Context, containerRef string, opts Log
 }
 
 type dockerStatsJSON struct {
-	CPUPerc string `json:"CPUPerc"`
+	CPUPerc  string `json:"CPUPerc"`
 	MemUsage string `json:"MemUsage"` // "12.3MiB / 256MiB"
 }
 

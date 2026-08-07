@@ -36,7 +36,7 @@ const (
 	StrategyDockerfile BuildStrategy = "dockerfile"
 	StrategyNixpacks   BuildStrategy = "nixpacks"
 	StrategyCompose    BuildStrategy = "compose"
-	StrategyImage       BuildStrategy = "image" // pre-built image ref, no build step
+	StrategyImage      BuildStrategy = "image" // pre-built image ref, no build step
 )
 
 // ContextSource describes where to fetch a build's source from. It is

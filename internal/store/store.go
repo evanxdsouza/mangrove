@@ -1,0 +1,567 @@
+// Package store is the single place that turns SQLite rows into
+// internal/models types and back. API handlers and the orchestrator both
+// depend on this rather than writing SQL themselves.
+package store
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/evanxdsouza/mangrove/internal/models"
+)
+
+type Store struct {
+	DB *sql.DB
+}
+
+func New(db *sql.DB) *Store { return &Store{DB: db} }
+
+var ErrNotFound = fmt.Errorf("not found")
+
+// ---- Projects ----
+
+func (s *Store) CreateProject(ctx context.Context, name, slug, description string) (models.Project, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO projects (workspace_id, name, slug, description) VALUES (1, ?, ?, ?)`,
+		name, slug, description,
+	)
+	if err != nil {
+		return models.Project{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetProject(ctx, id)
+}
+
+func (s *Store) GetProject(ctx context.Context, id int64) (models.Project, error) {
+	var p models.Project
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, workspace_id, name, slug, COALESCE(description,''), created_at, updated_at FROM projects WHERE id = ?`, id,
+	).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Slug, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return models.Project{}, ErrNotFound
+	}
+	return p, err
+}
+
+func (s *Store) ListProjects(ctx context.Context) ([]models.Project, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, workspace_id, name, slug, COALESCE(description,''), created_at, updated_at FROM projects ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Project
+	for rows.Next() {
+		var p models.Project
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Slug, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteProject(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+	return err
+}
+
+// ---- Deployments ----
+
+type CreateDeploymentParams struct {
+	ProjectID           int64
+	Name                string
+	Slug                string
+	BuildStrategy       string
+	GitBranch           string
+	ImageRef            string
+	RootPath            string
+	DockerfilePath      string
+	ComposePath         string
+	ImageRetentionCount int
+}
+
+func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) (models.Deployment, error) {
+	if p.RootPath == "" {
+		p.RootPath = "."
+	}
+	if p.ImageRetentionCount == 0 {
+		p.ImageRetentionCount = 5
+	}
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, image_retention_count)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.ImageRetentionCount,
+	)
+	if err != nil {
+		return models.Deployment{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetDeployment(ctx, id)
+}
+
+func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment, error) {
+	var d models.Deployment
+	var projectRepoID, lastDeployedAt sql.NullInt64
+	var lastDeployedAtT sql.NullTime
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
+		       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
+		       auto_deploy_on_push, is_public, password_protected, image_retention_count, status, node_id,
+		       created_at, updated_at, last_deployed_at
+		FROM deployments WHERE id = ?`, id,
+	).Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
+		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath,
+		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Status, &d.NodeID,
+		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
+	if err == sql.ErrNoRows {
+		return models.Deployment{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Deployment{}, err
+	}
+	if projectRepoID.Valid {
+		d.ProjectRepoID = &projectRepoID.Int64
+	}
+	if lastDeployedAtT.Valid {
+		t := lastDeployedAtT.Time
+		d.LastDeployedAt = &t
+	}
+	_ = lastDeployedAt
+	return d, nil
+}
+
+func (s *Store) ListDeployments(ctx context.Context, projectID int64) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM deployments WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+
+	out := make([]models.Deployment, 0, len(ids))
+	for _, id := range ids {
+		d, err := s.GetDeployment(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+func (s *Store) DeleteDeployment(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM deployments WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) UpdateDeploymentStatus(ctx context.Context, id int64, status string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
+	return err
+}
+
+func (s *Store) TouchDeploymentDeployed(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_deployed_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) SetDeploymentAccessControl(ctx context.Context, id int64, isPublic, passwordProtected bool, passwordHash string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE deployments SET is_public = ?, password_protected = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		isPublic, passwordProtected, nullIfEmpty(passwordHash), id,
+	)
+	return err
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// ---- Services ----
+
+type CreateServiceParams struct {
+	DeploymentID         int64
+	Name                 string
+	ContainerName        string
+	InternalPort         int
+	IsInternalOnly       bool
+	CPULimitCores        float64
+	MemoryLimitMB        int
+	RestartPolicy        string
+	HealthCheckPath      string
+	HealthCheckIntervalS int
+	HealthCheckTimeoutS  int
+}
+
+func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (models.Service, error) {
+	if p.CPULimitCores == 0 {
+		p.CPULimitCores = 0.5
+	}
+	if p.MemoryLimitMB == 0 {
+		p.MemoryLimitMB = 256
+	}
+	if p.RestartPolicy == "" {
+		p.RestartPolicy = "unless-stopped"
+	}
+	if p.HealthCheckIntervalS == 0 {
+		p.HealthCheckIntervalS = 30
+	}
+	if p.HealthCheckTimeoutS == 0 {
+		p.HealthCheckTimeoutS = 5
+	}
+	res, err := s.DB.ExecContext(ctx, `
+		INSERT INTO services (deployment_id, name, container_name, internal_port, is_internal_only,
+		                       cpu_limit_cores, memory_limit_mb, restart_policy, health_check_path,
+		                       health_check_interval_s, health_check_timeout_s)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.DeploymentID, p.Name, p.ContainerName, p.InternalPort, p.IsInternalOnly,
+		p.CPULimitCores, p.MemoryLimitMB, p.RestartPolicy, nullIfEmpty(p.HealthCheckPath),
+		p.HealthCheckIntervalS, p.HealthCheckTimeoutS,
+	)
+	if err != nil {
+		return models.Service{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetService(ctx, id)
+}
+
+func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error) {
+	var svc models.Service
+	var hostPort sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, deployment_id, name, is_primary, COALESCE(image_tag_current,''), COALESCE(container_id_current,''),
+		       container_name, internal_port, host_port, is_internal_only, cpu_limit_cores, memory_limit_mb,
+		       restart_policy, COALESCE(health_check_path,''), health_check_interval_s, health_check_timeout_s,
+		       status, created_at, updated_at
+		FROM services WHERE id = ?`, id,
+	).Scan(&svc.ID, &svc.DeploymentID, &svc.Name, &svc.IsPrimary, &svc.ImageTagCurrent, &svc.ContainerIDCurrent,
+		&svc.ContainerName, &svc.InternalPort, &hostPort, &svc.IsInternalOnly, &svc.CPULimitCores, &svc.MemoryLimitMB,
+		&svc.RestartPolicy, &svc.HealthCheckPath, &svc.HealthCheckIntervalS, &svc.HealthCheckTimeoutS,
+		&svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return models.Service{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Service{}, err
+	}
+	if hostPort.Valid {
+		p := int(hostPort.Int64)
+		svc.HostPort = &p
+	}
+	return svc, nil
+}
+
+func (s *Store) ListServices(ctx context.Context, deploymentID int64) ([]models.Service, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM services WHERE deployment_id = ? ORDER BY id`, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+
+	out := make([]models.Service, 0, len(ids))
+	for _, id := range ids {
+		svc, err := s.GetService(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, svc)
+	}
+	return out, nil
+}
+
+func (s *Store) UpdateServiceRuntime(ctx context.Context, id int64, imageTag, containerID, status string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE services SET image_tag_current = ?, container_id_current = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		imageTag, containerID, status, id,
+	)
+	return err
+}
+
+func (s *Store) UpdateServiceStatus(ctx context.Context, id int64, status string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
+	return err
+}
+
+// SumConfiguredMemoryMB returns the total memory_limit_mb across every
+// service belonging to a non-stopped deployment -- the figure admission
+// control checks against the deployment memory ceiling, and what the
+// resource-budget dashboard view shows as "allocated".
+func (s *Store) SumConfiguredMemoryMB(ctx context.Context, excludeDeploymentID int64) (int, error) {
+	var total int
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(s.memory_limit_mb), 0)
+		FROM services s
+		JOIN deployments d ON d.id = s.deployment_id
+		WHERE d.status != 'stopped' AND d.id != ?`, excludeDeploymentID,
+	).Scan(&total)
+	return total, err
+}
+
+// ---- Deploy history ----
+
+func (s *Store) CreateDeployHistory(ctx context.Context, deploymentID int64, triggeredBy string, commitSHA, commitMessage, gitRef string) (int64, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO deploy_history (deployment_id, triggered_by, commit_sha, commit_message, git_ref, status) VALUES (?, ?, ?, ?, ?, 'queued')`,
+		deploymentID, triggeredBy, nullIfEmpty(commitSHA), nullIfEmpty(commitMessage), nullIfEmpty(gitRef),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) UpdateDeployHistoryStatus(ctx context.Context, id int64, status string, errMsg string) error {
+	if status == "success" || status == "failed" || status == "rolled_back" {
+		_, err := s.DB.ExecContext(ctx,
+			`UPDATE deploy_history SET status = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			status, nullIfEmpty(errMsg), id,
+		)
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `UPDATE deploy_history SET status = ?, error_message = ? WHERE id = ?`, status, nullIfEmpty(errMsg), id)
+	return err
+}
+
+func (s *Store) MarkDeployHistoryCurrent(ctx context.Context, deploymentID, deployHistoryID int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE deploy_history SET is_current = 0 WHERE deployment_id = ?`, deploymentID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE deploy_history SET is_current = 1 WHERE id = ?`, deployHistoryID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) ListDeployHistory(ctx context.Context, deploymentID int64) ([]models.DeployHistory, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, deployment_id, triggered_by, COALESCE(commit_sha,''), COALESCE(commit_message,''), COALESCE(git_ref,''),
+		       status, started_at, finished_at, is_current, rollback_of_deploy_history_id, COALESCE(error_message,'')
+		FROM deploy_history WHERE deployment_id = ? ORDER BY started_at DESC`, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.DeployHistory
+	for rows.Next() {
+		var h models.DeployHistory
+		var finishedAt sql.NullTime
+		var rollbackOf sql.NullInt64
+		if err := rows.Scan(&h.ID, &h.DeploymentID, &h.TriggeredBy, &h.CommitSHA, &h.CommitMessage, &h.GitRef,
+			&h.Status, &h.StartedAt, &finishedAt, &h.IsCurrent, &rollbackOf, &h.ErrorMessage); err != nil {
+			return nil, err
+		}
+		if finishedAt.Valid {
+			t := finishedAt.Time
+			h.FinishedAt = &t
+		}
+		if rollbackOf.Valid {
+			h.RollbackOfDeployHistoryID = &rollbackOf.Int64
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetDeployHistory(ctx context.Context, id int64) (models.DeployHistory, error) {
+	var h models.DeployHistory
+	var finishedAt sql.NullTime
+	var rollbackOf sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, deployment_id, triggered_by, COALESCE(commit_sha,''), COALESCE(commit_message,''), COALESCE(git_ref,''),
+		       status, started_at, finished_at, is_current, rollback_of_deploy_history_id, COALESCE(error_message,'')
+		FROM deploy_history WHERE id = ?`, id,
+	).Scan(&h.ID, &h.DeploymentID, &h.TriggeredBy, &h.CommitSHA, &h.CommitMessage, &h.GitRef,
+		&h.Status, &h.StartedAt, &finishedAt, &h.IsCurrent, &rollbackOf, &h.ErrorMessage)
+	if err == sql.ErrNoRows {
+		return models.DeployHistory{}, ErrNotFound
+	}
+	if err != nil {
+		return models.DeployHistory{}, err
+	}
+	if finishedAt.Valid {
+		t := finishedAt.Time
+		h.FinishedAt = &t
+	}
+	if rollbackOf.Valid {
+		h.RollbackOfDeployHistoryID = &rollbackOf.Int64
+	}
+	return h, nil
+}
+
+func (s *Store) SetRollbackOf(ctx context.Context, deployHistoryID, rollbackOfID int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deploy_history SET rollback_of_deploy_history_id = ? WHERE id = ?`, rollbackOfID, deployHistoryID)
+	return err
+}
+
+// ---- Deploy artifacts ----
+
+func (s *Store) CreateDeployArtifact(ctx context.Context, deployHistoryID, serviceID int64, imageTag, imageID, buildLogPath string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO deploy_history_artifacts (deploy_history_id, service_id, image_tag, image_id, build_log_path) VALUES (?, ?, ?, ?, ?)`,
+		deployHistoryID, serviceID, imageTag, nullIfEmpty(imageID), nullIfEmpty(buildLogPath),
+	)
+	return err
+}
+
+// ListArtifactsForService returns every build produced for a service,
+// newest first -- the rollback list, and what image-retention pruning
+// walks past the keep count.
+func (s *Store) ListArtifactsForService(ctx context.Context, serviceID int64) ([]models.DeployArtifact, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT a.id, a.deploy_history_id, a.service_id, a.image_tag, COALESCE(a.image_id,''), COALESCE(a.build_log_path,'')
+		FROM deploy_history_artifacts a
+		JOIN deploy_history h ON h.id = a.deploy_history_id
+		WHERE a.service_id = ?
+		ORDER BY h.started_at DESC`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.DeployArtifact
+	for rows.Next() {
+		var a models.DeployArtifact
+		if err := rows.Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetArtifactForServiceAtDeployHistory(ctx context.Context, deployHistoryID, serviceID int64) (models.DeployArtifact, error) {
+	var a models.DeployArtifact
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, deploy_history_id, service_id, image_tag, COALESCE(image_id,''), COALESCE(build_log_path,'')
+		FROM deploy_history_artifacts WHERE deploy_history_id = ? AND service_id = ?`, deployHistoryID, serviceID,
+	).Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath)
+	if err == sql.ErrNoRows {
+		return models.DeployArtifact{}, ErrNotFound
+	}
+	return a, err
+}
+
+// ---- Health checks ----
+
+func (s *Store) RecordHealthCheck(ctx context.Context, serviceID int64, status string, responseTimeMS int64, httpStatus int, errMsg string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO health_checks (service_id, status, response_time_ms, http_status, error_message) VALUES (?, ?, ?, ?, ?)`,
+		serviceID, status, responseTimeMS, nullIfZero(httpStatus), nullIfEmpty(errMsg),
+	)
+	return err
+}
+
+func nullIfZero(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
+}
+
+func (s *Store) LatestHealthCheck(ctx context.Context, serviceID int64) (status string, checkedAt time.Time, err error) {
+	err = s.DB.QueryRowContext(ctx,
+		`SELECT status, checked_at FROM health_checks WHERE service_id = ? ORDER BY checked_at DESC LIMIT 1`, serviceID,
+	).Scan(&status, &checkedAt)
+	if err == sql.ErrNoRows {
+		return "unknown", time.Time{}, nil
+	}
+	return status, checkedAt, err
+}
+
+// PruneOldHealthChecks deletes health_checks rows older than `before`,
+// keeping the table bounded (per plan §2).
+func (s *Store) PruneOldHealthChecks(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM health_checks WHERE checked_at < ?`, before)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ---- Env vars ----
+
+// EnvVarRow is the raw row shape, kept separate from models.EnvVar so
+// callers must explicitly decrypt secret values (via internal/secrets)
+// rather than accidentally handling ciphertext as if it were plaintext.
+type EnvVarRow struct {
+	ID             int64
+	ServiceID      int64
+	KeyName        string
+	IsSecret       bool
+	ValuePlain     sql.NullString
+	ValueEncrypted []byte
+	ValueNonce     []byte
+}
+
+func (s *Store) CreatePlainEnvVar(ctx context.Context, serviceID int64, key, value string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO env_vars (service_id, key_name, is_secret, value_plain) VALUES (?, ?, 0, ?)
+		 ON CONFLICT(service_id, key_name) DO UPDATE SET value_plain = excluded.value_plain, is_secret = 0, updated_at = CURRENT_TIMESTAMP`,
+		serviceID, key, value,
+	)
+	return err
+}
+
+func (s *Store) CreateSecretEnvVar(ctx context.Context, serviceID int64, key string, ciphertext, nonce []byte) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO env_vars (service_id, key_name, is_secret, value_encrypted, value_nonce, key_version) VALUES (?, ?, 1, ?, ?, 1)
+		 ON CONFLICT(service_id, key_name) DO UPDATE SET value_encrypted = excluded.value_encrypted, value_nonce = excluded.value_nonce, is_secret = 1, updated_at = CURRENT_TIMESTAMP`,
+		serviceID, key, ciphertext, nonce,
+	)
+	return err
+}
+
+func (s *Store) ListEnvVarRows(ctx context.Context, serviceID int64) ([]EnvVarRow, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, service_id, key_name, is_secret, value_plain, value_encrypted, value_nonce FROM env_vars WHERE service_id = ? ORDER BY key_name`,
+		serviceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []EnvVarRow
+	for rows.Next() {
+		var r EnvVarRow
+		if err := rows.Scan(&r.ID, &r.ServiceID, &r.KeyName, &r.IsSecret, &r.ValuePlain, &r.ValueEncrypted, &r.ValueNonce); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteEnvVar(ctx context.Context, serviceID int64, key string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM env_vars WHERE service_id = ? AND key_name = ?`, serviceID, key)
+	return err
+}
