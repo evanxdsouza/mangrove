@@ -1,0 +1,30 @@
+# secrets & runtime state — never commit
+*.key
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Go
+/bin/
+/mangrove
+/mangrovectl
+*.test
+*.out
+
+# frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# playwright
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+
+# misc
+*.log
+.DS_Store
