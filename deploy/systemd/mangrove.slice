@@ -1,0 +1,19 @@
+## Reserved resource floor for Mangrove's own control plane (mangrove.service)
+## and Caddy. MemoryMin is a protection floor: under memory pressure the
+## kernel will not reclaim this slice's memory in favor of
+## mangrove-deployments.slice, so a runaway deployment container cannot
+## starve Mangrove/SSH access to death. MemoryHigh is a soft ceiling on
+## Mangrove itself (throttles rather than kills).
+##
+## Install: copy to /etc/systemd/system/mangrove.slice, then
+## `systemctl daemon-reload`. mangrove.service and caddy.service both need
+## `Slice=mangrove.slice` (see mangrove.service and caddy-mangrove-slice.conf).
+
+[Unit]
+Description=Mangrove control plane (reserved floor)
+Before=slices.target
+
+[Slice]
+MemoryMin=384M
+MemoryHigh=512M
+CPUWeight=200

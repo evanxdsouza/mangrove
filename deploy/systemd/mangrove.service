@@ -1,0 +1,40 @@
+## Install: copy to /etc/systemd/system/mangrove.service, create the
+## mangrove system user/group and /var/lib/mangrove, place secrets in
+## /etc/mangrove/mangrove.env (0600, root-owned), then:
+##   systemctl daemon-reload && systemctl enable --now mangrove
+
+[Unit]
+Description=Mangrove PaaS control plane
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Slice=mangrove.slice
+ExecStart=/usr/local/bin/mangrove
+Restart=on-failure
+RestartSec=2
+OOMScoreAdjust=-500
+
+# Secrets (e.g. MANGROVE_RESEND_API_KEY) live here, never in this unit
+# file or in git. File is optional (leading '-') so a fresh install
+# without notifications configured yet still starts.
+EnvironmentFile=-/etc/mangrove/mangrove.env
+
+User=mangrove
+Group=mangrove
+# The mangrove user must be in the `docker` group to reach the daemon
+# socket -- effectively root-equivalent access; there is no way around
+# this for a Docker-based executor, so keep this host single-purpose.
+SupplementaryGroups=docker
+WorkingDirectory=/var/lib/mangrove
+
+# Defense in depth even though the docker group grants broad access.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mangrove
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

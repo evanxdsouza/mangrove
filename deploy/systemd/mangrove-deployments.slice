@@ -1,0 +1,21 @@
+## Hard outer bound on the combined memory of every deployment container,
+## regardless of individual --memory caps. Enforced by dockerd via
+## --cgroup-parent=mangrove-deployments.slice (see deploy/README or the
+## dockerd systemd drop-in) or per-container via RunSpec.CgroupParent.
+##
+## MemoryMax here assumes a 2GB host with mangrove.slice's 384M floor and
+## ~150M docker-daemon/OS overhead already carved out -- tune this to the
+## actual host total if it differs:
+##   MemoryMax = TotalRAM - mangrove.slice's MemoryMin - OS/dockerd overhead
+##
+## Install: copy to /etc/systemd/system/mangrove-deployments.slice, then
+## `systemctl daemon-reload`.
+
+[Unit]
+Description=Mangrove deployment containers
+Before=slices.target
+
+[Slice]
+MemoryMax=1536M
+MemorySwapMax=0
+CPUWeight=100
