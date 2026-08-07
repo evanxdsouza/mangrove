@@ -72,6 +72,8 @@ func (o *Orchestrator) DeployCompose(ctx context.Context, req DeployRequest) (de
 	o.Store.UpdateDeploymentStatus(ctx, dep.ID, "running")
 	o.Store.TouchDeploymentDeployed(ctx, dep.ID)
 
+	o.notifyDeploySuccess(ctx, dep, 0) // compose stacks don't have a single "the" port
+
 	return historyID, nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/config"
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
+	"github.com/evanxdsouza/mangrove/internal/notify"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
@@ -33,13 +34,50 @@ func (e *ErrMemoryCeilingExceeded) Error() string {
 }
 
 type Orchestrator struct {
-	Store   *store.Store
-	Exec    executor.Executor
-	Compose *executor.ComposeExecutor
-	Proxy   *proxy.Client // nil is valid: routing is skipped (e.g. Caddy not installed yet in a dev environment)
-	Secrets *secrets.Box
-	Config  config.Config
-	Log     *slog.Logger
+	Store    *store.Store
+	Exec     executor.Executor
+	Compose  *executor.ComposeExecutor
+	Proxy    *proxy.Client // nil is valid: routing is skipped (e.g. Caddy not installed yet in a dev environment)
+	Secrets  *secrets.Box
+	Notifier *notify.ResendClient // nil or !Enabled() is valid: notifications are skipped, not an error
+	Config   config.Config
+	Log      *slog.Logger
+}
+
+// notifyDeploySuccess sends the deploy-success email (if configured) and
+// always records the attempt to notifications_log -- visible in the admin
+// panel regardless of whether it actually sent.
+func (o *Orchestrator) notifyDeploySuccess(ctx context.Context, dep models.Deployment, port int) {
+	if o.Config.NotifyToEmail == "" {
+		return
+	}
+	subject := fmt.Sprintf("%s deployed successfully", dep.Name)
+	logEntry := store.Notification{
+		Type: "deploy_success", DeploymentID: &dep.ID, Channel: "email",
+		Recipient: o.Config.NotifyToEmail, Subject: subject,
+	}
+
+	if !o.Notifier.Enabled() {
+		logEntry.Status = "failed"
+		logEntry.ErrorMessage = "Resend API key not configured (MANGROVE_RESEND_API_KEY)"
+		o.Store.CreateNotification(ctx, logEntry)
+		return
+	}
+
+	domainSlug := fmt.Sprintf("%s.%s", dep.Slug, o.Config.BaseDomain)
+	err := o.Notifier.SendDeploySuccess(ctx, o.Config.NotifyToEmail, notify.DeploySuccessParams{
+		AppName:         dep.Name,
+		Port:            port,
+		SuggestedDomain: domainSlug,
+	})
+	if err != nil {
+		logEntry.Status = "failed"
+		logEntry.ErrorMessage = err.Error()
+		o.Log.Warn("deploy-success email failed", "deployment_id", dep.ID, "error", err)
+	} else {
+		logEntry.Status = "sent"
+	}
+	o.Store.CreateNotification(ctx, logEntry)
 }
 
 type DeployRequest struct {
@@ -225,6 +263,12 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	o.Store.TouchDeploymentDeployed(ctx, dep.ID)
 
 	o.pruneOldImages(ctx, svc.ID, dep.ImageRetentionCount)
+
+	notifyPort := 0
+	if registeredPort != nil {
+		notifyPort = *registeredPort
+	}
+	o.notifyDeploySuccess(ctx, dep, notifyPort)
 
 	return historyID, nil
 }

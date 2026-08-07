@@ -20,6 +20,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/config"
 	mangrovedb "github.com/evanxdsouza/mangrove/internal/db"
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/notify"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
@@ -89,14 +90,20 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Info("marked deploys interrupted by a prior restart as failed", "count", n)
 	}
 
+	resendClient := notify.NewResendClient(cfg.ResendAPIKey, os.Getenv("MANGROVE_RESEND_FROM"))
+	if cfg.NotifyToEmail != "" && !resendClient.Enabled() {
+		log.Warn("MANGROVE_NOTIFY_EMAIL is set but MANGROVE_RESEND_API_KEY is not -- deploy-success emails will be logged as failed, not sent")
+	}
+
 	orch := &orchestrator.Orchestrator{
-		Store:   st,
-		Exec:    dockerExec,
-		Compose: composeExec,
-		Proxy:   proxyClient,
-		Secrets: box,
-		Config:  cfg,
-		Log:     log,
+		Store:    st,
+		Exec:     dockerExec,
+		Compose:  composeExec,
+		Proxy:    proxyClient,
+		Secrets:  box,
+		Notifier: resendClient,
+		Config:   cfg,
+		Log:      log,
 	}
 
 	server := &api.Server{
