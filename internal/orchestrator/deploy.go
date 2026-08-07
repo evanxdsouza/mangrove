@@ -238,7 +238,16 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	// this is the atomic part of the swap (see internal/proxy). Only after
 	// traffic is flowing to the new container is it safe to remove the old.
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil && runResult.ContainerAddr != "" {
-		if err := o.Proxy.PutRoute(ctx, *registeredPort, runResult.ContainerAddr, proxy.RouteOptions{}); err != nil {
+		routeOpts := proxy.RouteOptions{}
+		if dep.PasswordProtected {
+			hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
+			if err != nil {
+				o.Log.Warn("failed to load password hash for password-protected deployment; route will be unprotected", "deployment_id", dep.ID, "error", err)
+			} else {
+				routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
+			}
+		}
+		if err := o.Proxy.PutRoute(ctx, *registeredPort, runResult.ContainerAddr, routeOpts); err != nil {
 			o.Exec.Stop(ctx, newContainerName, 5*time.Second)
 			o.Exec.Remove(ctx, newContainerName)
 			return fail(fmt.Errorf("update proxy route: %w", err))

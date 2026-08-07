@@ -27,6 +27,10 @@ type Executor interface {
 	// Prune removes dangling images/build cache, keeping anything whose tag
 	// is listed in opts.KeepImageTags regardless of age.
 	Prune(ctx context.Context, opts PruneOptions) (PruneResult, error)
+	// ContainerAddr returns "internal-ip:port" for an already-running
+	// container -- used to re-push a Caddy route (e.g. after an
+	// access-control toggle) without needing a fresh Run().
+	ContainerAddr(ctx context.Context, containerRef string, port int) (string, error)
 }
 
 // BuildStrategy enumerates how BuildSpec.Context should be turned into an image.

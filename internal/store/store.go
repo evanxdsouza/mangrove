@@ -166,6 +166,36 @@ func (s *Store) DeleteDeployment(ctx context.Context, id int64) error {
 	return err
 }
 
+// ListAllDeployments returns every deployment across every project --
+// used by the pruning scheduler, which sweeps the whole host rather than
+// one project at a time.
+func (s *Store) ListAllDeployments(ctx context.Context) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM deployments ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+
+	out := make([]models.Deployment, 0, len(ids))
+	for _, id := range ids {
+		d, err := s.GetDeployment(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
 func (s *Store) UpdateDeploymentStatus(ctx context.Context, id int64, status string) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
 	return err
@@ -182,6 +212,18 @@ func (s *Store) SetDeploymentAccessControl(ctx context.Context, id int64, isPubl
 		isPublic, passwordProtected, nullIfEmpty(passwordHash), id,
 	)
 	return err
+}
+
+// GetDeploymentPasswordHash is kept separate from GetDeployment
+// deliberately -- the bcrypt hash is only ever needed by the swap/proxy
+// path, never by API responses.
+func (s *Store) GetDeploymentPasswordHash(ctx context.Context, id int64) (string, error) {
+	var hash sql.NullString
+	err := s.DB.QueryRowContext(ctx, `SELECT password_hash FROM deployments WHERE id = ?`, id).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return "", ErrNotFound
+	}
+	return hash.String, err
 }
 
 func nullIfEmpty(s string) any {
@@ -297,6 +339,11 @@ func (s *Store) UpdateServiceRuntime(ctx context.Context, id int64, imageTag, co
 		`UPDATE services SET image_tag_current = ?, container_id_current = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		imageTag, containerID, status, id,
 	)
+	return err
+}
+
+func (s *Store) UpdateServiceInternalOnly(ctx context.Context, id int64, internalOnly bool) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE services SET is_internal_only = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, internalOnly, id)
 	return err
 }
 

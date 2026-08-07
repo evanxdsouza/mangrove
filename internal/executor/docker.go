@@ -195,6 +195,14 @@ func (e *DockerExecutor) containerIP(ctx context.Context, containerID, network s
 	return ip, nil
 }
 
+func (e *DockerExecutor) ContainerAddr(ctx context.Context, containerRef string, port int) (string, error) {
+	ip, err := e.containerIP(ctx, containerRef, e.NetworkName)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(ip, strconv.Itoa(port)), nil
+}
+
 func (e *DockerExecutor) Stop(ctx context.Context, containerRef string, timeout time.Duration) error {
 	secs := int(timeout.Seconds())
 	if secs <= 0 {

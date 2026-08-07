@@ -119,6 +119,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	go healthChecker.Run(ctx)
 	go healthChecker.PruneOldChecks(ctx)
 
+	pruner := scheduler.NewPruner(st, dockerExec, log)
+	go pruner.Run(ctx)
+
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.APIPort))
 	httpServer := &http.Server{
 		Addr:    addr,

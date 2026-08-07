@@ -94,6 +94,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {tab === "overview" && (
         <>
           <OverviewTab services={services} />
+          <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
         </>
       )}
@@ -155,6 +156,93 @@ interface ProjectRepoInfo {
   id: number;
   repo_owner: string;
   repo_name: string;
+}
+
+function AccessControlCard({
+  deploymentId,
+  deployment,
+  onSaved,
+}: {
+  deploymentId: number;
+  deployment: Deployment | null;
+  onSaved: () => void;
+}) {
+  const [isPublic, setIsPublic] = useState(false);
+  const [passwordProtected, setPasswordProtected] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (deployment) {
+      setIsPublic(deployment.is_public);
+      setPasswordProtected(deployment.password_protected);
+    }
+  }, [deployment]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/access`, {
+        is_public: isPublic,
+        password_protected: passwordProtected,
+        password,
+      });
+      setPassword("");
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Access control</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Enforced at the Caddy proxy layer, independent of any auth the app itself has.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      <div className="field">
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+          Public (expose on the assigned port)
+        </label>
+      </div>
+      {isPublic && (
+        <>
+          <div className="field">
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={passwordProtected} onChange={(e) => setPasswordProtected(e.target.checked)} />
+              Password-protected
+            </label>
+          </div>
+          {passwordProtected && (
+            <div className="field">
+              <label htmlFor="access-password">Password</label>
+              <input
+                id="access-password"
+                className="input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={deployment?.password_protected ? "Enter a new password to change it" : ""}
+              />
+            </div>
+          )}
+        </>
+      )}
+      <button className="btn btn-sm" onClick={save} disabled={busy}>
+        {busy ? "Saving..." : "Save"}
+      </button>
+      {saved && <div className="field-hint">Saved.</div>}
+    </div>
+  );
 }
 
 function AutoDeployCard({

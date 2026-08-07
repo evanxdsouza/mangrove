@@ -74,6 +74,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
 				r.Post("/repo", s.setDeploymentRepo)
+				r.Post("/access", s.setDeploymentAccess)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {

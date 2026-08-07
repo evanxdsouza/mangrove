@@ -114,6 +114,34 @@ test.describe.serial("Mangrove dashboard", () => {
     await expect(page.getByText("rollback of #").first()).toBeVisible();
   });
 
+  test("toggling password protection enforces it at the proxy layer", async () => {
+    expect(deploymentId).toBeTruthy();
+
+    await page.goto(`/projects/1/deployments/${deploymentId}`);
+    await page.getByLabel("Public (expose on the assigned port)").check();
+    await page.getByLabel("Password-protected").check();
+    await page.getByLabel("Password", { exact: true }).fill("supersecretpassword123");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Saved.")).toBeVisible();
+
+    // Read back the assigned host port from the service card, then hit it
+    // directly (bypassing the dashboard's own session) to confirm Caddy
+    // itself is enforcing basic auth -- not just the API.
+    await page.reload();
+    const hostPortText = await page.locator(".kv-row", { hasText: "Host port" }).locator(".kv-value").innerText();
+    const hostPort = hostPortText.trim();
+    expect(hostPort).toMatch(/^\d+$/);
+
+    const unauthed = await page.request.get(`http://127.0.0.1:${hostPort}/`, { failOnStatusCode: false });
+    expect(unauthed.status()).toBe(401);
+
+    const authed = await page.request.get(`http://127.0.0.1:${hostPort}/`, {
+      failOnStatusCode: false,
+      headers: { Authorization: "Basic " + Buffer.from("mangrove:supersecretpassword123").toString("base64") },
+    });
+    expect(authed.status()).toBe(200);
+  });
+
   test("admin panel shows resource budget and the running node", async () => {
     await page.goto("/admin");
     await expect(page.getByText("Resource budget")).toBeVisible();
