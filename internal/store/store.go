@@ -487,6 +487,36 @@ func nullIfZero(n int) any {
 	return n
 }
 
+type HealthCheckEntry struct {
+	Status         string    `json:"status"`
+	CheckedAt      time.Time `json:"checked_at"`
+	ResponseTimeMS int64     `json:"response_time_ms"`
+	HTTPStatus     int       `json:"http_status,omitempty"`
+	ErrorMessage   string    `json:"error_message,omitempty"`
+}
+
+// ListRecentHealthChecks backs the dashboard's uptime view -- a rolling
+// window of recent pings for one service, newest first.
+func (s *Store) ListRecentHealthChecks(ctx context.Context, serviceID int64, limit int) ([]HealthCheckEntry, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT status, checked_at, response_time_ms, COALESCE(http_status, 0), COALESCE(error_message, '')
+		FROM health_checks WHERE service_id = ? ORDER BY checked_at DESC LIMIT ?`, serviceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []HealthCheckEntry
+	for rows.Next() {
+		var e HealthCheckEntry
+		if err := rows.Scan(&e.Status, &e.CheckedAt, &e.ResponseTimeMS, &e.HTTPStatus, &e.ErrorMessage); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) LatestHealthCheck(ctx context.Context, serviceID int64) (status string, checkedAt time.Time, err error) {
 	err = s.DB.QueryRowContext(ctx,
 		`SELECT status, checked_at FROM health_checks WHERE service_id = ? ORDER BY checked_at DESC LIMIT 1`, serviceID,
@@ -495,6 +525,42 @@ func (s *Store) LatestHealthCheck(ctx context.Context, serviceID int64) (status 
 		return "unknown", time.Time{}, nil
 	}
 	return status, checkedAt, err
+}
+
+// RunnableService is the minimal projection the health-check scheduler
+// needs -- avoids pulling the full models.Service (and its extra queries)
+// just to poll a container.
+type RunnableService struct {
+	ID                   int64
+	ContainerID          string // the live, versioned container -- container_name is only a naming prefix, not a running container
+	InternalPort         int
+	HealthCheckPath      string
+	HealthCheckIntervalS int
+	HealthCheckTimeoutS  int
+}
+
+// ListRunningServicesWithHealthCheck returns every service that is running
+// and has an HTTP health check configured -- what the scheduler polls.
+func (s *Store) ListRunningServicesWithHealthCheck(ctx context.Context) ([]RunnableService, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, container_id_current, internal_port, health_check_path, health_check_interval_s, health_check_timeout_s
+		FROM services
+		WHERE status = 'running' AND container_id_current IS NOT NULL AND container_id_current != ''
+		  AND health_check_path IS NOT NULL AND health_check_path != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []RunnableService
+	for rows.Next() {
+		var r RunnableService
+		if err := rows.Scan(&r.ID, &r.ContainerID, &r.InternalPort, &r.HealthCheckPath, &r.HealthCheckIntervalS, &r.HealthCheckTimeoutS); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // PruneOldHealthChecks deletes health_checks rows older than `before`,

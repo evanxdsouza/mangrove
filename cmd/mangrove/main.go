@@ -23,6 +23,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
+	"github.com/evanxdsouza/mangrove/internal/scheduler"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
 	"github.com/evanxdsouza/mangrove/internal/sysinfo"
@@ -98,6 +99,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Secrets:      box,
 		Log:          log,
 	}
+
+	healthChecker := scheduler.NewHealthChecker(st, dockerExec, log)
+	go healthChecker.Run(ctx)
+	go healthChecker.PruneOldChecks(ctx)
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.APIPort))
 	httpServer := &http.Server{

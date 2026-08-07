@@ -78,6 +78,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/env", s.listEnvVars)
 				r.Put("/env/{key}", s.setEnvVar)
 				r.Delete("/env/{key}", s.deleteEnvVar)
+				r.Get("/health", s.getServiceHealth)
+				r.Get("/logs/stream", s.streamServiceLogs)
 			})
 		})
 	})
