@@ -94,10 +94,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	server := &api.Server{
-		Store:        st,
-		Orchestrator: orch,
-		Secrets:      box,
-		Log:          log,
+		Store:           st,
+		Orchestrator:    orch,
+		Secrets:         box,
+		Log:             log,
+		DataDir:         cfg.DataDir,
+		MemoryCeilingMB: cfg.DeploymentMemoryCeilingMB,
 	}
 
 	healthChecker := scheduler.NewHealthChecker(st, dockerExec, log)

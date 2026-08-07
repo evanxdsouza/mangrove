@@ -16,13 +16,16 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
+	"github.com/evanxdsouza/mangrove/internal/webui"
 )
 
 type Server struct {
-	Store        *store.Store
-	Orchestrator *orchestrator.Orchestrator
-	Secrets      *secrets.Box
-	Log          *slog.Logger
+	Store           *store.Store
+	Orchestrator    *orchestrator.Orchestrator
+	Secrets         *secrets.Box
+	Log             *slog.Logger
+	DataDir         string // for disk-usage stats in the admin resource budget
+	MemoryCeilingMB int
 }
 
 func (s *Server) Router() http.Handler {
@@ -44,12 +47,13 @@ func (s *Server) Router() http.Handler {
 		})
 		r.Get("/auth/status", s.authStatus)
 		r.Post("/auth/logout", s.authLogout)
-		r.Get("/auth/me", s.authMe)
 
-		// Everything else is a write-capable resource endpoint and requires
-		// a valid session -- there is no unauthenticated path through here.
+		// Everything else -- including /auth/me, which by design needs a
+		// valid session to answer "who am I" -- requires auth. There is no
+		// unauthenticated path through here.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(s.Store))
+			r.Get("/auth/me", s.authMe)
 
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", s.listProjects)
@@ -81,6 +85,19 @@ func (s *Server) Router() http.Handler {
 				r.Get("/health", s.getServiceHealth)
 				r.Get("/logs/stream", s.streamServiceLogs)
 			})
+
+			r.Route("/admin", func(r chi.Router) {
+				r.Get("/resource-budget", s.getResourceBudget)
+				r.Get("/ports", s.listPorts)
+				r.Post("/ports", s.reservePort)
+				r.Delete("/ports/{port}", s.releasePort)
+				r.Get("/sessions", s.listSessions)
+				r.Delete("/sessions/{sessionID}", s.revokeSession)
+				r.Get("/nodes", s.listNodes)
+				r.Get("/notifications", s.listNotifications)
+				r.Post("/prune", s.triggerPrune)
+				r.Get("/secrets-status", s.getSecretsStatus)
+			})
 		})
 	})
 
@@ -88,6 +105,9 @@ func (s *Server) Router() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
+
+	// Dashboard SPA: mounted last so it never shadows /api or /healthz.
+	r.Handle("/*", webui.Handler())
 
 	return r
 }

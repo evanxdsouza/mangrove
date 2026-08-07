@@ -733,9 +733,100 @@ func (s *Store) ListActiveSessions(ctx context.Context) ([]SessionInfo, error) {
 	return out, rows.Err()
 }
 
+type Node struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Address   string `json:"address,omitempty"`
+	Status    string `json:"status"`
+	IsDefault bool   `json:"is_default"`
+}
+
+// ListNodes backs the admin panel's node list -- today always exactly one
+// local row, and the hook for a future remote worker to appear here.
+func (s *Store) ListNodes(ctx context.Context) ([]Node, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, name, kind, COALESCE(address,''), status, is_default FROM nodes ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Node
+	for rows.Next() {
+		var n Node
+		if err := rows.Scan(&n.ID, &n.Name, &n.Kind, &n.Address, &n.Status, &n.IsDefault); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// SumConfiguredMemoryMBAll is SumConfiguredMemoryMB without excluding any
+// deployment -- the admin panel's "currently allocated" figure.
+func (s *Store) SumConfiguredMemoryMBAll(ctx context.Context) (int, error) {
+	var total int
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(s.memory_limit_mb), 0)
+		FROM services s JOIN deployments d ON d.id = s.deployment_id
+		WHERE d.status != 'stopped'`,
+	).Scan(&total)
+	return total, err
+}
+
+func (s *Store) CountRunningContainers(ctx context.Context) (int, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM services WHERE status = 'running'`).Scan(&n)
+	return n, err
+}
+
 func (s *Store) DeleteSessionByID(ctx context.Context, id int64) error {
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
 	return err
+}
+
+type Notification struct {
+	ID           int64     `json:"id"`
+	Type         string    `json:"type"`
+	DeploymentID *int64    `json:"deployment_id,omitempty"`
+	Channel      string    `json:"channel"`
+	Recipient    string    `json:"recipient"`
+	Subject      string    `json:"subject"`
+	Status       string    `json:"status"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+	SentAt       time.Time `json:"sent_at"`
+}
+
+func (s *Store) CreateNotification(ctx context.Context, n Notification) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO notifications_log (type, deployment_id, channel, recipient, subject, status, error_message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		n.Type, n.DeploymentID, n.Channel, n.Recipient, n.Subject, n.Status, nullIfEmpty(n.ErrorMessage),
+	)
+	return err
+}
+
+func (s *Store) ListNotifications(ctx context.Context, limit int) ([]Notification, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, type, deployment_id, channel, recipient, subject, status, COALESCE(error_message,''), sent_at
+		FROM notifications_log ORDER BY sent_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Notification
+	for rows.Next() {
+		var n Notification
+		var depID sql.NullInt64
+		if err := rows.Scan(&n.ID, &n.Type, &depID, &n.Channel, &n.Recipient, &n.Subject, &n.Status, &n.ErrorMessage, &n.SentAt); err != nil {
+			return nil, err
+		}
+		if depID.Valid {
+			n.DeploymentID = &depID.Int64
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
