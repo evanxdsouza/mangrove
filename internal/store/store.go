@@ -565,3 +565,117 @@ func (s *Store) DeleteEnvVar(ctx context.Context, serviceID int64, key string) e
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM env_vars WHERE service_id = ? AND key_name = ?`, serviceID, key)
 	return err
 }
+
+// ---- Users & sessions ----
+
+func (s *Store) CountUsers(ctx context.Context) (int, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) CreateUser(ctx context.Context, email, passwordHash string) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO users (org_id, email, password_hash) VALUES (1, ?, ?)`, email, passwordHash)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	// Every user is, for now, a member of the single default workspace --
+	// the multi-tenancy stub this exists for isn't wired up until org/team
+	// support is built.
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id) VALUES (1, ?)`, id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+type UserAuth struct {
+	ID           int64
+	Email        string
+	PasswordHash string
+}
+
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (UserAuth, error) {
+	var u UserAuth
+	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash)
+	if err == sql.ErrNoRows {
+		return UserAuth{}, ErrNotFound
+	}
+	return u, err
+}
+
+func (s *Store) TouchUserLogin(ctx context.Context, userID int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`, userID)
+	return err
+}
+
+func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time, ip, userAgent string) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO sessions (user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)`,
+		userID, tokenHash, expiresAt, ip, userAgent,
+	)
+	return err
+}
+
+func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (userID int64, expiresAt time.Time, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT user_id, expires_at FROM sessions WHERE token_hash = ?`, tokenHash).
+		Scan(&userID, &expiresAt)
+	if err == sql.ErrNoRows {
+		return 0, time.Time{}, ErrNotFound
+	}
+	return userID, expiresAt, err
+}
+
+func (s *Store) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+	return err
+}
+
+type SessionInfo struct {
+	ID        int64
+	UserEmail string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	IPAddress string
+	UserAgent string
+}
+
+// ListActiveSessions backs the admin panel's session list + revoke UI.
+func (s *Store) ListActiveSessions(ctx context.Context) ([]SessionInfo, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT sess.id, u.email, sess.created_at, sess.expires_at, COALESCE(sess.ip_address,''), COALESCE(sess.user_agent,'')
+		FROM sessions sess JOIN users u ON u.id = sess.user_id
+		WHERE sess.expires_at > CURRENT_TIMESTAMP
+		ORDER BY sess.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SessionInfo
+	for rows.Next() {
+		var si SessionInfo
+		if err := rows.Scan(&si.ID, &si.UserEmail, &si.CreatedAt, &si.ExpiresAt, &si.IPAddress, &si.UserAgent); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteSessionByID(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
