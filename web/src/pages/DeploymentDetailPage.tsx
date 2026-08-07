@@ -91,7 +91,12 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         ))}
       </div>
 
-      {tab === "overview" && <OverviewTab services={services} />}
+      {tab === "overview" && (
+        <>
+          <OverviewTab services={services} />
+          <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
+        </>
+      )}
 
       {tab === "history" && (
         <div className="card">
@@ -143,6 +148,89 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         </div>
       )}
     </>
+  );
+}
+
+interface ProjectRepoInfo {
+  id: number;
+  repo_owner: string;
+  repo_name: string;
+}
+
+function AutoDeployCard({
+  projectId,
+  deploymentId,
+  deployment,
+  onSaved,
+}: {
+  projectId: number;
+  deploymentId: number;
+  deployment: Deployment | null;
+  onSaved: () => void;
+}) {
+  const [repo, setRepo] = useState<ProjectRepoInfo | null>(null);
+  const [branch, setBranch] = useState("");
+  const [autoDeploy, setAutoDeploy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<ProjectRepoInfo>(`/api/projects/${projectId}/repo`)
+      .then(setRepo)
+      .catch(() => setRepo(null));
+  }, [projectId]);
+
+  useEffect(() => {
+    if (deployment) {
+      setBranch(deployment.git_branch ?? "main");
+      setAutoDeploy(deployment.auto_deploy_on_push);
+    }
+  }, [deployment]);
+
+  if (!repo) {
+    return null; // no repo connected to this project -- nothing to configure
+  }
+
+  const save = async () => {
+    setBusy(true);
+    setSaved(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/repo`, {
+        project_repo_id: repo.id,
+        branch,
+        auto_deploy_on_push: autoDeploy,
+      });
+      setSaved(true);
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Auto-deploy</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Deploy automatically when {repo.repo_owner}/{repo.repo_name} receives a push to the branch below.
+      </p>
+      <div className="form-row" style={{ alignItems: "flex-end" }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="autodeploy-branch">Branch</label>
+          <input id="autodeploy-branch" className="input mono" value={branch} onChange={(e) => setBranch(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={autoDeploy} onChange={(e) => setAutoDeploy(e.target.checked)} />
+            Auto-deploy on push
+          </label>
+        </div>
+        <button className="btn btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+      </div>
+      {saved && <div className="field-hint">Saved.</div>}
+    </div>
   );
 }
 

@@ -83,6 +83,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	st := store.New(db)
+	if n, err := st.SweepStuckDeploys(ctx); err != nil {
+		log.Warn("failed to sweep stuck deploys", "error", err)
+	} else if n > 0 {
+		log.Info("marked deploys interrupted by a prior restart as failed", "count", n)
+	}
+
 	orch := &orchestrator.Orchestrator{
 		Store:   st,
 		Exec:    dockerExec,

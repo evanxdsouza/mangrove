@@ -345,6 +345,25 @@ func (s *Store) UpdateDeployHistoryStatus(ctx context.Context, id int64, status 
 	return err
 }
 
+// SweepStuckDeploys marks any deploy_history row left in an in-progress
+// state (queued/building/healthchecking) as failed. These can only be
+// leftovers from a Mangrove process that crashed or was killed mid-deploy
+// -- called once at startup so the UI never shows a deploy as eternally
+// "in progress" when nothing is actually working on it. This is the
+// honest scope of "durable" here: the record survives and is correctly
+// marked, not that the interrupted build resumes -- a fresh push or
+// manual deploy simply retries.
+func (s *Store) SweepStuckDeploys(ctx context.Context) (int64, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`UPDATE deploy_history SET status = 'failed', error_message = 'interrupted by a Mangrove restart', finished_at = CURRENT_TIMESTAMP
+		 WHERE status IN ('queued', 'building', 'healthchecking')`,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) MarkDeployHistoryCurrent(ctx context.Context, deploymentID, deployHistoryID int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {

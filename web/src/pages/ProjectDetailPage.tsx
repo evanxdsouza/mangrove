@@ -5,11 +5,21 @@ import { Modal } from "../components/Modal";
 import { StatusPill } from "../components/StatusPill";
 import { slugify } from "./ProjectsPage";
 
+interface ProjectRepoInfo {
+  id: number;
+  repo_owner: string;
+  repo_name: string;
+  default_branch: string;
+  webhook_path: string;
+}
+
 export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [project, setProject] = useState<Project | null>(null);
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
+  const [repo, setRepo] = useState<ProjectRepoInfo | null | undefined>(undefined); // undefined = not loaded yet, null = none linked
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showLinkRepo, setShowLinkRepo] = useState(false);
 
   const load = () => {
     api.get<Project>(`/api/projects/${projectId}`).then(setProject).catch((e) => setError(errMsg(e)));
@@ -17,6 +27,10 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       .get<Deployment[]>(`/api/projects/${projectId}/deployments`)
       .then((d) => setDeployments(d ?? []))
       .catch((e) => setError(errMsg(e)));
+    api
+      .get<ProjectRepoInfo>(`/api/projects/${projectId}/repo`)
+      .then(setRepo)
+      .catch(() => setRepo(null));
   };
 
   useEffect(load, [projectId]);
@@ -81,6 +95,41 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         </div>
       )}
 
+      <div className="card">
+        <div className="flex-between" style={{ marginBottom: repo ? 14 : 0 }}>
+          <div className="card-title" style={{ margin: 0 }}>
+            GitHub
+          </div>
+          {!repo && (
+            <button className="btn btn-sm" onClick={() => setShowLinkRepo(true)}>
+              Connect a repo
+            </button>
+          )}
+        </div>
+        {repo && (
+          <div className="kv-list">
+            <div className="kv-row">
+              <span className="kv-key">Repo</span>
+              <span className="kv-value">
+                {repo.repo_owner}/{repo.repo_name}
+              </span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Default branch</span>
+              <span className="kv-value">{repo.default_branch}</span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Webhook path</span>
+              <span className="kv-value">{repo.webhook_path}</span>
+            </div>
+            <div className="field-hint">
+              Set each deployment's auto-deploy branch from its own page. Paste the webhook URL and secret (shown once,
+              at link time) into this repo's GitHub settings &rarr; Webhooks.
+            </div>
+          </div>
+        )}
+      </div>
+
       {showCreate && (
         <CreateDeploymentModal
           projectId={projectId}
@@ -90,7 +139,127 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           }}
         />
       )}
+
+      {showLinkRepo && (
+        <LinkRepoModal
+          projectId={projectId}
+          onClose={() => setShowLinkRepo(false)}
+          onLinked={() => {
+            setShowLinkRepo(false);
+            load();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+interface GithubPATOption {
+  id: number;
+  label: string;
+}
+
+function LinkRepoModal({ projectId, onClose, onLinked }: { projectId: number; onClose: () => void; onLinked: () => void }) {
+  const [pats, setPats] = useState<GithubPATOption[]>([]);
+  const [patId, setPatId] = useState<number | "">("");
+  const [owner, setOwner] = useState("");
+  const [name, setName] = useState("");
+  const [branch, setBranch] = useState("main");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ webhook_path: string; webhook_secret: string } | null>(null);
+
+  useEffect(() => {
+    api.get<GithubPATOption[]>("/api/github/pats").then((p) => setPats(p ?? [])).catch(() => setPats([]));
+  }, []);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!patId) {
+      setError("Add a GitHub Personal Access Token in Admin first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ webhook_path: string; webhook_secret: string }>(`/api/projects/${projectId}/repo`, {
+        github_pat_id: patId,
+        repo_owner: owner,
+        repo_name: name,
+        default_branch: branch,
+      });
+      setResult(res);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (result) {
+    return (
+      <Modal title="Repo connected" onClose={onLinked}>
+        <p>Paste these into the repo's GitHub settings &rarr; Webhooks &rarr; Add webhook. The secret is shown only once.</p>
+        <div className="field">
+          <label>Payload URL</label>
+          <input className="input mono" readOnly value={`https://<your-host>${result.webhook_path}`} onFocus={(e) => e.target.select()} />
+        </div>
+        <div className="field">
+          <label>Secret</label>
+          <input className="input mono" readOnly value={result.webhook_secret} onFocus={(e) => e.target.select()} />
+        </div>
+        <div className="field-hint">Content type: application/json. Events: just the push event.</div>
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={onLinked}>
+            Done
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Connect a GitHub repo" onClose={onClose}>
+      {error && <div className="error-banner">{error}</div>}
+      {pats.length === 0 && (
+        <div className="error-banner">No GitHub tokens configured yet -- add one in Admin first.</div>
+      )}
+      <form onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="repo-pat">Personal access token</label>
+          <select id="repo-pat" className="input" value={patId} onChange={(e) => setPatId(Number(e.target.value))}>
+            <option value="">Select a token...</option>
+            {pats.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <div className="field">
+            <label htmlFor="repo-owner">Owner</label>
+            <input id="repo-owner" className="input mono" required value={owner} onChange={(e) => setOwner(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="repo-name">Repository</label>
+            <input id="repo-name" className="input mono" required value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="repo-branch">Default branch</label>
+          <input id="repo-branch" className="input mono" value={branch} onChange={(e) => setBranch(e.target.value)} />
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? "Connecting..." : "Connect"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

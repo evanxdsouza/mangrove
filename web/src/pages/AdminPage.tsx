@@ -46,12 +46,20 @@ interface NotificationEntry {
   sent_at: string;
 }
 
+interface GithubPATEntry {
+  id: number;
+  label: string;
+  created_at: string;
+  last_used_at?: string;
+}
+
 export function AdminPage() {
   const [budget, setBudget] = useState<ResourceBudget | null>(null);
   const [ports, setPorts] = useState<PortEntry[] | null>(null);
   const [sessions, setSessions] = useState<SessionEntry[] | null>(null);
   const [nodes, setNodes] = useState<NodeEntry[] | null>(null);
   const [notifications, setNotifications] = useState<NotificationEntry[] | null>(null);
+  const [pats, setPats] = useState<GithubPATEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pruneResult, setPruneResult] = useState<string | null>(null);
 
@@ -64,6 +72,7 @@ export function AdminPage() {
       .get<NotificationEntry[]>("/api/admin/notifications")
       .then((n) => setNotifications(n ?? []))
       .catch((e) => setError(errMsg(e)));
+    api.get<GithubPATEntry[]>("/api/github/pats").then((p) => setPats(p ?? [])).catch((e) => setError(errMsg(e)));
   };
 
   useEffect(load, []);
@@ -75,6 +84,11 @@ export function AdminPage() {
 
   const releasePort = async (port: number) => {
     await api.del(`/api/admin/ports/${port}`);
+    load();
+  };
+
+  const deletePat = async (id: number) => {
+    await api.del(`/api/github/pats/${id}`);
     load();
   };
 
@@ -253,6 +267,44 @@ export function AdminPage() {
       </div>
 
       <div className="card">
+        <div className="card-title">GitHub Personal Access Tokens</div>
+        <p className="text-dim" style={{ marginTop: 0 }}>
+          Used to clone private repos for git-backed deployments. Stored encrypted; the token itself is never shown again after creation.
+        </p>
+        {pats === null ? (
+          <div className="text-dim">Loading...</div>
+        ) : pats.length === 0 ? (
+          <div className="text-dim">No tokens added yet.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Added</th>
+                <th>Last used</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pats.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.label}</td>
+                  <td className="text-dim">{new Date(p.created_at).toLocaleString()}</td>
+                  <td className="text-dim">{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : "never"}</td>
+                  <td>
+                    <button className="btn btn-sm btn-danger" onClick={() => deletePat(p.id)}>
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <AddPatForm onAdded={load} />
+      </div>
+
+      <div className="card">
         <div className="card-title">Notifications</div>
         {notifications === null ? (
           <div className="text-dim">Loading...</div>
@@ -302,6 +354,54 @@ function StatTile({ label, value, fraction }: { label: string; value: string; fr
         <div className={`meter-fill ${cls}`} style={{ width: `${Math.min(fraction * 100, 100)}%` }} />
       </div>
     </div>
+  );
+}
+
+function AddPatForm({ onAdded }: { onAdded: () => void }) {
+  const [label, setLabel] = useState("");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!label || !token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/api/github/pats", { label, token });
+      setLabel("");
+      setToken("");
+      onAdded();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to add token");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-row" style={{ marginTop: 14, alignItems: "flex-end" }}>
+      {error && <div className="error-banner">{error}</div>}
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label htmlFor="pat-label">Label</label>
+        <input id="pat-label" className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="personal" />
+      </div>
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label htmlFor="pat-token">Token</label>
+        <input
+          id="pat-token"
+          className="input mono"
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="ghp_..."
+        />
+      </div>
+      <button className="btn btn-sm" type="submit" disabled={busy || !label || !token}>
+        Add
+      </button>
+    </form>
   );
 }
 

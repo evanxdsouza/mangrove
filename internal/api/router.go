@@ -63,6 +63,8 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/", s.deleteProject)
 					r.Get("/deployments", s.listDeployments)
 					r.Post("/deployments", s.createDeployment)
+					r.Get("/repo", s.getProjectRepo)
+					r.Post("/repo", s.linkProjectRepo)
 				})
 			})
 
@@ -71,6 +73,13 @@ func (s *Server) Router() http.Handler {
 				r.Get("/services", s.listServices)
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
+				r.Post("/repo", s.setDeploymentRepo)
+			})
+
+			r.Route("/github/pats", func(r chi.Router) {
+				r.Get("/", s.listGithubPATs)
+				r.Post("/", s.createGithubPAT)
+				r.Delete("/{patID}", s.deleteGithubPAT)
 			})
 
 			r.Route("/deploy-history/{historyID}", func(r chi.Router) {
@@ -106,7 +115,15 @@ func (s *Server) Router() http.Handler {
 		w.Write([]byte("ok"))
 	})
 
-	// Dashboard SPA: mounted last so it never shadows /api or /healthz.
+	// The one deliberate exception to "no unauthenticated path" -- GitHub
+	// can't hold a session cookie. Every request here is verified by HMAC
+	// signature instead (see githubWebhook). Not nested under /api so it
+	// reads clearly as Mangrove's single always-on public endpoint per
+	// plan §5, and so the /api RequireAuth group can never accidentally
+	// swallow it.
+	r.Post("/webhooks/github/{token}", s.githubWebhook)
+
+	// Dashboard SPA: mounted last so it never shadows /api, /healthz, or /webhooks.
 	r.Handle("/*", webui.Handler())
 
 	return r
