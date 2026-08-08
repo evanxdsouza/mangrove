@@ -14,6 +14,19 @@ import (
 type Config struct {
 	DataDir string
 	DBPath  string
+	// StaticSitesDir holds the output directories for static-strategy
+	// deploys, one subdirectory per deploy history entry -- see
+	// executor.DockerExecutor.StaticSitesDir and proxy.PutFileServerRoute.
+	//
+	// Deliberately NOT nested under DataDir: DataDir (and its parent,
+	// mangrove.service's WorkingDirectory in production) is locked down to
+	// 0700 for the sqlite DB and master key, which the caddy user has no
+	// business reading -- but caddy DOES need to read every static site's
+	// output, since that's the whole point of file_server serving it
+	// publicly. A production install must point this at its own
+	// world-readable directory (see deploy/systemd/mangrove.service) rather
+	// than relying on the default, which assumes an unsandboxed dev box.
+	StaticSitesDir string
 
 	// APIPort is the single fixed port Mangrove's own API/dashboard/webhook
 	// receiver listens on -- never allocated to a deployment.
@@ -53,6 +66,7 @@ func Load() Config {
 	return Config{
 		DataDir:                   dataDir,
 		DBPath:                    filepath.Join(dataDir, "mangrove.db"),
+		StaticSitesDir:            getEnv("MANGROVE_STATIC_SITES_DIR", "./mangrove-static"),
 		APIPort:                   getEnvInt("MANGROVE_PORT", 7777),
 		PortRangeMin:              getEnvInt("MANGROVE_PORT_RANGE_MIN", portregistry.DefaultRangeMin),
 		PortRangeMax:              getEnvInt("MANGROVE_PORT_RANGE_MAX", portregistry.DefaultRangeMax),

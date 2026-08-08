@@ -84,7 +84,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {error && <div className="error-banner">{error}</div>}
 
       <div className="tabs">
-        {(["overview", "history", "logs", "env"] as Tab[]).map((t) => (
+        {/* A static site has no container to stream logs from -- Caddy serves the built files directly. */}
+        {(["overview", "history", "logs", "env"] as Tab[])
+          .filter((t) => t !== "logs" || deployment?.build_strategy !== "static")
+          .map((t) => (
           <div key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
           </div>
@@ -93,7 +96,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
 
       {tab === "overview" && (
         <>
-          <OverviewTab services={services} />
+          <OverviewTab services={services} isStatic={deployment?.build_strategy === "static"} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
         </>
@@ -322,28 +325,29 @@ function AutoDeployCard({
   );
 }
 
-function OverviewTab({ services }: { services: Service[] }) {
+function OverviewTab({ services, isStatic }: { services: Service[]; isStatic: boolean }) {
   if (services.length === 0) {
     return <div className="card empty-state">No services yet.</div>;
   }
   return (
     <div className="grid grid-2">
       {services.map((s) => (
-        <ServiceCard key={s.id} service={s} />
+        <ServiceCard key={s.id} service={s} isStatic={isStatic} />
       ))}
     </div>
   );
 }
 
-function ServiceCard({ service }: { service: Service }) {
+function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolean }) {
   const [health, setHealth] = useState<HealthCheckEntry[] | null>(null);
 
   useEffect(() => {
+    if (isStatic) return; // no container, no health checks to fetch
     api
       .get<HealthCheckEntry[]>(`/api/services/${service.id}/health?limit=1`)
       .then((h) => setHealth(h ?? []))
       .catch(() => setHealth([]));
-  }, [service.id]);
+  }, [service.id, isStatic]);
 
   const latestHealth = health && health.length > 0 ? health[0] : null;
 
@@ -356,36 +360,47 @@ function ServiceCard({ service }: { service: Service }) {
         <StatusPill status={service.status} />
       </div>
       <div className="kv-list">
-        <div className="kv-row">
-          <span className="kv-key">Image</span>
-          <span className="kv-value">{service.image_tag_current ?? "—"}</span>
-        </div>
-        <div className="kv-row">
-          <span className="kv-key">Internal port</span>
-          <span className="kv-value">{service.internal_port || "—"}</span>
-        </div>
+        {isStatic ? (
+          <div className="kv-row">
+            <span className="kv-key">Served by</span>
+            <span className="kv-value">Caddy (file_server) -- no container runs for a static site</span>
+          </div>
+        ) : (
+          <>
+            <div className="kv-row">
+              <span className="kv-key">Image</span>
+              <span className="kv-value">{service.image_tag_current ?? "—"}</span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Internal port</span>
+              <span className="kv-value">{service.internal_port || "—"}</span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Resources</span>
+              <span className="kv-value">
+                {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
+              </span>
+            </div>
+          </>
+        )}
         <div className="kv-row">
           <span className="kv-key">Host port</span>
           <span className="kv-value">{service.host_port ?? (service.is_internal_only ? "internal only" : "not yet assigned")}</span>
         </div>
-        <div className="kv-row">
-          <span className="kv-key">Resources</span>
-          <span className="kv-value">
-            {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
-          </span>
-        </div>
-        <div className="kv-row">
-          <span className="kv-key">Health</span>
-          <span className="kv-value">
-            {latestHealth ? (
-              <>
-                <StatusPill status={latestHealth.status} /> {latestHealth.response_time_ms}ms
-              </>
-            ) : (
-              <span className="text-faint">no checks yet</span>
-            )}
-          </span>
-        </div>
+        {!isStatic && (
+          <div className="kv-row">
+            <span className="kv-key">Health</span>
+            <span className="kv-value">
+              {latestHealth ? (
+                <>
+                  <StatusPill status={latestHealth.status} /> {latestHealth.response_time_ms}ms
+                </>
+              ) : (
+                <span className="text-faint">no checks yet</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

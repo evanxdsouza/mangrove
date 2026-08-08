@@ -1,0 +1,24 @@
+{
+  "key": "redis",
+  "name": "Redis",
+  "description": "Standalone Redis 7 with password auth enabled. Internal-only: Caddy only routes HTTP, so there's no way to expose raw Redis through it -- reach this from another deployment on the same project by its slug.",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "redis:7-alpine",
+      "internal_port": 6379,
+      "force_internal_only": true,
+      "memory_limit_mb": 80,
+      "cpu_limit_cores": 0.3,
+      "command": ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""],
+      "volumes": [
+        { "name": "data", "mount_path": "/data" }
+      ],
+      "env": [
+        { "key": "REDIS_PASSWORD", "generate": "password", "generate_key": "redis_password", "secret": true }
+      ]
+    }
+  ]
+}

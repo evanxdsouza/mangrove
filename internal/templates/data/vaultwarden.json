@@ -1,0 +1,24 @@
+{
+  "key": "vaultwarden",
+  "name": "Vaultwarden",
+  "description": "Lightweight self-hosted Bitwarden-compatible password manager. An admin token is generated so you can reach /admin to manage users; consider turning SIGNUPS_ALLOWED off there once your account exists. Starts internal-only -- flip it public from the deployment's Access control tab once it's up.",
+  "category": "security",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "vaultwarden/server:latest",
+      "internal_port": 80,
+      "memory_limit_mb": 96,
+      "cpu_limit_cores": 0.3,
+      "health_check_path": "/alive",
+      "volumes": [
+        { "name": "data", "mount_path": "/data" }
+      ],
+      "env": [
+        { "key": "ADMIN_TOKEN", "generate": "hex32", "generate_key": "admin_token", "secret": true },
+        { "key": "SIGNUPS_ALLOWED", "value": "true" }
+      ]
+    }
+  ]
+}

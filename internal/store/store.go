@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -150,6 +151,8 @@ type CreateDeploymentParams struct {
 	RootPath            string
 	DockerfilePath      string
 	ComposePath         string
+	StaticBuildCommand  string
+	StaticOutputDir     string
 	ImageRetentionCount int
 }
 
@@ -161,9 +164,9 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 		p.ImageRetentionCount = 5
 	}
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, image_retention_count)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.ImageRetentionCount,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount,
 	)
 	if err != nil {
 		return models.Deployment{}, err
@@ -179,11 +182,12 @@ func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment,
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
 		       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
+		       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
 		       auto_deploy_on_push, is_public, password_protected, image_retention_count, status, node_id,
 		       created_at, updated_at, last_deployed_at
 		FROM deployments WHERE id = ?`, id,
 	).Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
-		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath,
+		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Status, &d.NodeID,
 		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
 	if err == sql.ErrNoRows {
@@ -316,13 +320,24 @@ type CreateServiceParams struct {
 	HealthCheckPath      string
 	HealthCheckIntervalS int
 	HealthCheckTimeoutS  int
+	// Command overrides the image's default CMD when non-empty -- see
+	// executor.RunSpec.Command. Stored as a JSON array.
+	Command []string
+	// NoContainer is set by the static build strategy, whose "service" row
+	// exists only to hold port/routing config -- no container ever runs
+	// for it. It skips the CPU/memory zero-value defaulting below, which
+	// otherwise exists to catch an omitted value on a real container; for
+	// static, an omitted value is correct, and defaulting memory to 256MB
+	// would wrongly eat into admission control's budget for a deployment
+	// that consumes none.
+	NoContainer bool
 }
 
 func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (models.Service, error) {
-	if p.CPULimitCores == 0 {
+	if p.CPULimitCores == 0 && !p.NoContainer {
 		p.CPULimitCores = 0.5
 	}
-	if p.MemoryLimitMB == 0 {
+	if p.MemoryLimitMB == 0 && !p.NoContainer {
 		p.MemoryLimitMB = 256
 	}
 	if p.RestartPolicy == "" {
@@ -334,14 +349,22 @@ func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (model
 	if p.HealthCheckTimeoutS == 0 {
 		p.HealthCheckTimeoutS = 5
 	}
+	var commandJSON any
+	if len(p.Command) > 0 {
+		b, err := json.Marshal(p.Command)
+		if err != nil {
+			return models.Service{}, fmt.Errorf("encode command: %w", err)
+		}
+		commandJSON = string(b)
+	}
 	res, err := s.DB.ExecContext(ctx, `
 		INSERT INTO services (deployment_id, name, container_name, internal_port, is_internal_only,
 		                       cpu_limit_cores, memory_limit_mb, restart_policy, health_check_path,
-		                       health_check_interval_s, health_check_timeout_s)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                       health_check_interval_s, health_check_timeout_s, command)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.DeploymentID, p.Name, p.ContainerName, p.InternalPort, p.IsInternalOnly,
 		p.CPULimitCores, p.MemoryLimitMB, p.RestartPolicy, nullIfEmpty(p.HealthCheckPath),
-		p.HealthCheckIntervalS, p.HealthCheckTimeoutS,
+		p.HealthCheckIntervalS, p.HealthCheckTimeoutS, commandJSON,
 	)
 	if err != nil {
 		return models.Service{}, err
@@ -353,16 +376,17 @@ func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (model
 func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error) {
 	var svc models.Service
 	var hostPort sql.NullInt64
+	var commandJSON sql.NullString
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT id, deployment_id, name, is_primary, COALESCE(image_tag_current,''), COALESCE(container_id_current,''),
 		       container_name, internal_port, host_port, is_internal_only, cpu_limit_cores, memory_limit_mb,
 		       restart_policy, COALESCE(health_check_path,''), health_check_interval_s, health_check_timeout_s,
-		       status, created_at, updated_at
+		       command, status, created_at, updated_at
 		FROM services WHERE id = ?`, id,
 	).Scan(&svc.ID, &svc.DeploymentID, &svc.Name, &svc.IsPrimary, &svc.ImageTagCurrent, &svc.ContainerIDCurrent,
 		&svc.ContainerName, &svc.InternalPort, &hostPort, &svc.IsInternalOnly, &svc.CPULimitCores, &svc.MemoryLimitMB,
 		&svc.RestartPolicy, &svc.HealthCheckPath, &svc.HealthCheckIntervalS, &svc.HealthCheckTimeoutS,
-		&svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
+		&commandJSON, &svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return models.Service{}, ErrNotFound
 	}
@@ -372,6 +396,11 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 	if hostPort.Valid {
 		p := int(hostPort.Int64)
 		svc.HostPort = &p
+	}
+	if commandJSON.Valid && commandJSON.String != "" {
+		if err := json.Unmarshal([]byte(commandJSON.String), &svc.Command); err != nil {
+			return models.Service{}, fmt.Errorf("decode command: %w", err)
+		}
 	}
 	return svc, nil
 }
@@ -419,6 +448,68 @@ func (s *Store) UpdateServiceInternalOnly(ctx context.Context, id int64, interna
 func (s *Store) UpdateServiceStatus(ctx context.Context, id int64, status string) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
 	return err
+}
+
+// ---- Volumes ----
+//
+// A volume row's docker_volume_name is created once (at deployment-creation
+// time, e.g. by template installation) and reused by every subsequent
+// deploy of that service -- unlike container names, which embed the
+// deploy_history id and change on every blue/green swap. Docker creates the
+// named volume automatically the first time a container mounts it, so
+// there's no separate "docker volume create" step; see
+// orchestrator.Deploy's RunSpec.Volumes wiring.
+
+type CreateVolumeParams struct {
+	DeploymentID     int64
+	ServiceID        *int64
+	Name             string
+	DockerVolumeName string
+	MountPath        string
+}
+
+func (s *Store) CreateVolume(ctx context.Context, p CreateVolumeParams) (models.Volume, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO volumes (deployment_id, service_id, name, docker_volume_name, mount_path) VALUES (?, ?, ?, ?, ?)`,
+		p.DeploymentID, p.ServiceID, p.Name, p.DockerVolumeName, p.MountPath,
+	)
+	if err != nil {
+		return models.Volume{}, err
+	}
+	id, _ := res.LastInsertId()
+	v := models.Volume{ID: id, DeploymentID: p.DeploymentID, ServiceID: p.ServiceID, Name: p.Name, DockerVolumeName: p.DockerVolumeName, MountPath: p.MountPath, Driver: "local"}
+	return v, nil
+}
+
+// ListVolumesForService returns every volume mounted into a service's
+// container -- what orchestrator.Deploy turns into RunSpec.Volumes.
+func (s *Store) ListVolumesForService(ctx context.Context, serviceID int64) ([]models.Volume, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, deployment_id, service_id, name, docker_volume_name, mount_path, driver, size_estimate_mb
+		FROM volumes WHERE service_id = ? ORDER BY id`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Volume
+	for rows.Next() {
+		var v models.Volume
+		var serviceID sql.NullInt64
+		var sizeEstimateMB sql.NullInt64
+		if err := rows.Scan(&v.ID, &v.DeploymentID, &serviceID, &v.Name, &v.DockerVolumeName, &v.MountPath, &v.Driver, &sizeEstimateMB); err != nil {
+			return nil, err
+		}
+		if serviceID.Valid {
+			v.ServiceID = &serviceID.Int64
+		}
+		if sizeEstimateMB.Valid {
+			mb := int(sizeEstimateMB.Int64)
+			v.SizeEstimateMB = &mb
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }
 
 // SumConfiguredMemoryMB returns the total memory_limit_mb across every
@@ -559,20 +650,24 @@ func (s *Store) SetRollbackOf(ctx context.Context, deployHistoryID, rollbackOfID
 
 // ---- Deploy artifacts ----
 
-func (s *Store) CreateDeployArtifact(ctx context.Context, deployHistoryID, serviceID int64, imageTag, imageID, buildLogPath string) error {
+// CreateDeployArtifact records what a deploy produced. outputPath is set
+// instead of imageTag/imageID for a static-strategy deploy (see
+// models.DeployArtifact.OutputPath); pass "" for the strategies that build
+// an image.
+func (s *Store) CreateDeployArtifact(ctx context.Context, deployHistoryID, serviceID int64, imageTag, imageID, buildLogPath, outputPath string) error {
 	_, err := s.DB.ExecContext(ctx,
-		`INSERT INTO deploy_history_artifacts (deploy_history_id, service_id, image_tag, image_id, build_log_path) VALUES (?, ?, ?, ?, ?)`,
-		deployHistoryID, serviceID, imageTag, nullIfEmpty(imageID), nullIfEmpty(buildLogPath),
+		`INSERT INTO deploy_history_artifacts (deploy_history_id, service_id, image_tag, image_id, build_log_path, output_path) VALUES (?, ?, ?, ?, ?, ?)`,
+		deployHistoryID, serviceID, imageTag, nullIfEmpty(imageID), nullIfEmpty(buildLogPath), nullIfEmpty(outputPath),
 	)
 	return err
 }
 
 // ListArtifactsForService returns every build produced for a service,
-// newest first -- the rollback list, and what image-retention pruning
-// walks past the keep count.
+// newest first -- the rollback list, and what image/static-output
+// retention pruning walks past the keep count.
 func (s *Store) ListArtifactsForService(ctx context.Context, serviceID int64) ([]models.DeployArtifact, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT a.id, a.deploy_history_id, a.service_id, a.image_tag, COALESCE(a.image_id,''), COALESCE(a.build_log_path,'')
+		SELECT a.id, a.deploy_history_id, a.service_id, a.image_tag, COALESCE(a.image_id,''), COALESCE(a.build_log_path,''), COALESCE(a.output_path,'')
 		FROM deploy_history_artifacts a
 		JOIN deploy_history h ON h.id = a.deploy_history_id
 		WHERE a.service_id = ?
@@ -585,7 +680,7 @@ func (s *Store) ListArtifactsForService(ctx context.Context, serviceID int64) ([
 	var out []models.DeployArtifact
 	for rows.Next() {
 		var a models.DeployArtifact
-		if err := rows.Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath); err != nil {
+		if err := rows.Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath, &a.OutputPath); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -596,9 +691,9 @@ func (s *Store) ListArtifactsForService(ctx context.Context, serviceID int64) ([
 func (s *Store) GetArtifactForServiceAtDeployHistory(ctx context.Context, deployHistoryID, serviceID int64) (models.DeployArtifact, error) {
 	var a models.DeployArtifact
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT id, deploy_history_id, service_id, image_tag, COALESCE(image_id,''), COALESCE(build_log_path,'')
+		SELECT id, deploy_history_id, service_id, image_tag, COALESCE(image_id,''), COALESCE(build_log_path,''), COALESCE(output_path,'')
 		FROM deploy_history_artifacts WHERE deploy_history_id = ? AND service_id = ?`, deployHistoryID, serviceID,
-	).Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath)
+	).Scan(&a.ID, &a.DeployHistoryID, &a.ServiceID, &a.ImageTag, &a.ImageID, &a.BuildLogPath, &a.OutputPath)
 	if err == sql.ErrNoRows {
 		return models.DeployArtifact{}, ErrNotFound
 	}

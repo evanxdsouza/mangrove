@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
@@ -50,7 +52,7 @@ func seedServiceWithArtifacts(t *testing.T, st *store.Store, retention, count in
 			t.Fatalf("insert deploy_history: %v", err)
 		}
 		historyID, _ := res.LastInsertId()
-		if err := st.CreateDeployArtifact(ctx, historyID, serviceID, "tag", "img", ""); err != nil {
+		if err := st.CreateDeployArtifact(ctx, historyID, serviceID, "tag", "img", "", ""); err != nil {
 			t.Fatalf("CreateDeployArtifact: %v", err)
 		}
 	}
@@ -84,5 +86,72 @@ func TestTickSkipsServiceUnderRetention(t *testing.T) {
 
 	if len(fake.pruneCalls) != 0 {
 		t.Errorf("expected no Prune call when under retention, got %d", len(fake.pruneCalls))
+	}
+}
+
+// TestTickPrunesStaticOutputDirectories covers the static-strategy path,
+// which has no image for p.Exec.Prune to touch -- pruning has to remove
+// output directories from disk directly instead.
+func TestTickPrunesStaticOutputDirectories(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+
+	res, err := st.DB.ExecContext(ctx, `INSERT INTO projects (workspace_id, name, slug) VALUES (1, 'p', 'prune-static-test')`)
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	projectID, _ := res.LastInsertId()
+	res, err = st.DB.ExecContext(ctx,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, image_retention_count) VALUES (?, 'd', 'd', 'static', 2)`,
+		projectID)
+	if err != nil {
+		t.Fatalf("insert deployment: %v", err)
+	}
+	deploymentID, _ := res.LastInsertId()
+	res, err = st.DB.ExecContext(ctx, `INSERT INTO services (deployment_id, name, container_name, internal_port) VALUES (?, 'web', 'c', 0)`, deploymentID)
+	if err != nil {
+		t.Fatalf("insert service: %v", err)
+	}
+	serviceID, _ := res.LastInsertId()
+
+	dir := t.TempDir()
+	var outputPaths []string
+	for i := 0; i < 4; i++ {
+		res, err := st.DB.ExecContext(ctx, `INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (?, 'manual', 'success')`, deploymentID)
+		if err != nil {
+			t.Fatalf("insert deploy_history: %v", err)
+		}
+		historyID, _ := res.LastInsertId()
+		outputPath := filepath.Join(dir, "out-"+string(rune('0'+i)))
+		if err := os.MkdirAll(outputPath, 0755); err != nil {
+			t.Fatalf("mkdir output path: %v", err)
+		}
+		if err := st.CreateDeployArtifact(ctx, historyID, serviceID, "", "", "", outputPath); err != nil {
+			t.Fatalf("CreateDeployArtifact: %v", err)
+		}
+		outputPaths = append(outputPaths, outputPath)
+	}
+
+	fake := &fakePruneExecutor{}
+	p := NewPruner(st, fake, discardLogger())
+	p.tick(context.Background())
+
+	if len(fake.pruneCalls) != 0 {
+		t.Errorf("static strategy should never call Exec.Prune (no images), got %d calls", len(fake.pruneCalls))
+	}
+	// deploy_history.started_at has only second resolution, so which 2 of
+	// the 4 (same-second) inserts count as "newest" is unspecified -- only
+	// the retention count itself (keep 2 of 4) is asserted, matching how
+	// TestTickPrunesServiceOverRetention avoids asserting exact identity too.
+	remaining := 0
+	for _, path := range outputPaths {
+		if _, statErr := os.Stat(path); statErr == nil {
+			remaining++
+		} else if !os.IsNotExist(statErr) {
+			t.Errorf("unexpected stat error for %s: %v", path, statErr)
+		}
+	}
+	if remaining != 2 {
+		t.Errorf("expected 2 of 4 output dirs to survive pruning (retention=2), got %d", remaining)
 	}
 }

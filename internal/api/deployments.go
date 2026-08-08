@@ -37,12 +37,14 @@ type serviceSpec struct {
 type createDeploymentRequest struct {
 	Name                string      `json:"name"`
 	Slug                string      `json:"slug"`
-	BuildStrategy       string      `json:"build_strategy"` // dockerfile|nixpacks|compose|image
+	BuildStrategy       string      `json:"build_strategy"` // dockerfile|nixpacks|compose|image|static
 	GitBranch           string      `json:"git_branch"`
 	ImageRef            string      `json:"image_ref"`
 	RootPath            string      `json:"root_path"`
 	DockerfilePath      string      `json:"dockerfile_path"`
 	ComposePath         string      `json:"compose_path"`
+	StaticBuildCommand  string      `json:"static_build_command"` // strategy == static; optional, omit if the repo is already pre-built
+	StaticOutputDir     string      `json:"static_output_dir"`    // strategy == static; e.g. "dist"
 	ImageRetentionCount int         `json:"image_retention_count"`
 	Service             serviceSpec `json:"service"` // required unless build_strategy == compose
 }
@@ -73,6 +75,8 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 		RootPath:            req.RootPath,
 		DockerfilePath:      req.DockerfilePath,
 		ComposePath:         req.ComposePath,
+		StaticBuildCommand:  req.StaticBuildCommand,
+		StaticOutputDir:     req.StaticOutputDir,
 		ImageRetentionCount: req.ImageRetentionCount,
 	})
 	if err != nil {
@@ -101,6 +105,7 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 			HealthCheckPath:      req.Service.HealthCheckPath,
 			HealthCheckIntervalS: req.Service.HealthCheckIntervalS,
 			HealthCheckTimeoutS:  req.Service.HealthCheckTimeoutS,
+			NoContainer:          req.BuildStrategy == "static",
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "deployment created but service creation failed: "+err.Error())
@@ -200,9 +205,12 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var historyID int64
-	if dep.BuildStrategy == "compose" {
+	switch dep.BuildStrategy {
+	case "compose":
 		historyID, err = s.Orchestrator.DeployCompose(r.Context(), deployReq)
-	} else {
+	case "static":
+		historyID, err = s.Orchestrator.DeployStatic(r.Context(), deployReq)
+	default:
 		historyID, err = s.Orchestrator.Deploy(r.Context(), deployReq)
 	}
 	if err != nil {
@@ -231,11 +239,23 @@ func (s *Server) triggerRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newHistoryID, err := s.Orchestrator.Deploy(r.Context(), orchestrator.DeployRequest{
+	targetDep, err := s.Store.GetDeployment(r.Context(), target.DeploymentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	rollbackReq := orchestrator.DeployRequest{
 		DeploymentID:              target.DeploymentID,
 		TriggeredBy:               "rollback",
 		RollbackToDeployHistoryID: &historyID,
-	})
+	}
+	var newHistoryID int64
+	if targetDep.BuildStrategy == "static" {
+		newHistoryID, err = s.Orchestrator.DeployStatic(r.Context(), rollbackReq)
+	} else {
+		newHistoryID, err = s.Orchestrator.Deploy(r.Context(), rollbackReq)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"deploy_history_id": newHistoryID,

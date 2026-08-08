@@ -56,6 +56,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/auth/me", s.authMe)
 			r.Post("/auth/change-password", s.authChangePassword)
 
+			r.Get("/templates", s.listTemplates)
+
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", s.listProjects)
 				r.Post("/", s.createProject)
@@ -66,6 +68,7 @@ func (s *Server) Router() http.Handler {
 					r.Post("/deployments", s.createDeployment)
 					r.Get("/repo", s.getProjectRepo)
 					r.Post("/repo", s.linkProjectRepo)
+					r.Post("/templates/{templateKey}/install", s.installTemplate)
 				})
 			})
 

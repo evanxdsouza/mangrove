@@ -1,0 +1,26 @@
+{
+  "key": "ghost",
+  "name": "Ghost",
+  "description": "Ghost blogging platform, using its built-in SQLite storage (no separate database needed). Starts internal-only -- flip it public from the deployment's Access control tab once it's up.",
+  "category": "cms",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "ghost:5-alpine",
+      "internal_port": 2368,
+      "memory_limit_mb": 300,
+      "cpu_limit_cores": 0.4,
+      "health_check_path": "/",
+      "volumes": [
+        { "name": "content", "mount_path": "/var/lib/ghost/content" }
+      ],
+      "env": [
+        { "key": "NODE_ENV", "value": "production" },
+        { "key": "url", "value": "https://{{slug}}.{{base_domain}}" },
+        { "key": "database__client", "value": "sqlite3" },
+        { "key": "database__connection__filename", "value": "/var/lib/ghost/content/data/ghost.db" }
+      ]
+    }
+  ]
+}

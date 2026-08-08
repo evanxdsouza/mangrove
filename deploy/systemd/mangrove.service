@@ -2,6 +2,15 @@
 ## mangrove system user/group and /var/lib/mangrove, place secrets in
 ## /etc/mangrove/mangrove.env (0600, root-owned), then:
 ##   systemctl daemon-reload && systemctl enable --now mangrove
+##
+## Static-strategy deploys (internal/executor's "static" build strategy)
+## need a second, world-readable directory: Caddy's file_server serves
+## straight from disk, and Caddy runs as a different, unprivileged system
+## user (see caddy.service) that has no business reading /var/lib/mangrove
+## (the sqlite DB and master key live there, at 0700). Create it once:
+##   mkdir -p /var/lib/mangrove-static && chown mangrove:mangrove /var/lib/mangrove-static && chmod 755 /var/lib/mangrove-static
+## MANGROVE_STATIC_SITES_DIR below points at it explicitly rather than
+## relying on config.go's default, which assumes an unsandboxed dev box.
 
 [Unit]
 Description=Mangrove PaaS control plane
@@ -33,6 +42,7 @@ Environment=HOME=/var/lib/mangrove
 # file or in git. File is optional (leading '-') so a fresh install
 # without notifications configured yet still starts.
 EnvironmentFile=-/etc/mangrove/mangrove.env
+Environment=MANGROVE_STATIC_SITES_DIR=/var/lib/mangrove-static
 
 User=mangrove
 Group=mangrove
@@ -45,7 +55,7 @@ WorkingDirectory=/var/lib/mangrove
 # Defense in depth even though the docker group grants broad access.
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/mangrove
+ReadWritePaths=/var/lib/mangrove /var/lib/mangrove-static
 ProtectHome=true
 
 [Install]

@@ -1,0 +1,24 @@
+{
+  "key": "mongodb",
+  "name": "MongoDB",
+  "description": "Standalone MongoDB 7 database. Internal-only: Caddy only routes HTTP, so there's no way to expose a raw TCP database through it -- reach this from another deployment on the same project by its slug.",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "mongo:7",
+      "internal_port": 27017,
+      "force_internal_only": true,
+      "memory_limit_mb": 256,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/data/db" }
+      ],
+      "env": [
+        { "key": "MONGO_INITDB_ROOT_USERNAME", "value": "root" },
+        { "key": "MONGO_INITDB_ROOT_PASSWORD", "generate": "password", "generate_key": "mongo_root_password", "secret": true }
+      ]
+    }
+  ]
+}

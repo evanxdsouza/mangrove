@@ -233,16 +233,33 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		return fail(fmt.Errorf("resolve env vars: %w", err))
 	}
 
+	vols, err := o.Store.ListVolumesForService(ctx, svc.ID)
+	if err != nil {
+		return fail(fmt.Errorf("load volumes: %w", err))
+	}
+	volumeMounts := make([]executor.VolumeMount, 0, len(vols))
+	for _, v := range vols {
+		volumeMounts = append(volumeMounts, executor.VolumeMount{Name: v.DockerVolumeName, MountPath: v.MountPath})
+	}
+
 	newContainerName := fmt.Sprintf("%s-%d", svc.ContainerName, historyID)
 	runSpec := executor.RunSpec{
 		ImageRef:      imageTag,
 		ContainerName: newContainerName,
 		Env:           env,
 		Network:       o.Config.NetworkName,
+		// NetworkAlias is svc.ContainerName itself (not newContainerName):
+		// stable across every deploy of this service, unlike the
+		// per-history container name, so other services (e.g. a
+		// template-linked app container resolving its DB dependency) can
+		// keep addressing it by the same name across swaps/rollbacks.
+		NetworkAlias:  svc.ContainerName,
 		InternalPort:  svc.InternalPort,
 		CPULimitCores: svc.CPULimitCores,
 		MemoryLimitMB: svc.MemoryLimitMB,
 		RestartPolicy: svc.RestartPolicy,
+		Volumes:       volumeMounts,
+		Command:       svc.Command,
 		CgroupParent:  o.Config.CgroupParent,
 	}
 
@@ -284,7 +301,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		o.Exec.Remove(ctx, oldContainerID)
 	}
 
-	if err := o.Store.CreateDeployArtifact(ctx, historyID, svc.ID, imageTag, imageID, ""); err != nil {
+	if err := o.Store.CreateDeployArtifact(ctx, historyID, svc.ID, imageTag, imageID, "", ""); err != nil {
 		o.Log.Warn("failed to record deploy artifact", "error", err)
 	}
 	if err := o.Store.UpdateServiceRuntime(ctx, svc.ID, imageTag, runResult.ContainerID, "running"); err != nil {

@@ -27,6 +27,11 @@ type Executor interface {
 	// Prune removes dangling images/build cache, keeping anything whose tag
 	// is listed in opts.KeepImageTags regardless of age.
 	Prune(ctx context.Context, opts PruneOptions) (PruneResult, error)
+	// RemoveVolume deletes a named Docker volume. Best-effort by
+	// convention -- callers log rather than fail a delete over it, since a
+	// volume already gone (or still referenced by something outside
+	// Mangrove's view) shouldn't block tearing down the rest of a project.
+	RemoveVolume(ctx context.Context, name string) error
 	// ContainerAddr returns "internal-ip:port" for an already-running
 	// container -- used to re-push a Caddy route (e.g. after an
 	// access-control toggle) without needing a fresh Run().
@@ -40,7 +45,8 @@ const (
 	StrategyDockerfile BuildStrategy = "dockerfile"
 	StrategyNixpacks   BuildStrategy = "nixpacks"
 	StrategyCompose    BuildStrategy = "compose"
-	StrategyImage      BuildStrategy = "image" // pre-built image ref, no build step
+	StrategyImage      BuildStrategy = "image"  // pre-built image ref, no build step
+	StrategyStatic     BuildStrategy = "static" // build (optional) + serve a directory via Caddy, no container
 )
 
 // ContextSource describes where to fetch a build's source from. It is
@@ -65,11 +71,30 @@ type BuildSpec struct {
 	ImageTag       string
 	ImageRef       string // strategy == image: use this ref directly, no build
 	BuildArgs      map[string]string
+
+	// StaticBuildCommand, when set, is run in a nixpacks-provisioned builder
+	// container (e.g. "npm run build"); strategy == static only. Left empty
+	// when the repo is already pre-built HTML/CSS/JS, in which case
+	// StaticOutputDir is copied straight out of the fetched context with no
+	// build container at all.
+	StaticBuildCommand string
+	// StaticOutputDir is the directory holding the built assets: relative to
+	// the builder's /app when StaticBuildCommand is set, otherwise relative
+	// to RootPath. Empty means RootPath/the builder root itself.
+	StaticOutputDir string
+	// StaticOutputName is a filesystem-safe unique identifier for this
+	// build's output directory (e.g. "<slug>-<deployHistoryID>"); strategy
+	// == static only.
+	StaticOutputName string
 }
 
 type BuildResult struct {
 	ImageTag string
 	ImageID  string
+	// OutputPath is set instead of ImageTag/ImageID for strategy == static:
+	// the absolute host directory the built (or copied) static assets now
+	// live in, for Caddy's file_server to serve directly.
+	OutputPath string
 }
 
 type VolumeMount struct {
@@ -82,14 +107,25 @@ type RunSpec struct {
 	ContainerName string
 	Env           map[string]string
 	Network       string
+	// NetworkAlias, when set, is attached via `docker run --network-alias`
+	// so other containers on the same network can reach this service by a
+	// name that stays stable across the blue/green swap's per-deploy
+	// ContainerName (which embeds the deploy_history id and so changes
+	// every deploy). Used for template-linked dependencies (e.g. WordPress
+	// resolving its MySQL sibling deployment's address).
+	NetworkAlias  string
 	InternalPort  int
 	HostPort      *int // nil unless the service opts out of proxy-only routing
 	CPULimitCores float64
 	MemoryLimitMB int
 	RestartPolicy string
 	Volumes       []VolumeMount
-	OOMScoreAdj   int
-	CgroupParent  string
+	// Command, when set, overrides the image's default CMD (e.g. Redis's
+	// `--requirepass`). Passed as exec-form args after the image ref, not
+	// through a shell, unless an entry itself invokes one (e.g. "sh", "-c").
+	Command      []string
+	OOMScoreAdj  int
+	CgroupParent string
 }
 
 type RunResult struct {

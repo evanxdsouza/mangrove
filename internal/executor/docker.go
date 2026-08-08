@@ -8,7 +8,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,12 +26,16 @@ import (
 type DockerExecutor struct {
 	// NetworkName is the private bridge every managed container joins.
 	NetworkName string
+	// StaticSitesDir is the host directory static-strategy builds are
+	// copied into, one subdirectory per BuildSpec.StaticOutputName. Caddy's
+	// file_server reads directly from here — see proxy.PutFileServerRoute.
+	StaticSitesDir string
 }
 
 // NewDockerExecutor returns an executor bound to the given Docker network,
 // creating the network if it does not already exist.
-func NewDockerExecutor(ctx context.Context, networkName string) (*DockerExecutor, error) {
-	e := &DockerExecutor{NetworkName: networkName}
+func NewDockerExecutor(ctx context.Context, networkName, staticSitesDir string) (*DockerExecutor, error) {
+	e := &DockerExecutor{NetworkName: networkName, StaticSitesDir: staticSitesDir}
 	if err := e.ensureNetwork(ctx); err != nil {
 		return nil, err
 	}
@@ -70,9 +76,80 @@ func (e *DockerExecutor) Build(ctx context.Context, spec BuildSpec, logs io.Writ
 		return e.buildDockerfile(ctx, buildDir, spec, logs)
 	case StrategyNixpacks:
 		return e.buildNixpacks(ctx, buildDir, spec, logs)
+	case StrategyStatic:
+		return e.buildStatic(ctx, buildDir, spec, logs)
 	default:
 		return BuildResult{}, fmt.Errorf("unsupported build strategy for Build(): %s (compose stacks use BuildCompose)", spec.Strategy)
 	}
+}
+
+// buildStatic produces a static-strategy deploy's output directory under
+// e.StaticSitesDir. With no build command, it's a plain filesystem copy of
+// StaticOutputDir out of the already-fetched context (the "pre-built
+// HTML/CSS/JS" case). With a build command, a nixpacks-provisioned builder
+// image runs it, the built directory is `docker cp`'d out, and the builder
+// image is removed immediately afterward -- unlike app images, it's never
+// needed again (no rollback path re-runs a build), and disk is scarce
+// enough on a 16GB box that it isn't worth keeping around even briefly.
+func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec BuildSpec, logs io.Writer) (BuildResult, error) {
+	if e.StaticSitesDir == "" {
+		return BuildResult{}, fmt.Errorf("static build: executor has no StaticSitesDir configured")
+	}
+	if spec.StaticOutputName == "" {
+		return BuildResult{}, fmt.Errorf("static build: BuildSpec.StaticOutputName is required")
+	}
+	destDir := filepath.Join(e.StaticSitesDir, spec.StaticOutputName)
+	if err := os.RemoveAll(destDir); err != nil {
+		return BuildResult{}, fmt.Errorf("clear static output dir: %w", err)
+	}
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("create static output dir: %w", err)
+	}
+
+	if spec.StaticBuildCommand == "" {
+		srcDir := buildDir
+		if spec.StaticOutputDir != "" && spec.StaticOutputDir != "." {
+			srcDir = filepath.Join(buildDir, spec.StaticOutputDir)
+		}
+		out, err := exec.CommandContext(ctx, "cp", "-a", srcDir+"/.", destDir).CombinedOutput()
+		if err != nil {
+			return BuildResult{}, fmt.Errorf("copy static output: %w: %s", err, out)
+		}
+		return BuildResult{OutputPath: destDir}, nil
+	}
+
+	builderImage := "mangrove-static-build-" + spec.StaticOutputName
+	nixArgs := []string{
+		"build", buildDir, "--name", builderImage,
+		"--env", "NIXPACKS_BUILD_CMD=" + spec.StaticBuildCommand,
+		// The static build never runs the image's start phase -- only its
+		// build output is extracted -- but nixpacks still wants a start
+		// command to complete plan detection for repos with no obvious one
+		// (e.g. plain static HTML with no package.json).
+		"--env", "NIXPACKS_START_CMD=true",
+	}
+	if err := runStreaming(ctx, "nixpacks", nixArgs, logs); err != nil {
+		return BuildResult{}, fmt.Errorf("nixpacks build: %w", err)
+	}
+	defer exec.Command("docker", "rmi", "-f", builderImage).Run()
+
+	createOut, err := exec.CommandContext(ctx, "docker", "create", builderImage).Output()
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("create builder container: %w", err)
+	}
+	containerID := strings.TrimSpace(string(createOut))
+	defer exec.Command("docker", "rm", "-f", containerID).Run()
+
+	outputDir := spec.StaticOutputDir
+	if outputDir == "" {
+		outputDir = "."
+	}
+	srcInContainer := path.Join("/app", outputDir)
+	if out, err := exec.CommandContext(ctx, "docker", "cp", containerID+":"+srcInContainer+"/.", destDir).CombinedOutput(); err != nil {
+		return BuildResult{}, fmt.Errorf("docker cp build output: %w: %s", err, out)
+	}
+
+	return BuildResult{OutputPath: destDir}, nil
 }
 
 func (e *DockerExecutor) buildDockerfile(ctx context.Context, buildDir string, spec BuildSpec, logs io.Writer) (BuildResult, error) {
@@ -125,6 +202,9 @@ func (e *DockerExecutor) inspectImageID(ctx context.Context, ref string) (string
 
 func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
 	args := []string{"run", "-d", "--name", spec.ContainerName, "--network", e.effectiveNetwork(spec)}
+	if spec.NetworkAlias != "" {
+		args = append(args, "--network-alias", spec.NetworkAlias)
+	}
 
 	if spec.MemoryLimitMB > 0 {
 		args = append(args, "--memory", fmt.Sprintf("%dm", spec.MemoryLimitMB), "--memory-swap", fmt.Sprintf("%dm", spec.MemoryLimitMB))
@@ -151,6 +231,7 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 		args = append(args, "-v", fmt.Sprintf("%s:%s", vol.Name, vol.MountPath))
 	}
 	args = append(args, spec.ImageRef)
+	args = append(args, spec.Command...)
 
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
@@ -234,7 +315,15 @@ func (e *DockerExecutor) HealthCheck(ctx context.Context, containerRef string, c
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
-	client := &http.Client{Timeout: timeout}
+	// Redirects are not followed: a bare 3xx already counts as healthy below
+	// (many apps redirect / -> /login, or upgrade to their configured
+	// public https:// hostname, which won't resolve from inside the
+	// container network at all -- following it would turn a perfectly
+	// healthy container into a health-check failure).
+	client := &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	path := cfg.Path
 	if path == "" {
 		path = "/"
@@ -351,6 +440,16 @@ func parseSizeToMB(s string) float64 {
 		}
 	}
 	return 0
+}
+
+// RemoveVolume deletes a named Docker volume. Not an error if it's already
+// gone -- "-f" no-ops rather than failing on a missing volume.
+func (e *DockerExecutor) RemoveVolume(ctx context.Context, name string) error {
+	out, err := exec.CommandContext(ctx, "docker", "volume", "rm", "-f", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker volume rm: %w: %s", err, out)
+	}
+	return nil
 }
 
 func (e *DockerExecutor) Prune(ctx context.Context, opts PruneOptions) (PruneResult, error) {

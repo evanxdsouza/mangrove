@@ -1,0 +1,39 @@
+{
+  "key": "umami",
+  "name": "Umami",
+  "description": "Privacy-focused analytics, with a linked PostgreSQL database, deployed as two connected deployments in this project. Log in with admin/umami and change the password immediately. Starts internal-only -- flip the Umami deployment public from its Access control tab once it's up.",
+  "category": "analytics",
+  "deployments": [
+    {
+      "slug_suffix": "-db",
+      "name_suffix": " Postgres",
+      "build_strategy": "image",
+      "image_ref": "postgres:16-alpine",
+      "internal_port": 5432,
+      "force_internal_only": true,
+      "memory_limit_mb": 192,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/postgresql/data" }
+      ],
+      "env": [
+        { "key": "POSTGRES_USER", "value": "umami" },
+        { "key": "POSTGRES_DB", "value": "umami" },
+        { "key": "POSTGRES_PASSWORD", "generate": "password", "generate_key": "umami_db_password", "secret": true }
+      ]
+    },
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "ghcr.io/umami-software/umami:postgresql-latest",
+      "internal_port": 3000,
+      "memory_limit_mb": 256,
+      "cpu_limit_cores": 0.4,
+      "health_check_path": "/api/heartbeat",
+      "env": [
+        { "key": "DATABASE_URL", "value": "postgresql://umami:{{generated:umami_db_password}}@{{alias:-db}}:5432/umami", "secret": true },
+        { "key": "APP_SECRET", "generate": "hex32", "generate_key": "umami_app_secret", "secret": true }
+      ]
+    }
+  ]
+}

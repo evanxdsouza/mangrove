@@ -1,0 +1,21 @@
+{
+  "key": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "description": "Self-hosted uptime/status monitoring. Starts internal-only -- flip it public from the deployment's Access control tab once it's up.",
+  "category": "monitoring",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "louislam/uptime-kuma:1",
+      "internal_port": 3001,
+      "memory_limit_mb": 224,
+      "cpu_limit_cores": 0.3,
+      "health_check_path": "/",
+      "volumes": [
+        { "name": "data", "mount_path": "/app/data" }
+      ],
+      "env": []
+    }
+  ]
+}

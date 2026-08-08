@@ -22,7 +22,7 @@ func TestDockerExecutorRunHealthCheckStopRemove(t *testing.T) {
 	requireDocker(t)
 	ctx := context.Background()
 
-	exec_, err := NewDockerExecutor(ctx, "mangrove-test-net")
+	exec_, err := NewDockerExecutor(ctx, "mangrove-test-net", t.TempDir())
 	if err != nil {
 		t.Fatalf("NewDockerExecutor: %v", err)
 	}
@@ -88,6 +88,68 @@ func TestDockerExecutorRunHealthCheckStopRemove(t *testing.T) {
 	}
 	if err := exec_.Remove(ctx, containerName); err != nil {
 		t.Fatalf("Remove: %v", err)
+	}
+}
+
+// TestHealthCheckDoesNotFollowRedirectToUnreachableHost guards a real bug
+// found while building the templates feature: Ghost (and plenty of other
+// apps) redirects a plain HTTP request to its own configured public
+// https:// hostname, which doesn't resolve from inside the container
+// network. The default http.Client follows redirects transparently, so
+// HealthCheck would chase that redirect, fail to connect, and report the
+// container unhealthy even though it's actually fine -- exactly what
+// resp.StatusCode >= 200 && resp.StatusCode < 400 (a bare 3xx counts as
+// healthy) was already meant to allow for, just not enforced.
+func TestHealthCheckDoesNotFollowRedirectToUnreachableHost(t *testing.T) {
+	requireDocker(t)
+	ctx := context.Background()
+
+	exec_, err := NewDockerExecutor(ctx, "mangrove-test-net", t.TempDir())
+	if err != nil {
+		t.Fatalf("NewDockerExecutor: %v", err)
+	}
+
+	containerName := "mangrove-test-redirect"
+	exec_.Remove(ctx, containerName)
+	pullIfNeeded(t, "alpine:latest")
+
+	spec := RunSpec{
+		ImageRef:      "alpine:latest",
+		ContainerName: containerName,
+		InternalPort:  8080,
+		MemoryLimitMB: 64,
+		RestartPolicy: "no",
+		// A minimal fake HTTP server that always redirects to a hostname
+		// that cannot resolve -- standing in for Ghost's "url" config.
+		Command: []string{"sh", "-c",
+			`while true; do printf 'HTTP/1.1 302 Found\r\nLocation: https://nonexistent.invalid.test.example/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' | nc -l -p 8080; done`,
+		},
+	}
+	if _, err := exec_.Run(ctx, spec); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer exec_.Remove(ctx, containerName)
+
+	var status HealthStatus
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err = exec_.HealthCheck(ctx, containerName, HealthCheckSpec{Path: "/", Port: 8080, TimeoutSeconds: 3})
+		if err == nil && (status.Healthy || status.StatusCode != 0) {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("HealthCheck error: %v", err)
+	}
+	if !status.Healthy {
+		t.Errorf("expected the bare 302 to count as healthy (not chased), got %+v", status)
+	}
+	if status.StatusCode != 302 {
+		t.Errorf("expected StatusCode 302, got %d", status.StatusCode)
+	}
+	if status.ResponseTimeMS > 2000 {
+		t.Errorf("expected a fast response (no redirect chase attempted), took %dms", status.ResponseTimeMS)
 	}
 }
 

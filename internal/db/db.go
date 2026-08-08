@@ -2,6 +2,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -73,22 +74,67 @@ func migrate(conn *sql.DB) error {
 		if err != nil {
 			return err
 		}
-
-		tx, err := conn.Begin()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(string(content)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("apply %s: %w", name, err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, name); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
+		if err := applyMigration(conn, name, string(content)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// applyMigration runs one migration file's SQL plus its schema_migrations
+// bookkeeping insert as a single transaction, on a single pinned connection.
+//
+// Some migrations need to rebuild a table (e.g. to change a CHECK
+// constraint SQLite won't let you ALTER in place), which means DROPping a
+// table other tables hold a foreign key against. SQLite enforces FKs during
+// DROP TABLE, so that fails while foreign_keys=ON. PRAGMA foreign_keys is
+// also a documented no-op once a transaction is already open, so it has to
+// be toggled on the same physical connection the transaction runs on --
+// conn.Exec()/conn.Begin() from the pool make no such guarantee, hence
+// pinning one connection here via conn.Conn(ctx).
+func applyMigration(db *sql.DB, name, sqlText string) (err error) {
+	ctx := context.Background()
+	c, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if _, err := c.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
+		return fmt.Errorf("disable foreign_keys for migration %s: %w", name, err)
+	}
+	defer func() {
+		if _, ferr := c.ExecContext(ctx, `PRAGMA foreign_keys=ON`); ferr != nil && err == nil {
+			err = fmt.Errorf("re-enable foreign_keys after migration %s: %w", name, ferr)
+		}
+	}()
+
+	tx, err := c.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, sqlText); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("apply %s: %w", name, err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, name); err != nil {
+		tx.Rollback()
+		return err
+	}
+	// PRAGMA foreign_key_check reports violations as result rows, not as an
+	// error -- with foreign_keys temporarily off during a rebuild, this is
+	// the only thing standing between a migration and silently orphaning a
+	// reference, so it's checked explicitly rather than trusted to error out.
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("run foreign_key_check after migration %s: %w", name, err)
+	}
+	hasViolation := rows.Next()
+	rows.Close()
+	if hasViolation {
+		tx.Rollback()
+		return fmt.Errorf("migration %s left dangling foreign key references", name)
+	}
+	return tx.Commit()
 }

@@ -48,6 +48,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
+	if err := os.MkdirAll(cfg.StaticSitesDir, 0755); err != nil {
+		return fmt.Errorf("create static sites dir: %w", err)
+	}
 
 	if err := sysinfo.VerifyCgroupV2(); err != nil {
 		log.Warn("resource-floor protection may not be active", "reason", err)
@@ -73,7 +76,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return fmt.Errorf("register system port: %w", err)
 	}
 
-	dockerExec, err := executor.NewDockerExecutor(ctx, cfg.NetworkName)
+	dockerExec, err := executor.NewDockerExecutor(ctx, cfg.NetworkName, cfg.StaticSitesDir)
 	if err != nil {
 		return fmt.Errorf("init docker executor: %w", err)
 	}

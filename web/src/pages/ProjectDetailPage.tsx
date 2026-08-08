@@ -3,6 +3,7 @@ import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link } from "../router";
 import { Modal } from "../components/Modal";
 import { StatusPill } from "../components/StatusPill";
+import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { slugify } from "./ProjectsPage";
 
 interface ProjectRepoInfo {
@@ -20,6 +21,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showLinkRepo, setShowLinkRepo] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const load = () => {
     api.get<Project>(`/api/projects/${projectId}`).then(setProject).catch((e) => setError(errMsg(e)));
@@ -45,9 +47,14 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           <h1>{project?.name ?? "Loading..."}</h1>
           {project?.description && <p>{project.description}</p>}
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + New deployment
-        </button>
+        <div className="flex gap-8">
+          <button className="btn" onClick={() => setShowTemplates(true)}>
+            Deploy from template
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            + New deployment
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -146,6 +153,17 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           onClose={() => setShowLinkRepo(false)}
           onLinked={() => {
             setShowLinkRepo(false);
+            load();
+          }}
+        />
+      )}
+
+      {showTemplates && (
+        <TemplateGalleryModal
+          projectId={projectId}
+          onClose={() => setShowTemplates(false)}
+          onInstalled={() => {
+            setShowTemplates(false);
             load();
           }}
         />
@@ -267,7 +285,7 @@ function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : "Something went wrong";
 }
 
-type Strategy = "dockerfile" | "nixpacks" | "compose" | "image";
+type Strategy = "dockerfile" | "nixpacks" | "compose" | "image" | "static";
 
 function CreateDeploymentModal({
   projectId,
@@ -285,6 +303,8 @@ function CreateDeploymentModal({
   const [imageRef, setImageRef] = useState("");
   const [dockerfilePath, setDockerfilePath] = useState("");
   const [composePath, setComposePath] = useState("docker-compose.yml");
+  const [staticBuildCommand, setStaticBuildCommand] = useState("");
+  const [staticOutputDir, setStaticOutputDir] = useState("dist");
   const [rootPath, setRootPath] = useState(".");
   const [serviceName, setServiceName] = useState("web");
   const [internalPort, setInternalPort] = useState(3000);
@@ -311,9 +331,15 @@ function CreateDeploymentModal({
         root_path: rootPath,
         dockerfile_path: dockerfilePath,
         compose_path: composePath,
+        static_build_command: staticBuildCommand,
+        static_output_dir: staticOutputDir,
         image_retention_count: 5,
       };
-      if (strategy !== "compose") {
+      if (strategy === "static") {
+        // No container ever runs for a static site -- just the service
+        // name (required by the backend) and whether it gets a public port.
+        payload.service = { name: serviceName, is_internal_only: internalOnly };
+      } else if (strategy !== "compose") {
         payload.service = {
           name: serviceName,
           internal_port: internalPort,
@@ -369,6 +395,7 @@ function CreateDeploymentModal({
             <option value="nixpacks">Nixpacks (no Dockerfile needed)</option>
             <option value="compose">Docker Compose (multi-service)</option>
             <option value="image">Existing image</option>
+            <option value="static">Static site (build + serve files, no container)</option>
           </select>
         </div>
 
@@ -418,6 +445,33 @@ function CreateDeploymentModal({
                 />
               </div>
             )}
+            {strategy === "static" && (
+              <>
+                <div className="field">
+                  <label htmlFor="dep-static-build-command">Build command (optional)</label>
+                  <input
+                    id="dep-static-build-command"
+                    className="input mono"
+                    placeholder="npm run build -- leave blank if the repo is already pre-built HTML/CSS/JS"
+                    value={staticBuildCommand}
+                    onChange={(e) => setStaticBuildCommand(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="dep-static-output-dir">Output directory</label>
+                  <input
+                    id="dep-static-output-dir"
+                    className="input mono"
+                    placeholder="dist"
+                    value={staticOutputDir}
+                    onChange={(e) => setStaticOutputDir(e.target.value)}
+                  />
+                  <div className="field-hint">
+                    Relative to the build's working directory (or to root path above, if there's no build command).
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -426,59 +480,68 @@ function CreateDeploymentModal({
             <div className="card-title" style={{ marginTop: 18 }}>
               Service
             </div>
-            <div className="form-row">
-              <div className="field">
-                <label htmlFor="dep-service-name">Service name</label>
-                <input
-                  id="dep-service-name"
-                  className="input mono"
-                  value={serviceName}
-                  onChange={(e) => setServiceName(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="dep-internal-port">Internal port</label>
-                <input
-                  id="dep-internal-port"
-                  className="input"
-                  type="number"
-                  value={internalPort}
-                  onChange={(e) => setInternalPort(Number(e.target.value))}
-                />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="field">
-                <label htmlFor="dep-memory">Memory limit (MB)</label>
-                <input
-                  id="dep-memory"
-                  className="input"
-                  type="number"
-                  value={memoryMB}
-                  onChange={(e) => setMemoryMB(Number(e.target.value))}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="dep-cpu">CPU cores</label>
-                <input
-                  id="dep-cpu"
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  value={cpuCores}
-                  onChange={(e) => setCpuCores(Number(e.target.value))}
-                />
-              </div>
-            </div>
             <div className="field">
-              <label htmlFor="dep-health-path">Health check path (optional)</label>
-              <input id="dep-health-path" className="input mono" value={healthPath} onChange={(e) => setHealthPath(e.target.value)} />
+              <label htmlFor="dep-service-name">Service name</label>
+              <input
+                id="dep-service-name"
+                className="input mono"
+                value={serviceName}
+                onChange={(e) => setServiceName(e.target.value)}
+              />
             </div>
+            {strategy !== "static" && (
+              <>
+                <div className="form-row">
+                  <div className="field">
+                    <label htmlFor="dep-internal-port">Internal port</label>
+                    <input
+                      id="dep-internal-port"
+                      className="input"
+                      type="number"
+                      value={internalPort}
+                      onChange={(e) => setInternalPort(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="dep-memory">Memory limit (MB)</label>
+                    <input
+                      id="dep-memory"
+                      className="input"
+                      type="number"
+                      value={memoryMB}
+                      onChange={(e) => setMemoryMB(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="field">
+                    <label htmlFor="dep-cpu">CPU cores</label>
+                    <input
+                      id="dep-cpu"
+                      className="input"
+                      type="number"
+                      step="0.1"
+                      value={cpuCores}
+                      onChange={(e) => setCpuCores(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="dep-health-path">Health check path (optional)</label>
+                  <input id="dep-health-path" className="input mono" value={healthPath} onChange={(e) => setHealthPath(e.target.value)} />
+                </div>
+              </>
+            )}
             <div className="field">
               <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input type="checkbox" checked={internalOnly} onChange={(e) => setInternalOnly(e.target.checked)} />
                 Internal only (never expose a public port)
               </label>
+              {strategy === "static" && (
+                <div className="field-hint">
+                  A static site has no container to run or health-check -- Caddy serves the built files directly once this is off.
+                </div>
+              )}
               <div className="field-hint">This is the explicit default choice Mangrove asks for at deploy time -- flip it off to expose the app publicly.</div>
             </div>
           </>

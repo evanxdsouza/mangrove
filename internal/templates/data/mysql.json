@@ -1,0 +1,25 @@
+{
+  "key": "mysql",
+  "name": "MySQL",
+  "description": "Standalone MySQL 8 database. Internal-only: Caddy only routes HTTP, so there's no way to expose a raw TCP database through it -- reach this from another deployment on the same project by its slug.",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "mysql:8",
+      "internal_port": 3306,
+      "force_internal_only": true,
+      "memory_limit_mb": 320,
+      "cpu_limit_cores": 0.4,
+      "command": ["--innodb-buffer-pool-size=48M", "--innodb-log-buffer-size=8M", "--performance-schema=OFF"],
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/mysql" }
+      ],
+      "env": [
+        { "key": "MYSQL_ROOT_PASSWORD", "generate": "password", "generate_key": "mysql_root_password", "secret": true },
+        { "key": "MYSQL_DATABASE", "value": "app" }
+      ]
+    }
+  ]
+}

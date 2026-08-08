@@ -1,0 +1,25 @@
+{
+  "key": "postgres",
+  "name": "PostgreSQL",
+  "description": "Standalone PostgreSQL 16 database. Internal-only: Caddy only routes HTTP, so there's no way to expose a raw TCP database through it -- reach this from another deployment on the same project by its slug (see that deployment's linked-service address).",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "postgres:16-alpine",
+      "internal_port": 5432,
+      "force_internal_only": true,
+      "memory_limit_mb": 192,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/postgresql/data" }
+      ],
+      "env": [
+        { "key": "POSTGRES_USER", "value": "postgres" },
+        { "key": "POSTGRES_DB", "value": "postgres" },
+        { "key": "POSTGRES_PASSWORD", "generate": "password", "generate_key": "postgres_password", "secret": true }
+      ]
+    }
+  ]
+}

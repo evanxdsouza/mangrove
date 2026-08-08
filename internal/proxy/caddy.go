@@ -101,13 +101,16 @@ func (c *Client) load(ctx context.Context, config any) error {
 	return nil
 }
 
-// PutRoute creates or atomically replaces the server block for a public
-// port, reverse-proxying to upstreamAddr (a "host:port" reachable from the
-// Mangrove host, typically a container's address on mangrove-net).
-func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, opts RouteOptions) error {
-	handlers := []map[string]any{}
-	if opts.PasswordProtected {
-		handlers = append(handlers, map[string]any{
+// authHandlers returns the leading Caddy handler chain enforcing HTTP basic
+// auth when opts.PasswordProtected is set -- shared by PutRoute and
+// PutFileServerRoute so password protection works the same way regardless
+// of what's serving the actual response.
+func authHandlers(opts RouteOptions) []map[string]any {
+	if !opts.PasswordProtected {
+		return nil
+	}
+	return []map[string]any{
+		{
 			"handler": "authentication",
 			"providers": map[string]any{
 				"http_basic": map[string]any{
@@ -117,11 +120,42 @@ func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, op
 					"realm": "mangrove",
 				},
 			},
-		})
+		},
 	}
+}
+
+// PutRoute creates or atomically replaces the server block for a public
+// port, reverse-proxying to upstreamAddr (a "host:port" reachable from the
+// Mangrove host, typically a container's address on mangrove-net).
+func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, opts RouteOptions) error {
+	handlers := authHandlers(opts)
 	handlers = append(handlers, map[string]any{
 		"handler":   "reverse_proxy",
 		"upstreams": []map[string]any{{"dial": upstreamAddr}},
+	})
+
+	server := map[string]any{
+		"listen": []string{fmt.Sprintf(":%d", port)},
+		"routes": []map[string]any{
+			{
+				"handle": handlers,
+			},
+		},
+	}
+
+	return c.upsertPath(ctx, fmt.Sprintf("/config/apps/http/servers/srv_%d", port), server)
+}
+
+// PutFileServerRoute creates or atomically replaces the server block for a
+// public port so it serves rootDir directly via Caddy's file_server --
+// used by static-strategy deploys, which have no running app container to
+// reverse-proxy to. rootDir must be an absolute host path reachable by the
+// Caddy process (see executor.DockerExecutor.StaticSitesDir).
+func (c *Client) PutFileServerRoute(ctx context.Context, port int, rootDir string, opts RouteOptions) error {
+	handlers := authHandlers(opts)
+	handlers = append(handlers, map[string]any{
+		"handler": "file_server",
+		"root":    rootDir,
 	})
 
 	server := map[string]any{

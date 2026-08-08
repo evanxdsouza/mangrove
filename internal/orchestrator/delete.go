@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -38,6 +39,40 @@ func (o *Orchestrator) DeleteProject(ctx context.Context, projectID int64) error
 			if o.Proxy != nil && svc.HostPort != nil {
 				if err := o.Proxy.DeleteRoute(ctx, *svc.HostPort); err != nil {
 					o.Log.Warn("delete project: remove proxy route failed", "service_id", svc.ID, "port", *svc.HostPort, "error", err)
+				}
+			}
+
+			// Named volumes outlive any single container by design (that's
+			// the whole point -- data survives redeploys/rollbacks), so
+			// they're never cleaned up by the normal deploy path. Delete
+			// them explicitly here or they'd sit on disk forever, which
+			// matters on a 16GB box. The container removal above must run
+			// first: Docker refuses to remove a volume still in use.
+			vols, err := o.Store.ListVolumesForService(ctx, svc.ID)
+			if err != nil {
+				o.Log.Warn("delete project: list volumes failed", "service_id", svc.ID, "error", err)
+				continue
+			}
+			for _, v := range vols {
+				if err := o.Exec.RemoveVolume(ctx, v.DockerVolumeName); err != nil {
+					o.Log.Warn("delete project: remove volume failed", "service_id", svc.ID, "volume", v.DockerVolumeName, "error", err)
+				}
+			}
+
+			// Same reasoning for a static deployment's output directories --
+			// they live on disk under StaticSitesDir independent of any
+			// container and would otherwise be orphaned.
+			artifacts, err := o.Store.ListArtifactsForService(ctx, svc.ID)
+			if err != nil {
+				o.Log.Warn("delete project: list artifacts failed", "service_id", svc.ID, "error", err)
+				continue
+			}
+			for _, a := range artifacts {
+				if a.OutputPath == "" {
+					continue
+				}
+				if err := os.RemoveAll(a.OutputPath); err != nil {
+					o.Log.Warn("delete project: remove static output failed", "service_id", svc.ID, "path", a.OutputPath, "error", err)
 				}
 			}
 		}

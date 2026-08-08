@@ -1,0 +1,23 @@
+{
+  "key": "n8n",
+  "name": "n8n",
+  "description": "Workflow automation. The heaviest of these templates -- n8n's Node process needs real headroom for its startup migrations, not just its idle footprint, so this reserves 768MB. Starts internal-only -- flip it public from the deployment's Access control tab once it's up. Set WEBHOOK_URL there too if you plan to use n8n's webhook triggers, once you know the final public address.",
+  "category": "automation",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "n8nio/n8n:latest",
+      "internal_port": 5678,
+      "memory_limit_mb": 768,
+      "cpu_limit_cores": 0.5,
+      "health_check_path": "/healthz",
+      "volumes": [
+        { "name": "data", "mount_path": "/home/node/.n8n" }
+      ],
+      "env": [
+        { "key": "N8N_ENCRYPTION_KEY", "generate": "hex32", "generate_key": "n8n_encryption_key", "secret": true }
+      ]
+    }
+  ]
+}

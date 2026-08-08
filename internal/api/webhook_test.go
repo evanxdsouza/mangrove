@@ -55,7 +55,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	st := store.New(db)
-	dockerExec, err := executor.NewDockerExecutor(context.Background(), "mangrove-webhook-test-net")
+	dockerExec, err := executor.NewDockerExecutor(context.Background(), "mangrove-webhook-test-net", t.TempDir())
 	if err != nil {
 		t.Skipf("docker not available: %v", err)
 	}

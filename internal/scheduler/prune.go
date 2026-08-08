@@ -3,9 +3,11 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
 
@@ -61,6 +63,12 @@ func (p *Pruner) tick(ctx context.Context) {
 			if len(artifacts) <= dep.ImageRetentionCount {
 				continue
 			}
+
+			if dep.BuildStrategy == string(executor.StrategyStatic) {
+				p.pruneStaticOutputs(svc.ID, artifacts[dep.ImageRetentionCount:])
+				continue
+			}
+
 			keepTags := make([]string, 0, dep.ImageRetentionCount)
 			for i := 0; i < dep.ImageRetentionCount && i < len(artifacts); i++ {
 				keepTags = append(keepTags, artifacts[i].ImageTag)
@@ -74,5 +82,27 @@ func (p *Pruner) tick(ctx context.Context) {
 				p.Log.Info("pruned images", "service_id", svc.ID, "removed", result.ImagesRemoved, "reclaimed_mb", result.SpaceReclaimedMB)
 			}
 		}
+	}
+}
+
+// pruneStaticOutputs removes the on-disk output directories for artifacts
+// past the retention window -- the static-strategy equivalent of Docker
+// image pruning, since there's no image for p.Exec.Prune to touch. stale is
+// already sorted newest-first by ListArtifactsForService and pre-sliced to
+// just the entries beyond the keep count by the caller.
+func (p *Pruner) pruneStaticOutputs(serviceID int64, stale []models.DeployArtifact) {
+	removed := 0
+	for _, a := range stale {
+		if a.OutputPath == "" {
+			continue
+		}
+		if err := os.RemoveAll(a.OutputPath); err != nil {
+			p.Log.Warn("static output prune failed", "service_id", serviceID, "path", a.OutputPath, "error", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		p.Log.Info("pruned static output directories", "service_id", serviceID, "removed", removed)
 	}
 }

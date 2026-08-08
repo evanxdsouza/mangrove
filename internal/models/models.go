@@ -26,6 +26,8 @@ type Deployment struct {
 	RootPath            string     `json:"root_path"`
 	DockerfilePath      string     `json:"dockerfile_path,omitempty"`
 	ComposePath         string     `json:"compose_path,omitempty"`
+	StaticBuildCommand  string     `json:"static_build_command,omitempty"`
+	StaticOutputDir     string     `json:"static_output_dir,omitempty"`
 	AutoDeployOnPush    bool       `json:"auto_deploy_on_push"`
 	IsPublic            bool       `json:"is_public"`
 	PasswordProtected   bool       `json:"password_protected"`
@@ -38,25 +40,28 @@ type Deployment struct {
 }
 
 type Service struct {
-	ID                   int64     `json:"id"`
-	DeploymentID         int64     `json:"deployment_id"`
-	Name                 string    `json:"name"`
-	IsPrimary            bool      `json:"is_primary"`
-	ImageTagCurrent      string    `json:"image_tag_current,omitempty"`
-	ContainerIDCurrent   string    `json:"container_id_current,omitempty"`
-	ContainerName        string    `json:"container_name"`
-	InternalPort         int       `json:"internal_port"`
-	HostPort             *int      `json:"host_port,omitempty"`
-	IsInternalOnly       bool      `json:"is_internal_only"`
-	CPULimitCores        float64   `json:"cpu_limit_cores"`
-	MemoryLimitMB        int       `json:"memory_limit_mb"`
-	RestartPolicy        string    `json:"restart_policy"`
-	HealthCheckPath      string    `json:"health_check_path,omitempty"`
-	HealthCheckIntervalS int       `json:"health_check_interval_s"`
-	HealthCheckTimeoutS  int       `json:"health_check_timeout_s"`
-	Status               string    `json:"status"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                   int64   `json:"id"`
+	DeploymentID         int64   `json:"deployment_id"`
+	Name                 string  `json:"name"`
+	IsPrimary            bool    `json:"is_primary"`
+	ImageTagCurrent      string  `json:"image_tag_current,omitempty"`
+	ContainerIDCurrent   string  `json:"container_id_current,omitempty"`
+	ContainerName        string  `json:"container_name"`
+	InternalPort         int     `json:"internal_port"`
+	HostPort             *int    `json:"host_port,omitempty"`
+	IsInternalOnly       bool    `json:"is_internal_only"`
+	CPULimitCores        float64 `json:"cpu_limit_cores"`
+	MemoryLimitMB        int     `json:"memory_limit_mb"`
+	RestartPolicy        string  `json:"restart_policy"`
+	HealthCheckPath      string  `json:"health_check_path,omitempty"`
+	HealthCheckIntervalS int     `json:"health_check_interval_s"`
+	HealthCheckTimeoutS  int     `json:"health_check_timeout_s"`
+	// Command overrides the image's default CMD when non-empty (e.g.
+	// Redis's --requirepass) -- see executor.RunSpec.Command.
+	Command   []string  `json:"command,omitempty"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type DeployHistory struct {
@@ -81,6 +86,9 @@ type DeployArtifact struct {
 	ImageTag        string `json:"image_tag"`
 	ImageID         string `json:"image_id,omitempty"`
 	BuildLogPath    string `json:"build_log_path,omitempty"`
+	// OutputPath is set instead of ImageTag/ImageID for a static-strategy
+	// deploy: the host directory Caddy's file_server root points at.
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 type EnvVar struct {

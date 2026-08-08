@@ -1,0 +1,46 @@
+{
+  "key": "wordpress",
+  "name": "WordPress",
+  "description": "WordPress with a linked MySQL database, deployed as two connected deployments in this project. Starts internal-only -- flip the WordPress deployment public from its Access control tab once it's up.",
+  "category": "cms",
+  "deployments": [
+    {
+      "slug_suffix": "-mysql",
+      "name_suffix": " MySQL",
+      "build_strategy": "image",
+      "image_ref": "mysql:8",
+      "internal_port": 3306,
+      "force_internal_only": true,
+      "memory_limit_mb": 320,
+      "cpu_limit_cores": 0.4,
+      "command": ["--innodb-buffer-pool-size=48M", "--innodb-log-buffer-size=8M", "--performance-schema=OFF"],
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/mysql" }
+      ],
+      "env": [
+        { "key": "MYSQL_ROOT_PASSWORD", "generate": "password", "generate_key": "db_root_password", "secret": true },
+        { "key": "MYSQL_DATABASE", "value": "wordpress" },
+        { "key": "MYSQL_USER", "value": "wordpress" },
+        { "key": "MYSQL_PASSWORD", "generate": "password", "generate_key": "db_user_password", "secret": true }
+      ]
+    },
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "wordpress:6-apache",
+      "internal_port": 80,
+      "memory_limit_mb": 320,
+      "cpu_limit_cores": 0.5,
+      "health_check_path": "/",
+      "volumes": [
+        { "name": "data", "mount_path": "/var/www/html" }
+      ],
+      "env": [
+        { "key": "WORDPRESS_DB_HOST", "value": "{{alias:-mysql}}:3306" },
+        { "key": "WORDPRESS_DB_USER", "value": "wordpress" },
+        { "key": "WORDPRESS_DB_PASSWORD", "value": "{{generated:db_user_password}}", "secret": true },
+        { "key": "WORDPRESS_DB_NAME", "value": "wordpress" }
+      ]
+    }
+  ]
+}

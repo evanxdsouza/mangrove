@@ -52,12 +52,14 @@ export interface Deployment {
   project_id: number;
   name: string;
   slug: string;
-  build_strategy: "dockerfile" | "nixpacks" | "compose" | "image";
+  build_strategy: "dockerfile" | "nixpacks" | "compose" | "image" | "static";
   git_branch?: string;
   image_ref?: string;
   root_path: string;
   dockerfile_path?: string;
   compose_path?: string;
+  static_build_command?: string;
+  static_output_dir?: string;
   auto_deploy_on_push: boolean;
   is_public: boolean;
   password_protected: boolean;
@@ -127,4 +129,33 @@ export interface AuthStatus {
 export interface CurrentUser {
   id: number;
   email?: string;
+}
+
+export interface TemplateDeploymentSummary {
+  slug_suffix: string;
+  name_suffix: string;
+  image_ref: string;
+  memory_limit_mb: number;
+  cpu_limit_cores: number;
+  force_internal_only: boolean;
+}
+
+export interface TemplateSummary {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  total_memory_mb: number;
+  deployments: TemplateDeploymentSummary[];
+}
+
+export interface TemplateInstallResult {
+  template_key: string;
+  deployments: {
+    deployment_id: number;
+    slug: string;
+    name: string;
+    deploy_error?: string;
+  }[];
+  credentials?: Record<string, string>;
 }
