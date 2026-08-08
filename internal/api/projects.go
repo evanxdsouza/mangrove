@@ -66,7 +66,7 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
-	if err := s.Store.DeleteProject(r.Context(), id); err != nil {
+	if err := s.Orchestrator.DeleteProject(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

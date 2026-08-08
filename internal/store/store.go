@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/models"
@@ -64,9 +65,77 @@ func (s *Store) ListProjects(ctx context.Context) ([]models.Project, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteProject(ctx context.Context, id int64) error {
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
-	return err
+// DeleteProjectCascade removes a project and everything that hangs off it
+// -- deployments, services, deploy history, env vars, etc. Callers are
+// responsible for stopping/removing any live containers and Caddy routes
+// first (this is a pure DB operation with no knowledge of the executor or
+// proxy); see Orchestrator.DeleteProject for the full teardown sequence.
+// Foreign keys are enforced (PRAGMA foreign_keys=1 in db.go), so this
+// deletes strictly leaves-first: artifacts/health checks/env vars/volumes
+// before services, services before deploy_history and port_registry,
+// deploy_history/services before deployments, deployments before
+// project_repos, project_repos before projects.
+func (s *Store) DeleteProjectCascade(ctx context.Context, id int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const deploymentsSub = `(SELECT id FROM deployments WHERE project_id = ?)`
+	const servicesSub = `(SELECT id FROM services WHERE deployment_id IN ` + deploymentsSub + `)`
+	const deployHistorySub = `(SELECT id FROM deploy_history WHERE deployment_id IN ` + deploymentsSub + `)`
+
+	var ports []int
+	rows, err := tx.QueryContext(ctx, `SELECT host_port FROM services WHERE deployment_id IN `+deploymentsSub+` AND host_port IS NOT NULL`, id)
+	if err != nil {
+		return fmt.Errorf("collect ports: %w", err)
+	}
+	for rows.Next() {
+		var p int
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return err
+		}
+		ports = append(ports, p)
+	}
+	rows.Close()
+
+	stmts := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM deploy_history_artifacts WHERE deploy_history_id IN ` + deployHistorySub, []any{id}},
+		{`DELETE FROM health_checks WHERE service_id IN ` + servicesSub, []any{id}},
+		{`DELETE FROM env_vars WHERE service_id IN ` + servicesSub, []any{id}},
+		{`DELETE FROM volumes WHERE deployment_id IN ` + deploymentsSub, []any{id}},
+		{`DELETE FROM webhook_events WHERE project_repo_id IN (SELECT id FROM project_repos WHERE project_id = ?)`, []any{id}},
+		{`DELETE FROM notifications_log WHERE deployment_id IN ` + deploymentsSub, []any{id}},
+		{`DELETE FROM services WHERE deployment_id IN ` + deploymentsSub, []any{id}},
+		{`DELETE FROM deploy_history WHERE deployment_id IN ` + deploymentsSub, []any{id}},
+		{`DELETE FROM deployments WHERE project_id = ?`, []any{id}},
+		{`DELETE FROM project_repos WHERE project_id = ?`, []any{id}},
+		{`DELETE FROM projects WHERE id = ?`, []any{id}},
+	}
+	for _, st := range stmts {
+		if _, err := tx.ExecContext(ctx, st.query, st.args...); err != nil {
+			return fmt.Errorf("cascade delete (%s): %w", st.query, err)
+		}
+	}
+	if len(ports) > 0 {
+		placeholders := make([]string, len(ports))
+		args := make([]any, len(ports))
+		for i, p := range ports {
+			placeholders[i] = "?"
+			args[i] = p
+		}
+		q := `DELETE FROM port_registry WHERE port IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			return fmt.Errorf("release ports: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ---- Deployments ----
