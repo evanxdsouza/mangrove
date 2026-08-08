@@ -14,6 +14,7 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/config"
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/github"
 	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/notify"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
@@ -40,8 +41,30 @@ type Orchestrator struct {
 	Proxy    *proxy.Client // nil is valid: routing is skipped (e.g. Caddy not installed yet in a dev environment)
 	Secrets  *secrets.Box
 	Notifier *notify.ResendClient // nil or !Enabled() is valid: notifications are skipped, not an error
+	GHStatus *github.StatusClient // nil is valid: commit-status posting is skipped, not an error
 	Config   config.Config
 	Log      *slog.Logger
+}
+
+// postCommitStatus sets a GitHub commit status for a deploy, best-effort.
+// Only applies to deploys that came in with both a commit SHA and a
+// decrypted PAT already resolved (i.e. webhook-triggered deploys of a
+// linked repo) -- a manual deploy from a local/file:// git URL has no
+// commit on github.com to annotate, so it's silently skipped rather than
+// treated as an error.
+func (o *Orchestrator) postCommitStatus(ctx context.Context, dep models.Deployment, req DeployRequest, state github.State, description string) {
+	if o.GHStatus == nil || req.CommitSHA == "" || req.AuthToken == "" || dep.ProjectRepoID == nil {
+		return
+	}
+	repo, err := o.Store.GetProjectRepoByID(ctx, *dep.ProjectRepoID)
+	if err != nil {
+		o.Log.Warn("commit status: failed to load linked repo", "deployment_id", dep.ID, "error", err)
+		return
+	}
+	targetURL := fmt.Sprintf("https://%s.%s", dep.Slug, o.Config.BaseDomain)
+	if err := o.GHStatus.PostStatus(ctx, req.AuthToken, repo.RepoOwner, repo.RepoName, req.CommitSHA, state, description, targetURL); err != nil {
+		o.Log.Warn("commit status: post failed", "deployment_id", dep.ID, "state", state, "error", err)
+	}
 }
 
 // notifyDeploySuccess sends the deploy-success email (if configured) and
@@ -123,10 +146,12 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	}
 	o.Store.UpdateDeploymentStatus(ctx, dep.ID, "building")
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "building", "")
+	o.postCommitStatus(ctx, dep, req, github.StatePending, "Deploying via Mangrove")
 
 	fail := func(stepErr error) (int64, error) {
 		o.Store.UpdateDeployHistoryStatus(ctx, historyID, "failed", stepErr.Error())
 		o.Store.UpdateDeploymentStatus(ctx, dep.ID, "failed")
+		o.postCommitStatus(ctx, dep, req, github.StateFailure, stepErr.Error())
 		return historyID, stepErr
 	}
 
@@ -278,6 +303,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		notifyPort = *registeredPort
 	}
 	o.notifyDeploySuccess(ctx, dep, notifyPort)
+	o.postCommitStatus(ctx, dep, req, github.StateSuccess, "Deployed successfully")
 
 	return historyID, nil
 }

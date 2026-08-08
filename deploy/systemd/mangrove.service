@@ -17,6 +17,18 @@ Restart=on-failure
 RestartSec=2
 OOMScoreAdjust=-500
 
+# Build fetch/extract (internal/executor/gitfetch.go) needs a writable
+# os.TempDir() -- ProtectSystem=strict below makes /tmp read-only unless
+# given a private, writable one.
+PrivateTmp=true
+
+# ProtectHome=true below hides the real /home, so the docker CLI's
+# `$HOME/.docker/config.json` lookup gets "permission denied" instead of
+# "no such file" -- which the docker CLI mishandles badly enough to
+# misparse the *next* flag on its command line ("unknown shorthand flag").
+# Point HOME at somewhere writable under our own ReadWritePaths instead.
+Environment=HOME=/var/lib/mangrove
+
 # Secrets (e.g. MANGROVE_RESEND_API_KEY) live here, never in this unit
 # file or in git. File is optional (leading '-') so a fresh install
 # without notifications configured yet still starts.

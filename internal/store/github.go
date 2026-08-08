@@ -91,6 +91,18 @@ func (s *Store) CreateProjectRepo(ctx context.Context, projectID, patID int64, o
 	return res.LastInsertId()
 }
 
+func (s *Store) GetProjectRepoByID(ctx context.Context, id int64) (ProjectRepo, error) {
+	var pr ProjectRepo
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, project_id, github_pat_id, repo_owner, repo_name, default_branch, webhook_token, created_at
+		FROM project_repos WHERE id = ?`, id,
+	).Scan(&pr.ID, &pr.ProjectID, &pr.GithubPATID, &pr.RepoOwner, &pr.RepoName, &pr.DefaultBranch, &pr.WebhookToken, &pr.CreatedAt)
+	if err == sql.ErrNoRows {
+		return ProjectRepo{}, ErrNotFound
+	}
+	return pr, err
+}
+
 func (s *Store) GetProjectRepoByProject(ctx context.Context, projectID int64) (ProjectRepo, error) {
 	var pr ProjectRepo
 	err := s.DB.QueryRowContext(ctx, `

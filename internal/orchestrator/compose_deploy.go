@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/github"
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
 
@@ -34,10 +35,12 @@ func (o *Orchestrator) DeployCompose(ctx context.Context, req DeployRequest) (de
 	}
 	o.Store.UpdateDeploymentStatus(ctx, dep.ID, "building")
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "building", "")
+	o.postCommitStatus(ctx, dep, req, github.StatePending, "Deploying via Mangrove")
 
 	fail := func(stepErr error) (int64, error) {
 		o.Store.UpdateDeployHistoryStatus(ctx, historyID, "failed", stepErr.Error())
 		o.Store.UpdateDeploymentStatus(ctx, dep.ID, "failed")
+		o.postCommitStatus(ctx, dep, req, github.StateFailure, stepErr.Error())
 		return historyID, stepErr
 	}
 
@@ -73,6 +76,7 @@ func (o *Orchestrator) DeployCompose(ctx context.Context, req DeployRequest) (de
 	o.Store.TouchDeploymentDeployed(ctx, dep.ID)
 
 	o.notifyDeploySuccess(ctx, dep, 0) // compose stacks don't have a single "the" port
+	o.postCommitStatus(ctx, dep, req, github.StateSuccess, "Deployed successfully")
 
 	return historyID, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/config"
 	mangrovedb "github.com/evanxdsouza/mangrove/internal/db"
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/github"
 	"github.com/evanxdsouza/mangrove/internal/notify"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
@@ -102,6 +103,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Proxy:    proxyClient,
 		Secrets:  box,
 		Notifier: resendClient,
+		GHStatus: github.NewStatusClient(),
 		Config:   cfg,
 		Log:      log,
 	}
