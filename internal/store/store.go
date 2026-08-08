@@ -814,6 +814,21 @@ func (s *Store) TouchUserLogin(ctx context.Context, userID int64) error {
 	return err
 }
 
+func (s *Store) GetUserByID(ctx context.Context, id int64) (UserAuth, error) {
+	var u UserAuth
+	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash)
+	if err == sql.ErrNoRows {
+		return UserAuth{}, ErrNotFound
+	}
+	return u, err
+}
+
+func (s *Store) UpdateUserPassword(ctx context.Context, id int64, passwordHash string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
+	return err
+}
+
 func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time, ip, userAgent string) error {
 	_, err := s.DB.ExecContext(ctx,
 		`INSERT INTO sessions (user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)`,

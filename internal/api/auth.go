@@ -116,6 +116,54 @@ func (s *Server) authLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// authChangePassword requires the current password even though the
+// request is already authenticated via session cookie -- a stolen
+// session shouldn't be enough on its own to lock the real admin out by
+// rotating the password.
+func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	var req changePasswordRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new_password must be at least 8 characters")
+		return
+	}
+
+	user, err := s.Store.GetUserByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok, err = auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
+	if err != nil || !ok {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "hash password: "+err.Error())
+		return
+	}
+	if err := s.Store.UpdateUserPassword(r.Context(), userID, hash); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) authMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {

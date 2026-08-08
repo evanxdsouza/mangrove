@@ -54,6 +54,7 @@ func (s *Server) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(s.Store))
 			r.Get("/auth/me", s.authMe)
+			r.Post("/auth/change-password", s.authChangePassword)
 
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", s.listProjects)
