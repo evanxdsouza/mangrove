@@ -88,7 +88,7 @@ func (c *ResendClient) SendDeploySuccess(ctx context.Context, to string, p Deplo
   <p style="color: #666;">Deployed via Mangrove.</p>
   <table style="width: 100%%; border-collapse: collapse; margin-top: 16px;">
     <tr><td style="padding: 6px 0; color: #888;">Port</td><td style="padding: 6px 0;"><code>%d</code></td></tr>
-    <tr><td style="padding: 6px 0; color: #888;">Suggested domain</td><td style="padding: 6px 0;"><a href="http://%s"><code>%s</code></a></td></tr>
+    <tr><td style="padding: 6px 0; color: #888;">Suggested domain</td><td style="padding: 6px 0;"><a href="https://%s"><code>%s</code></a></td></tr>
     <tr><td style="padding: 6px 0; color: #888;">Commit</td><td style="padding: 6px 0;"><code>%s</code></td></tr>
   </table>
   <p style="color: #888; font-size: 13px; margin-top: 20px;">

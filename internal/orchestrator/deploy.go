@@ -61,7 +61,7 @@ func (o *Orchestrator) postCommitStatus(ctx context.Context, dep models.Deployme
 		o.Log.Warn("commit status: failed to load linked repo", "deployment_id", dep.ID, "error", err)
 		return
 	}
-	targetURL := fmt.Sprintf("http://%s.%s", dep.Slug, o.Config.BaseDomain)
+	targetURL := fmt.Sprintf("https://%s.%s", dep.Slug, o.Config.BaseDomain)
 	if err := o.GHStatus.PostStatus(ctx, req.AuthToken, repo.RepoOwner, repo.RepoName, req.CommitSHA, state, description, targetURL); err != nil {
 		o.Log.Warn("commit status: post failed", "deployment_id", dep.ID, "state", state, "error", err)
 	}
@@ -97,6 +97,44 @@ func (o *Orchestrator) notifyDeploySuccess(ctx context.Context, dep models.Deplo
 		logEntry.Status = "failed"
 		logEntry.ErrorMessage = err.Error()
 		o.Log.Warn("deploy-success email failed", "deployment_id", dep.ID, "error", err)
+	} else {
+		logEntry.Status = "sent"
+	}
+	o.Store.CreateNotification(ctx, logEntry)
+}
+
+// notifyAccessChanged sends the same "app is up" email as notifyDeploySuccess,
+// for the case where a deployment goes public (and gets a host port
+// allocated for the first time) outside of a Deploy() call -- e.g. flipping
+// an internal-only deployment public via SetAccessControl. Logged under its
+// own notification type so the admin panel doesn't show it as a deploy.
+func (o *Orchestrator) notifyAccessChanged(ctx context.Context, dep models.Deployment, port int) {
+	if o.Config.NotifyToEmail == "" {
+		return
+	}
+	subject := fmt.Sprintf("%s is now publicly reachable", dep.Name)
+	logEntry := store.Notification{
+		Type: "access_control_change", DeploymentID: &dep.ID, Channel: "email",
+		Recipient: o.Config.NotifyToEmail, Subject: subject,
+	}
+
+	if !o.Notifier.Enabled() {
+		logEntry.Status = "failed"
+		logEntry.ErrorMessage = "Resend API key not configured (MANGROVE_RESEND_API_KEY)"
+		o.Store.CreateNotification(ctx, logEntry)
+		return
+	}
+
+	domainSlug := fmt.Sprintf("%s.%s", dep.Slug, o.Config.BaseDomain)
+	err := o.Notifier.SendDeploySuccess(ctx, o.Config.NotifyToEmail, notify.DeploySuccessParams{
+		AppName:         dep.Name,
+		Port:            port,
+		SuggestedDomain: domainSlug,
+	})
+	if err != nil {
+		logEntry.Status = "failed"
+		logEntry.ErrorMessage = err.Error()
+		o.Log.Warn("access-change email failed", "deployment_id", dep.ID, "error", err)
 	} else {
 		logEntry.Status = "sent"
 	}
