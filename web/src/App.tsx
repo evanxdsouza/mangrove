@@ -7,6 +7,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
+import { UserProvider } from "./userContext";
 
 type AuthState =
   | { kind: "loading" }
@@ -67,9 +68,11 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
   }
 
   return (
-    <Layout user={user} onLogout={onLogout}>
-      {body}
-    </Layout>
+    <UserProvider user={user}>
+      <Layout user={user} onLogout={onLogout}>
+        {body}
+      </Layout>
+    </UserProvider>
   );
 }
 

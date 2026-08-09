@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/evanxdsouza/mangrove/internal/auth"
 )
 
 type envVarResponse struct {
@@ -59,6 +61,15 @@ func (s *Server) setEnvVar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Setting a secret is the only place a member could otherwise stash
+	// (and, since they already know it, effectively "read") a credential
+	// through this endpoint -- owner-only, same tier as viewing generated
+	// template credentials.
+	if role, _ := auth.RoleFromContext(r.Context()); role != "owner" {
+		writeError(w, http.StatusForbidden, "owner role required to set secret env vars")
 		return
 	}
 

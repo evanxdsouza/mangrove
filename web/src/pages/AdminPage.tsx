@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
+import { useIsOwner } from "../userContext";
 
 interface ResourceBudget {
   memory_allocated_mb: number;
@@ -53,13 +54,23 @@ interface GithubPATEntry {
   last_used_at?: string;
 }
 
+interface TeamUserEntry {
+  id: number;
+  email: string;
+  role: "owner" | "member";
+  created_at: string;
+  last_login_at?: string;
+}
+
 export function AdminPage() {
+  const isOwner = useIsOwner();
   const [budget, setBudget] = useState<ResourceBudget | null>(null);
   const [ports, setPorts] = useState<PortEntry[] | null>(null);
   const [sessions, setSessions] = useState<SessionEntry[] | null>(null);
   const [nodes, setNodes] = useState<NodeEntry[] | null>(null);
   const [notifications, setNotifications] = useState<NotificationEntry[] | null>(null);
   const [pats, setPats] = useState<GithubPATEntry[] | null>(null);
+  const [users, setUsers] = useState<TeamUserEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pruneResult, setPruneResult] = useState<string | null>(null);
 
@@ -73,9 +84,25 @@ export function AdminPage() {
       .then((n) => setNotifications(n ?? []))
       .catch((e) => setError(errMsg(e)));
     api.get<GithubPATEntry[]>("/api/github/pats").then((p) => setPats(p ?? [])).catch((e) => setError(errMsg(e)));
+    if (isOwner) {
+      api.get<TeamUserEntry[]>("/api/admin/users").then((u) => setUsers(u ?? [])).catch((e) => setError(errMsg(e)));
+    }
   };
 
   useEffect(load, []);
+
+  const removeUser = async (id: number) => {
+    setError(null);
+    try {
+      await api.del(`/api/admin/users/${id}`);
+      load();
+    } catch (e) {
+      // Unlike the other admin deletes on this page, this one has real
+      // expected failure modes (deleting yourself, deleting the last
+      // owner) worth surfacing rather than swallowing.
+      setError(errMsg(e));
+    }
+  };
 
   const revokeSession = async (id: number) => {
     await api.del(`/api/admin/sessions/${id}`);
@@ -266,6 +293,45 @@ export function AdminPage() {
         </div>
       </div>
 
+      {isOwner && (
+        <div className="card">
+          <div className="card-title">Team</div>
+          <p className="text-dim" style={{ marginTop: 0 }}>
+            Owners can delete projects/deployments, manage the team, view/set secrets, and change access control.
+            Members can do everything else.
+          </p>
+          {users === null ? (
+            <div className="text-dim">Loading...</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Last login</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.email}</td>
+                    <td className="text-dim">{u.role}</td>
+                    <td className="text-dim">{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}</td>
+                    <td>
+                      <button className="btn btn-sm btn-danger" onClick={() => removeUser(u.id)}>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <AddTeamUserForm onAdded={load} />
+        </div>
+      )}
+
       <div className="card">
         <div className="card-title">GitHub Personal Access Tokens</div>
         <p className="text-dim" style={{ marginTop: 0 }}>
@@ -354,6 +420,63 @@ function StatTile({ label, value, fraction }: { label: string; value: string; fr
         <div className={`meter-fill ${cls}`} style={{ width: `${Math.min(fraction * 100, 100)}%` }} />
       </div>
     </div>
+  );
+}
+
+function AddTeamUserForm({ onAdded }: { onAdded: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"owner" | "member">("member");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!email || password.length < 8) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/api/admin/users", { email, password, role });
+      setEmail("");
+      setPassword("");
+      setRole("member");
+      onAdded();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to add user");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-row" style={{ marginTop: 14, alignItems: "flex-end" }}>
+      {error && <div className="error-banner">{error}</div>}
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label htmlFor="team-email">Email</label>
+        <input id="team-email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@example.com" />
+      </div>
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label htmlFor="team-password">Initial password</label>
+        <input
+          id="team-password"
+          className="input mono"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="min. 8 characters"
+        />
+      </div>
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label htmlFor="team-role">Role</label>
+        <select id="team-role" className="input" value={role} onChange={(e) => setRole(e.target.value as "owner" | "member")}>
+          <option value="member">Member</option>
+          <option value="owner">Owner</option>
+        </select>
+      </div>
+      <button className="btn btn-sm" type="submit" disabled={busy || !email || password.length < 8}>
+        Add
+      </button>
+    </form>
   );
 }
 

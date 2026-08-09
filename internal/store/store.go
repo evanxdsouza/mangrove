@@ -930,8 +930,12 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	return n, err
 }
 
-func (s *Store) CreateUser(ctx context.Context, email, passwordHash string) (int64, error) {
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO users (org_id, email, password_hash) VALUES (1, ?, ?)`, email, passwordHash)
+// CreateUser creates a user with the given role ("owner" or "member").
+// Callers must pass an explicit role -- there's no safe default, since
+// getting this wrong either locks a real admin out of admin actions or
+// grants a member owner-level power by accident.
+func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO users (org_id, email, password_hash, role) VALUES (1, ?, ?, ?)`, email, passwordHash, role)
 	if err != nil {
 		return 0, err
 	}
@@ -942,7 +946,7 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash string) (int
 	// Every user is, for now, a member of the single default workspace --
 	// the multi-tenancy stub this exists for isn't wired up until org/team
 	// support is built.
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id) VALUES (1, ?)`, id); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (1, ?, ?)`, id, role); err != nil {
 		return 0, err
 	}
 	return id, nil
@@ -952,12 +956,79 @@ type UserAuth struct {
 	ID           int64
 	Email        string
 	PasswordHash string
+	Role         string
+}
+
+type UserWithRole struct {
+	ID          int64      `json:"id"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+}
+
+// ListUsers backs the admin Team panel -- every account, oldest first (so
+// the original owner created by authSetup always shows up top).
+func (s *Store) ListUsers(ctx context.Context) ([]UserWithRole, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, email, role, created_at, last_login_at FROM users ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UserWithRole
+	for rows.Next() {
+		var u UserWithRole
+		var lastLogin sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt, &lastLogin); err != nil {
+			return nil, err
+		}
+		if lastLogin.Valid {
+			t := lastLogin.Time
+			u.LastLoginAt = &t
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// CountOwners is used to refuse deleting the last remaining owner -- doing
+// so would permanently lock everyone out of owner-gated actions with no
+// way back in (there's no email-based recovery flow).
+func (s *Store) CountOwners(ctx context.Context) (int, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE role = 'owner'`).Scan(&n)
+	return n, err
+}
+
+// DeleteUser removes a user and their sessions/workspace membership. Does
+// not touch anything they created (github_pats.created_by_user_id,
+// deployments.created_by_user_id, etc) -- those columns are nullable
+// precisely so a user can be removed without cascading into unrelated
+// resources.
+func (s *Store) DeleteUser(ctx context.Context, id int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("delete sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_members WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("delete workspace_members: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (UserAuth, error) {
 	var u UserAuth
-	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash FROM users WHERE email = ?`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash, role FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role)
 	if err == sql.ErrNoRows {
 		return UserAuth{}, ErrNotFound
 	}
@@ -971,8 +1042,8 @@ func (s *Store) TouchUserLogin(ctx context.Context, userID int64) error {
 
 func (s *Store) GetUserByID(ctx context.Context, id int64) (UserAuth, error) {
 	var u UserAuth
-	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash FROM users WHERE id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, email, password_hash, role FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role)
 	if err == sql.ErrNoRows {
 		return UserAuth{}, ErrNotFound
 	}
@@ -992,13 +1063,19 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash strin
 	return err
 }
 
-func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (userID int64, expiresAt time.Time, err error) {
-	err = s.DB.QueryRowContext(ctx, `SELECT user_id, expires_at FROM sessions WHERE token_hash = ?`, tokenHash).
-		Scan(&userID, &expiresAt)
+// GetSessionByTokenHash returns the session's user, that user's current
+// role, and the session's expiry, in one query -- so RequireAuth doesn't
+// need a second round trip just to find out if the caller is an owner.
+func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (userID int64, role string, expiresAt time.Time, err error) {
+	err = s.DB.QueryRowContext(ctx, `
+		SELECT sess.user_id, u.role, sess.expires_at
+		FROM sessions sess JOIN users u ON u.id = sess.user_id
+		WHERE sess.token_hash = ?`, tokenHash).
+		Scan(&userID, &role, &expiresAt)
 	if err == sql.ErrNoRows {
-		return 0, time.Time{}, ErrNotFound
+		return 0, "", time.Time{}, ErrNotFound
 	}
-	return userID, expiresAt, err
+	return userID, role, expiresAt, err
 }
 
 func (s *Store) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {

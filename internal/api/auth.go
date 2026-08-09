@@ -56,14 +56,17 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hash password: "+err.Error())
 		return
 	}
-	userID, err := s.Store.CreateUser(r.Context(), req.Email, hash)
+	// The very first user (this endpoint refuses once any user exists,
+	// checked above) is always the owner -- there's no one else yet to
+	// have granted that role.
+	userID, err := s.Store.CreateUser(r.Context(), req.Email, hash, "owner")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	s.startSession(w, r, userID)
-	writeJSON(w, http.StatusCreated, map[string]any{"id": userID, "email": req.Email})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": userID, "email": req.Email, "role": "owner"})
 }
 
 type loginRequest struct {
@@ -98,7 +101,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 
 	s.Store.TouchUserLogin(r.Context(), user.ID)
 	s.startSession(w, r, user.ID)
-	writeJSON(w, http.StatusOK, map[string]any{"id": user.ID, "email": user.Email})
+	writeJSON(w, http.StatusOK, map[string]any{"id": user.ID, "email": user.Email, "role": user.Role})
 }
 
 func (s *Server) authLogout(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +173,13 @@ func (s *Server) authMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": userID})
+	role, _ := auth.RoleFromContext(r.Context())
+	user, err := s.Store.GetUserByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": userID, "email": user.Email, "role": role})
 }
 
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64) {

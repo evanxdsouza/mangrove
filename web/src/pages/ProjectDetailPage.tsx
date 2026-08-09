@@ -6,6 +6,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { StatusPill } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { slugify } from "./ProjectsPage";
+import { useIsOwner } from "../userContext";
 
 interface ProjectRepoInfo {
   id: number;
@@ -16,6 +17,7 @@ interface ProjectRepoInfo {
 }
 
 export function ProjectDetailPage({ projectId }: { projectId: number }) {
+  const isOwner = useIsOwner();
   const [project, setProject] = useState<Project | null>(null);
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
   const [repo, setRepo] = useState<ProjectRepoInfo | null | undefined>(undefined); // undefined = not loaded yet, null = none linked
@@ -56,9 +58,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
             + New deployment
           </button>
-          <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-            Delete project
-          </button>
+          {isOwner && (
+            <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+              Delete project
+            </button>
+          )}
         </div>
       </div>
 

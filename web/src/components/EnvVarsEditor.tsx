@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type EnvVarEntry } from "../api";
+import { useIsOwner } from "../userContext";
 
 export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
+  const isOwner = useIsOwner();
   const [vars, setVars] = useState<EnvVarEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState("");
@@ -78,12 +80,14 @@ export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
             type={isSecret ? "password" : "text"}
           />
         </div>
-        <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-            <input type="checkbox" checked={isSecret} onChange={(e) => setIsSecret(e.target.checked)} />
-            Secret
-          </label>
-        </div>
+        {isOwner && (
+          <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+              <input type="checkbox" checked={isSecret} onChange={(e) => setIsSecret(e.target.checked)} />
+              Secret
+            </label>
+          </div>
+        )}
         <button className="btn" type="submit" disabled={busy || !key}>
           Add
         </button>

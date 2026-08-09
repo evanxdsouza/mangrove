@@ -48,17 +48,17 @@ func CreateSession(ctx context.Context, st *store.Store, userID int64, ip, userA
 	return token, nil
 }
 
-// ValidateSession looks up the user a raw cookie token belongs to, or
-// store.ErrNotFound if it's missing/expired.
-func ValidateSession(ctx context.Context, st *store.Store, token string) (int64, error) {
-	userID, expiresAt, err := st.GetSessionByTokenHash(ctx, hashToken(token))
+// ValidateSession looks up the user (and their current role) a raw cookie
+// token belongs to, or store.ErrNotFound if it's missing/expired.
+func ValidateSession(ctx context.Context, st *store.Store, token string) (userID int64, role string, err error) {
+	userID, role, expiresAt, err := st.GetSessionByTokenHash(ctx, hashToken(token))
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if time.Now().After(expiresAt) {
-		return 0, store.ErrNotFound
+		return 0, "", store.ErrNotFound
 	}
-	return userID, nil
+	return userID, role, nil
 }
 
 func DeleteSession(ctx context.Context, st *store.Store, token string) error {

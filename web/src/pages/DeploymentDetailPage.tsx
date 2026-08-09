@@ -6,10 +6,12 @@ import { DeployTimeline } from "../components/DeployTimeline";
 import { LogViewer } from "../components/LogViewer";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { useIsOwner } from "../userContext";
 
 type Tab = "overview" | "history" | "logs" | "env";
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
+  const isOwner = useIsOwner();
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [history, setHistory] = useState<DeployHistory[]>([]);
@@ -82,9 +84,11 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
             {deploying ? "Deploying..." : "Deploy"}
           </button>
-          <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-            Delete deployment
-          </button>
+          {isOwner && (
+            <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+              Delete deployment
+            </button>
+          )}
         </div>
       </div>
 
@@ -190,6 +194,7 @@ function AccessControlCard({
   deployment: Deployment | null;
   onSaved: () => void;
 }) {
+  const isOwner = useIsOwner();
   const [isPublic, setIsPublic] = useState(false);
   const [passwordProtected, setPasswordProtected] = useState(false);
   const [password, setPassword] = useState("");
@@ -231,9 +236,10 @@ function AccessControlCard({
         Enforced at the Caddy proxy layer, independent of any auth the app itself has.
       </p>
       {error && <div className="error-banner">{error}</div>}
+      {!isOwner && <div className="field-hint">Only an owner can change access control.</div>}
       <div className="field">
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+          <input type="checkbox" checked={isPublic} disabled={!isOwner} onChange={(e) => setIsPublic(e.target.checked)} />
           Public (expose on the assigned port)
         </label>
       </div>
@@ -241,7 +247,7 @@ function AccessControlCard({
         <>
           <div className="field">
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={passwordProtected} onChange={(e) => setPasswordProtected(e.target.checked)} />
+              <input type="checkbox" checked={passwordProtected} disabled={!isOwner} onChange={(e) => setPasswordProtected(e.target.checked)} />
               Password-protected
             </label>
           </div>
@@ -252,6 +258,7 @@ function AccessControlCard({
                 id="access-password"
                 className="input"
                 type="password"
+                disabled={!isOwner}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={deployment?.password_protected ? "Enter a new password to change it" : ""}
@@ -260,9 +267,11 @@ function AccessControlCard({
           )}
         </>
       )}
-      <button className="btn btn-sm" onClick={save} disabled={busy}>
-        {busy ? "Saving..." : "Save"}
-      </button>
+      {isOwner && (
+        <button className="btn btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+      )}
       {saved && <div className="field-hint">Saved.</div>}
     </div>
   );

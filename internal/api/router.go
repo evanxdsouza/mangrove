@@ -63,7 +63,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/", s.createProject)
 				r.Route("/{projectID}", func(r chi.Router) {
 					r.Get("/", s.getProject)
-					r.Delete("/", s.deleteProject)
+					r.With(auth.RequireOwner).Delete("/", s.deleteProject)
 					r.Get("/deployments", s.listDeployments)
 					r.Post("/deployments", s.createDeployment)
 					r.Get("/repo", s.getProjectRepo)
@@ -74,12 +74,12 @@ func (s *Server) Router() http.Handler {
 
 			r.Route("/deployments/{deploymentID}", func(r chi.Router) {
 				r.Get("/", s.getDeployment)
-				r.Delete("/", s.deleteDeployment)
+				r.With(auth.RequireOwner).Delete("/", s.deleteDeployment)
 				r.Get("/services", s.listServices)
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
 				r.Post("/repo", s.setDeploymentRepo)
-				r.Post("/access", s.setDeploymentAccess)
+				r.With(auth.RequireOwner).Post("/access", s.setDeploymentAccess)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {
@@ -112,6 +112,16 @@ func (s *Server) Router() http.Handler {
 				r.Get("/notifications", s.listNotifications)
 				r.Post("/prune", s.triggerPrune)
 				r.Get("/secrets-status", s.getSecretsStatus)
+
+				// User management is owner-only, top to bottom -- a member
+				// listing/inviting/removing other accounts is exactly the
+				// kind of privilege escalation roles exist to prevent.
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireOwner)
+					r.Get("/users", s.listUsers)
+					r.Post("/users", s.createTeamUser)
+					r.Delete("/users/{userID}", s.deleteTeamUser)
+				})
 			})
 		})
 	})

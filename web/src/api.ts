@@ -129,6 +129,7 @@ export interface AuthStatus {
 export interface CurrentUser {
   id: number;
   email?: string;
+  role: "owner" | "member";
 }
 
 export interface TemplateDeploymentSummary {
