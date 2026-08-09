@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link } from "../router";
-import { Modal } from "../components/Modal";
+import { Modal, useModalClose } from "../components/Modal";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { StatusPill } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
@@ -200,6 +200,7 @@ interface GithubPATOption {
 }
 
 function LinkRepoModal({ projectId, onClose, onLinked }: { projectId: number; onClose: () => void; onLinked: () => void }) {
+  const requestClose = useModalClose();
   const [pats, setPats] = useState<GithubPATOption[]>([]);
   const [patId, setPatId] = useState<number | "">("");
   const [owner, setOwner] = useState("");
@@ -291,7 +292,7 @@ function LinkRepoModal({ projectId, onClose, onLinked }: { projectId: number; on
           <input id="repo-branch" className="input mono" value={branch} onChange={(e) => setBranch(e.target.value)} />
         </div>
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={requestClose}>
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -318,6 +319,7 @@ function CreateDeploymentModal({
   onClose: () => void;
   onCreated: (id: number) => void;
 }) {
+  const requestClose = useModalClose();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [strategy, setStrategy] = useState<Strategy>("dockerfile");
@@ -570,7 +572,7 @@ function CreateDeploymentModal({
         )}
 
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={requestClose}>
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>

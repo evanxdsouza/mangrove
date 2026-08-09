@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Project } from "../api";
 import { Link, useRouter } from "../router";
-import { Modal } from "../components/Modal";
+import { Modal, useModalClose } from "../components/Modal";
 
 export function ProjectsPage() {
   const { navigate } = useRouter();
@@ -77,6 +77,7 @@ export function ProjectsPage() {
 }
 
 function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const requestClose = useModalClose();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
@@ -129,7 +130,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
           <input id="project-description" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={requestClose}>
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy}>

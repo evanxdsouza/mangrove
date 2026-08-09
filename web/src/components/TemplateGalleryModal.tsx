@@ -53,8 +53,8 @@ export function TemplateGalleryModal({
           {templates.map((t) => (
             <div
               key={t.key}
-              className="card"
-              style={{ cursor: "pointer", marginBottom: 0 }}
+              className="card card-clickable"
+              style={{ marginBottom: 0 }}
               onClick={() => setSelected(t)}
             >
               <div className="card-title" style={{ margin: 0 }}>
