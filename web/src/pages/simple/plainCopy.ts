@@ -16,6 +16,7 @@ export const SIMPLE_TEMPLATES: Record<string, PlainTemplateCopy> = {
   "uptime-kuma": { label: "Website monitor", blurb: "Get notified if one of your sites goes down." },
   n8n: { label: "Automation", blurb: "Connect your apps together and automate busywork." },
   umami: { label: "Visitor stats", blurb: "See how many people visit your sites, without tracking them." },
+  nocodb: { label: "Spreadsheet database", blurb: "Turn a spreadsheet into a shareable database, no code needed." },
 };
 
 export function plainStatus(status: string): string {

@@ -1,0 +1,43 @@
+{
+  "key": "nocodb",
+  "name": "NocoDB",
+  "description": "Airtable-style no-code database/spreadsheet tool, with a linked PostgreSQL database, deployed as two connected deployments in this project. Create your admin account on first visit. Starts internal-only -- flip the NocoDB deployment public from its Access control tab once it's up.",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "-db",
+      "name_suffix": " Postgres",
+      "build_strategy": "image",
+      "image_ref": "postgres:16-alpine",
+      "internal_port": 5432,
+      "force_internal_only": true,
+      "memory_limit_mb": 192,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/postgresql/data" }
+      ],
+      "env": [
+        { "key": "POSTGRES_USER", "value": "nocodb" },
+        { "key": "POSTGRES_DB", "value": "nocodb" },
+        { "key": "POSTGRES_PASSWORD", "generate": "password", "generate_key": "nocodb_db_password", "secret": true }
+      ]
+    },
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "nocodb/nocodb:latest",
+      "internal_port": 8080,
+      "memory_limit_mb": 512,
+      "cpu_limit_cores": 0.5,
+      "health_check_path": "/health",
+      "volumes": [
+        { "name": "data", "mount_path": "/usr/app/data" }
+      ],
+      "env": [
+        { "key": "NC_DB", "value": "pg://{{alias:-db}}:5432?u=nocodb&p={{generated:nocodb_db_password}}&d=nocodb", "secret": true },
+        { "key": "NC_AUTH_JWT_SECRET", "generate": "hex32", "generate_key": "nocodb_jwt_secret", "secret": true },
+        { "key": "NC_PUBLIC_URL", "value": "https://{{slug}}.{{base_domain}}" }
+      ]
+    }
+  ]
+}

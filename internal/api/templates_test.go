@@ -53,8 +53,8 @@ func TestListTemplatesReturnsAllBuiltIns(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(out) != 11 {
-		t.Fatalf("expected 11 templates, got %d", len(out))
+	if len(out) != 12 {
+		t.Fatalf("expected 12 templates, got %d", len(out))
 	}
 	for _, tpl := range out {
 		if tpl.TotalMemoryMB <= 0 {

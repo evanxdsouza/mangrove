@@ -4,17 +4,18 @@ import "testing"
 
 func TestAllBuiltInTemplatesLoad(t *testing.T) {
 	all := List()
-	if len(all) != 11 {
+	if len(all) != 12 {
 		names := make([]string, len(all))
 		for i, tpl := range all {
 			names[i] = tpl.Key
 		}
-		t.Fatalf("expected 11 built-in templates, got %d: %v", len(all), names)
+		t.Fatalf("expected 12 built-in templates, got %d: %v", len(all), names)
 	}
 
 	wantKeys := []string{
 		"postgres", "redis", "mysql", "mongodb", "n8n", "ghost",
 		"wordpress", "uptime-kuma", "vaultwarden", "umami", "nephthys",
+		"nocodb",
 	}
 	for _, k := range wantKeys {
 		if _, ok := Get(k); !ok {
