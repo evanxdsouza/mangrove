@@ -34,6 +34,16 @@ and the blue/green deploy flow, [docs/deployment.md](docs/deployment.md)
 for running this in production, and
 [docs/templates.md](docs/templates.md) for the one-click template format.
 
+## Production install
+
+On a fresh Debian/Ubuntu VPS, `sudo ./setup.sh` installs Docker, Caddy, Go,
+and Node if missing; builds the frontend and binary; installs the systemd
+units/slices from `deploy/systemd/` (see
+[docs/deployment.md](docs/deployment.md) for what these do); starts the
+service; and creates the admin account for you (prompted interactively, or
+via `MANGROVE_ADMIN_EMAIL`/`MANGROVE_ADMIN_PASSWORD` for an unattended run)
+instead of doing it through the browser's first-run screen. Safe to re-run.
+
 ## Quickstart (local dev)
 
 Prerequisites: Go 1.25+, Node 20+, Docker (running, with the current user
