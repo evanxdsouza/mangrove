@@ -132,13 +132,22 @@ export interface CurrentUser {
   role: "owner" | "member";
 }
 
+export interface TemplatePromptedEnvVar {
+  key: string;
+  label?: string;
+  required?: boolean;
+}
+
 export interface TemplateDeploymentSummary {
   slug_suffix: string;
   name_suffix: string;
-  image_ref: string;
+  build_strategy: string;
+  image_ref?: string;
+  git_url?: string;
   memory_limit_mb: number;
   cpu_limit_cores: number;
   force_internal_only: boolean;
+  prompted_env?: TemplatePromptedEnvVar[];
 }
 
 export interface TemplateSummary {

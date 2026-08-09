@@ -2,19 +2,19 @@ package templates
 
 import "testing"
 
-func TestAllTenBuiltInTemplatesLoad(t *testing.T) {
+func TestAllBuiltInTemplatesLoad(t *testing.T) {
 	all := List()
-	if len(all) != 10 {
+	if len(all) != 11 {
 		names := make([]string, len(all))
 		for i, tpl := range all {
 			names[i] = tpl.Key
 		}
-		t.Fatalf("expected 10 built-in templates, got %d: %v", len(all), names)
+		t.Fatalf("expected 11 built-in templates, got %d: %v", len(all), names)
 	}
 
 	wantKeys := []string{
 		"postgres", "redis", "mysql", "mongodb", "n8n", "ghost",
-		"wordpress", "uptime-kuma", "vaultwarden", "umami",
+		"wordpress", "uptime-kuma", "vaultwarden", "umami", "nephthys",
 	}
 	for _, k := range wantKeys {
 		if _, ok := Get(k); !ok {
@@ -47,8 +47,8 @@ func TestForceInternalOnlyOnRawTCPServices(t *testing.T) {
 		}
 	}
 
-	// The linked DB dependencies inside wordpress/umami must be forced too.
-	for _, key := range []string{"wordpress", "umami"} {
+	// The linked DB dependencies inside wordpress/umami/nephthys must be forced too.
+	for _, key := range []string{"wordpress", "umami", "nephthys"} {
 		tpl, _ := Get(key)
 		for _, d := range tpl.Deployments {
 			if d.SlugSuffix != "" && !d.ForceInternalOnly {
@@ -73,7 +73,7 @@ func TestEachTemplateFitsDefaultCeiling(t *testing.T) {
 }
 
 func TestLinkedTemplatesHaveDependencyFirst(t *testing.T) {
-	for _, key := range []string{"wordpress", "umami"} {
+	for _, key := range []string{"wordpress", "umami", "nephthys"} {
 		tpl, _ := Get(key)
 		if len(tpl.Deployments) != 2 {
 			t.Fatalf("template %q: expected 2 deployments, got %d", key, len(tpl.Deployments))
@@ -143,5 +143,69 @@ func TestValidateAcceptsForwardGeneratedReferenceWithinSameDeployment(t *testing
 	}
 	if err := validate(ok); err != nil {
 		t.Errorf("expected same-deployment forward reference to validate, got: %v", err)
+	}
+}
+
+func TestValidateRejectsDockerfileStrategyWithoutGitURL(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", BuildStrategy: "dockerfile", MemoryLimitMB: 1},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject a dockerfile-strategy deployment with no git_url")
+	}
+}
+
+func TestValidateAcceptsDockerfileStrategyWithGitURLAndNoImageRef(t *testing.T) {
+	ok := Template{
+		Key: "ok",
+		Deployments: []Deployment{
+			{SlugSuffix: "", BuildStrategy: "dockerfile", GitURL: "https://github.com/owner/repo.git", MemoryLimitMB: 1},
+		},
+	}
+	if err := validate(ok); err != nil {
+		t.Errorf("expected dockerfile-strategy deployment with git_url to validate without image_ref, got: %v", err)
+	}
+}
+
+func TestValidateRejectsPromptWithGenerateOrValue(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "TOKEN", Prompt: true, Value: "literal"},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject an env var setting both prompt and value")
+	}
+
+	bad2 := Template{
+		Key: "bad2",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "TOKEN", Prompt: true, Generate: "password"},
+			}},
+		},
+	}
+	if err := validate(bad2); err == nil {
+		t.Error("expected validate to reject an env var setting both prompt and generate")
+	}
+}
+
+func TestValidateAcceptsPromptEnvVar(t *testing.T) {
+	ok := Template{
+		Key: "ok",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "TOKEN", Prompt: true, Label: "API token", Required: true},
+			}},
+		},
+	}
+	if err := validate(ok); err != nil {
+		t.Errorf("expected a bare prompt env var to validate, got: %v", err)
 	}
 }

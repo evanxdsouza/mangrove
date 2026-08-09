@@ -1,0 +1,52 @@
+{
+  "key": "nephthys",
+  "name": "Nephthys",
+  "description": "Hack Club's Slack support bot (https://github.com/hackclub/nephthys), built from its Dockerfile with a linked PostgreSQL database, deployed as two connected deployments in this project. Needs Slack app credentials and a Hack Club AI API key before it will start -- fill those in on the install form. Starts internal-only -- flip the Nephthys deployment public from its Access control tab once it's up.",
+  "category": "bots",
+  "deployments": [
+    {
+      "slug_suffix": "-db",
+      "name_suffix": " Postgres",
+      "build_strategy": "image",
+      "image_ref": "postgres:16-alpine",
+      "internal_port": 5432,
+      "force_internal_only": true,
+      "memory_limit_mb": 192,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/postgresql/data" }
+      ],
+      "env": [
+        { "key": "POSTGRES_USER", "value": "nephthys" },
+        { "key": "POSTGRES_DB", "value": "nephthys" },
+        { "key": "POSTGRES_PASSWORD", "generate": "password", "generate_key": "nephthys_db_password", "secret": true }
+      ]
+    },
+    {
+      "slug_suffix": "",
+      "build_strategy": "dockerfile",
+      "git_url": "https://github.com/hackclub/nephthys.git",
+      "git_branch": "main",
+      "internal_port": 3000,
+      "memory_limit_mb": 320,
+      "cpu_limit_cores": 0.5,
+      "health_check_path": "/health",
+      "env": [
+        { "key": "DATABASE_URL", "value": "postgresql://nephthys:{{generated:nephthys_db_password}}@{{alias:-db}}:5432/nephthys", "secret": true },
+        { "key": "PROGRAM", "value": "flavortown" },
+        { "key": "APP_TITLE", "value": "helper heidi" },
+        { "key": "PORT", "value": "3000" },
+        { "key": "BASE_URL", "value": "{{slug}}.{{base_domain}}" },
+        { "key": "SLACK_BOT_TOKEN", "prompt": true, "required": true, "label": "Slack bot token (xoxb-...)", "secret": true },
+        { "key": "SLACK_USER_TOKEN", "prompt": true, "required": true, "label": "Slack user token (xoxp-...)", "secret": true },
+        { "key": "SLACK_SIGNING_SECRET", "prompt": true, "required": true, "label": "Slack signing secret", "secret": true },
+        { "key": "SLACK_HEARTBEAT_CHANNEL", "prompt": true, "required": true, "label": "Heartbeat channel ID" },
+        { "key": "SLACK_TICKET_CHANNEL", "prompt": true, "required": true, "label": "Ticket channel ID" },
+        { "key": "SLACK_BTS_CHANNEL", "prompt": true, "required": true, "label": "BTS channel ID" },
+        { "key": "SLACK_HELP_CHANNEL", "prompt": true, "required": true, "label": "Help channel ID" },
+        { "key": "SLACK_MAINTAINER_ID", "prompt": true, "required": true, "label": "Maintainer Slack user ID" },
+        { "key": "HACK_CLUB_AI_API_KEY", "prompt": true, "required": true, "label": "Hack Club AI API key", "secret": true }
+      ]
+    }
+  ]
+}

@@ -22,14 +22,16 @@ import (
 // is reported healthy immediately.
 type fakeTemplateExecutor struct {
 	builds         int
-	runSpecs       []executor.RunSpec // every RunSpec Run() was called with, in order -- so tests can assert on what actually would have hit `docker run`, not just that Deploy() returned success
-	removedRefs    []string           // every container ref Remove() was called with
-	removedVolumes []string           // every volume name RemoveVolume() was called with
-	removedImages  []string           // every image tag RemoveImage() was called with
+	buildSpecs     []executor.BuildSpec // every BuildSpec Build() was called with, in order -- so tests can assert on git-based builds without a real clone
+	runSpecs       []executor.RunSpec   // every RunSpec Run() was called with, in order -- so tests can assert on what actually would have hit `docker run`, not just that Deploy() returned success
+	removedRefs    []string             // every container ref Remove() was called with
+	removedVolumes []string             // every volume name RemoveVolume() was called with
+	removedImages  []string             // every image tag RemoveImage() was called with
 }
 
 func (f *fakeTemplateExecutor) Build(ctx context.Context, spec executor.BuildSpec, logs io.Writer) (executor.BuildResult, error) {
 	f.builds++
+	f.buildSpecs = append(f.buildSpecs, spec)
 	return executor.BuildResult{ImageTag: spec.ImageRef}, nil
 }
 func (f *fakeTemplateExecutor) Run(ctx context.Context, spec executor.RunSpec) (executor.RunResult, error) {
@@ -114,7 +116,7 @@ func TestInstallTemplateStandaloneCreatesRowsAndDeploys(t *testing.T) {
 	o, st, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	result, err := o.InstallTemplate(ctx, projectID, "postgres", "mydb", nil)
+	result, err := o.InstallTemplate(ctx, projectID, "postgres", "mydb", nil, nil)
 	if err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}
@@ -194,7 +196,7 @@ func TestInstallTemplateWiresVolumesAndCommandThroughToRun(t *testing.T) {
 	o, _, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	if _, err := o.InstallTemplate(ctx, projectID, "redis", "cache", nil); err != nil {
+	if _, err := o.InstallTemplate(ctx, projectID, "redis", "cache", nil, nil); err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}
 
@@ -229,7 +231,7 @@ func TestInstallTemplateLinkedDependencyResolvesAliasAndGeneratedValue(t *testin
 	o, st, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil)
+	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil, nil)
 	if err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}
@@ -305,5 +307,116 @@ func TestInstallTemplateLinkedDependencyResolvesAliasAndGeneratedValue(t *testin
 	}
 	if dbPassword != mysqlUserPassword {
 		t.Errorf("WordPress's WORDPRESS_DB_PASSWORD (%q) should equal MySQL's generated MYSQL_PASSWORD (%q)", dbPassword, mysqlUserPassword)
+	}
+}
+
+// TestInstallTemplateFailsFastOnMissingRequiredPromptedEnv verifies that a
+// missing required prompt value is rejected before any rows are created --
+// not partway through, after the linked Postgres dependency already exists.
+func TestInstallTemplateFailsFastOnMissingRequiredPromptedEnv(t *testing.T) {
+	o, st, projectID := newTestOrchestrator(t)
+	ctx := context.Background()
+
+	_, err := o.InstallTemplate(ctx, projectID, "nephthys", "helper", nil, nil)
+	if err == nil {
+		t.Fatal("expected InstallTemplate to fail when required prompted env vars are missing")
+	}
+
+	deployments, err := st.ListDeployments(ctx, projectID)
+	if err != nil {
+		t.Fatalf("ListDeployments: %v", err)
+	}
+	if len(deployments) != 0 {
+		t.Errorf("expected no deployment rows created when required prompt validation fails upfront, got %d", len(deployments))
+	}
+}
+
+// TestInstallTemplateDockerfileBuildWithPromptedEnv exercises the full
+// nephthys install path: a git+Dockerfile build for the primary deployment,
+// and prompted env overrides substituted in the same way memory overrides
+// are, never stored as part of the template itself.
+func TestInstallTemplateDockerfileBuildWithPromptedEnv(t *testing.T) {
+	o, st, projectID := newTestOrchestrator(t)
+	ctx := context.Background()
+
+	envOverrides := map[string]map[string]string{
+		"": {
+			"SLACK_BOT_TOKEN":         "xoxb-test",
+			"SLACK_USER_TOKEN":        "xoxp-test",
+			"SLACK_SIGNING_SECRET":    "sig-test",
+			"SLACK_HEARTBEAT_CHANNEL": "C1",
+			"SLACK_TICKET_CHANNEL":    "C2",
+			"SLACK_BTS_CHANNEL":       "C3",
+			"SLACK_HELP_CHANNEL":      "C4",
+			"SLACK_MAINTAINER_ID":     "U1",
+			"HACK_CLUB_AI_API_KEY":    "sk-hc-test",
+		},
+	}
+
+	result, err := o.InstallTemplate(ctx, projectID, "nephthys", "helper", nil, envOverrides)
+	if err != nil {
+		t.Fatalf("InstallTemplate: %v", err)
+	}
+	if len(result.Deployments) != 2 {
+		t.Fatalf("expected 2 deployments, got %d", len(result.Deployments))
+	}
+	for _, d := range result.Deployments {
+		if d.DeployError != "" {
+			t.Errorf("deployment %q failed to deploy: %s", d.Slug, d.DeployError)
+		}
+	}
+
+	primaryDep, err := st.GetDeployment(ctx, result.Deployments[1].DeploymentID)
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if primaryDep.BuildStrategy != "dockerfile" {
+		t.Errorf("expected build_strategy 'dockerfile', got %q", primaryDep.BuildStrategy)
+	}
+	if primaryDep.GitBranch != "main" {
+		t.Errorf("expected git_branch 'main', got %q", primaryDep.GitBranch)
+	}
+
+	fake := o.Exec.(*fakeTemplateExecutor)
+	if len(fake.buildSpecs) != 2 {
+		t.Fatalf("expected 2 Build() calls (db image-tag + nephthys dockerfile), got %d", len(fake.buildSpecs))
+	}
+	dockerfileBuild := fake.buildSpecs[1]
+	if dockerfileBuild.Context.GitURL != "https://github.com/hackclub/nephthys.git" {
+		t.Errorf("expected BuildSpec.Context.GitURL to be the nephthys repo, got %q", dockerfileBuild.Context.GitURL)
+	}
+	if dockerfileBuild.Context.GitRef != "main" {
+		t.Errorf("expected BuildSpec.Context.GitRef 'main', got %q", dockerfileBuild.Context.GitRef)
+	}
+	if dockerfileBuild.Context.AuthToken != "" {
+		t.Errorf("expected no AuthToken for a public template repo build, got %q", dockerfileBuild.Context.AuthToken)
+	}
+
+	primarySvcs, _ := st.ListServices(ctx, primaryDep.ID)
+	rows, err := st.ListEnvVarRows(ctx, primarySvcs[0].ID)
+	if err != nil {
+		t.Fatalf("ListEnvVarRows: %v", err)
+	}
+	values := map[string]string{}
+	for _, r := range rows {
+		if r.IsSecret {
+			plaintext, err := o.Secrets.Open([]byte("env_vars:"+strconv.FormatInt(primarySvcs[0].ID, 10)+":"+r.KeyName), r.ValueEncrypted, r.ValueNonce)
+			if err != nil {
+				t.Fatalf("decrypt %s: %v", r.KeyName, err)
+			}
+			values[r.KeyName] = string(plaintext)
+		} else {
+			values[r.KeyName] = r.ValuePlain.String
+		}
+	}
+
+	if values["SLACK_BOT_TOKEN"] != "xoxb-test" {
+		t.Errorf("expected prompted SLACK_BOT_TOKEN to be substituted in, got %q", values["SLACK_BOT_TOKEN"])
+	}
+	if values["BASE_URL"] != "helper.example.test" {
+		t.Errorf("expected BASE_URL to resolve {{slug}}.{{base_domain}}, got %q", values["BASE_URL"])
+	}
+	if values["PORT"] != "3000" {
+		t.Errorf("expected literal PORT default '3000', got %q", values["PORT"])
 	}
 }

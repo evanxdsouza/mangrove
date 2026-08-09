@@ -26,7 +26,7 @@ import (
 var dataFS embed.FS
 
 // EnvVar describes one environment variable on a template deployment's
-// service. Either Generate or Value is set (not both):
+// service. Exactly one of Value, Generate, or Prompt is set:
 //   - Generate ("password" or "hex32") creates a random value at install
 //     time and stores it under GenerateKey, so any deployment later in the
 //     same template can reference it (see Value's {{generated:...}} below).
@@ -38,12 +38,23 @@ var dataFS embed.FS
 //     (Config.BaseDomain). Placeholders can appear inline within a larger
 //     string (e.g. a DATABASE_URL combining a generated password with a
 //     sibling's alias), not just as the whole value.
+//   - Prompt asks the installing user for this value in the install form
+//     instead of deriving it from the template itself -- for things a
+//     template can't sensibly default (API tokens, webhook secrets). Label
+//     is optional UI copy for the prompt; Required, if set, blocks install
+//     until a non-empty value is supplied (see InstallTemplate). Prompted
+//     values are never stored as part of the template -- they're passed in
+//     by the caller at install time and substituted the same way a
+//     generated or literal value would be.
 type EnvVar struct {
 	Key         string `json:"key"`
 	Value       string `json:"value,omitempty"`
 	Generate    string `json:"generate,omitempty"`
 	GenerateKey string `json:"generate_key,omitempty"`
 	Secret      bool   `json:"secret,omitempty"`
+	Prompt      bool   `json:"prompt,omitempty"`
+	Label       string `json:"label,omitempty"`
+	Required    bool   `json:"required,omitempty"`
 }
 
 // Volume describes one named volume to create and mount into the service.
@@ -52,20 +63,30 @@ type Volume struct {
 	MountPath string `json:"mount_path"`
 }
 
-// Deployment describes one deployment a template creates. All ten built-in
+// Deployment describes one deployment a template creates. Most built-in
 // templates use BuildStrategy "image" (they deploy a pre-built image, no
-// build step), but this isn't hardcoded so a future template could use
-// another strategy.
+// build step). BuildStrategy "dockerfile" instead builds from GitURL (and
+// optional GitBranch) the same way a hand-created git-backed deployment
+// does -- see InstallTemplate, which threads these into the same Deploy()
+// call a normal dockerfile-strategy deployment uses, including an empty
+// AuthToken (an unauthenticated clone), so this only works for a public
+// repo.
 type Deployment struct {
 	// SlugSuffix is appended to the user-chosen base slug to form this
 	// deployment's slug ("" for the template's primary/only deployment,
 	// e.g. "-mysql" for a linked dependency). Exactly one deployment in a
 	// template must have SlugSuffix == "", and it must be last -- see
 	// Registry's validation.
-	SlugSuffix    string `json:"slug_suffix"`
-	NameSuffix    string `json:"name_suffix"`
+	SlugSuffix string `json:"slug_suffix"`
+	NameSuffix string `json:"name_suffix"`
+	// BuildStrategy defaults to "image" if empty. "image" requires ImageRef;
+	// "dockerfile" requires GitURL (GitBranch is optional -- an empty
+	// GitBranch clones the repo's actual default branch, same as leaving
+	// GitRef empty on a normal deploy).
 	BuildStrategy string `json:"build_strategy"`
-	ImageRef      string `json:"image_ref"`
+	ImageRef      string `json:"image_ref,omitempty"`
+	GitURL        string `json:"git_url,omitempty"`
+	GitBranch     string `json:"git_branch,omitempty"`
 	InternalPort  int    `json:"internal_port"`
 	// ForceInternalOnly is true for anything speaking a raw TCP protocol
 	// (Postgres, MySQL, MongoDB, Redis) rather than HTTP: Caddy's routing
@@ -145,9 +166,10 @@ var generatedPlaceholderRe = regexp.MustCompile(`\{\{generated:([^}]+)\}\}`)
 // validate enforces the invariants InstallTemplate relies on: exactly one
 // deployment is the template's primary (SlugSuffix == ""), it's last (so
 // every dependency it might reference via {{alias:...}} or
-// {{generated:...}} has already been created and deployed), and every
-// {{generated:key}} placeholder points at a GenerateKey that actually
-// exists earlier in the list.
+// {{generated:...}} has already been created and deployed), every
+// deployment has a build source (ImageRef for "image", GitURL for
+// "dockerfile"), and every {{generated:key}} placeholder points at a
+// GenerateKey that actually exists earlier in the list.
 func validate(t Template) error {
 	if t.Key == "" {
 		return fmt.Errorf("missing key")
@@ -165,15 +187,39 @@ func validate(t Template) error {
 				return fmt.Errorf("template %q: primary deployment (slug_suffix \"\") must be last", t.Key)
 			}
 		}
-		if d.ImageRef == "" {
-			return fmt.Errorf("template %q deployment %d: missing image_ref", t.Key, i)
+		buildStrategy := d.BuildStrategy
+		if buildStrategy == "" {
+			buildStrategy = "image"
+		}
+		switch buildStrategy {
+		case "dockerfile":
+			if d.GitURL == "" {
+				return fmt.Errorf("template %q deployment %d: build_strategy \"dockerfile\" requires git_url", t.Key, i)
+			}
+		default:
+			if d.ImageRef == "" {
+				return fmt.Errorf("template %q deployment %d: missing image_ref", t.Key, i)
+			}
 		}
 		if d.MemoryLimitMB <= 0 {
 			return fmt.Errorf("template %q deployment %d: memory_limit_mb must be positive", t.Key, i)
 		}
 		for _, ev := range d.Env {
-			if ev.Generate != "" && ev.Value != "" {
-				return fmt.Errorf("template %q deployment %d: env %q sets both generate and value", t.Key, i, ev.Key)
+			set := 0
+			if ev.Generate != "" {
+				set++
+			}
+			if ev.Value != "" {
+				set++
+			}
+			if ev.Prompt {
+				set++
+			}
+			if set > 1 {
+				return fmt.Errorf("template %q deployment %d: env %q must set only one of generate, value, or prompt", t.Key, i, ev.Key)
+			}
+			if ev.Prompt {
+				continue // resolved from caller-supplied overrides at install time, not from the template
 			}
 			for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(ev.Value, -1) {
 				if !seenGenerateKeys[m[1]] {

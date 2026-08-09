@@ -31,8 +31,9 @@ Each entry in `deployments` describes one deployment to create:
 |---|---|---|
 | `slug_suffix` | yes | Appended to the user's chosen base slug. **Exactly one** deployment in the template must have `""` here (the primary), and it **must be listed last** -- see "Ordering" below. |
 | `name_suffix` | no | Appended to the deployment's display name (e.g. `" MySQL"`). |
-| `build_strategy` | yes | Almost always `"image"` (deploy a pre-built image, no build step) -- not hardcoded, so a future template could use another strategy. |
-| `image_ref` | yes | e.g. `"vaultwarden/server:latest"`. |
+| `build_strategy` | no | `"image"` (default, deploy a pre-built image, no build step) or `"dockerfile"` (build from `git_url` -- see below). |
+| `image_ref` | if `build_strategy` is `"image"` | e.g. `"vaultwarden/server:latest"`. |
+| `git_url` / `git_branch` | if `build_strategy` is `"dockerfile"` | Cloned the same way a hand-created git-backed deployment is built, with no auth token -- **only public repos work**. `git_branch` is optional; empty clones the repo's actual default branch. `Dockerfile` is expected at the repo root. |
 | `internal_port` | yes | Container's listening port. |
 | `force_internal_only` | no | Set for anything speaking raw TCP rather than HTTP (Postgres, MySQL, MongoDB, Redis) -- Caddy only reverse-proxies/file-serves HTTP, so there's no working way to expose these publicly through it. Still user-togglable after install via the normal access-control endpoint; this only sets the *default*. |
 | `memory_limit_mb` / `cpu_limit_cores` | yes | Same admission-control/cgroup limits a hand-created deployment would set. |
@@ -41,10 +42,10 @@ Each entry in `deployments` describes one deployment to create:
 | `volumes` | no | `[{ "name": "data", "mount_path": "/data" }]` -- named Docker volumes. |
 | `env` | no | See below. |
 
-### Env vars: literals, generated secrets, and cross-deployment references
+### Env vars: literals, generated secrets, prompted values, and cross-deployment references
 
-Each entry is `{ "key": ..., "value" | "generate", "generate_key", "secret" }`
--- **either `value` or `generate` is set, never both**:
+Each entry is `{ "key": ..., "value" | "generate" | "prompt", "generate_key", "secret", "label", "required" }`
+-- **exactly one of `value`, `generate`, or `prompt` is set**:
 
 - `"value"`: a literal string, which may contain placeholders resolved at
   install time and can appear inline within a larger string (e.g. a
@@ -61,8 +62,19 @@ Each entry is `{ "key": ..., "value" | "generate", "generate_key", "secret" }`
   value at install time, stored under `"generate_key"` so a *later*
   deployment in the same template can reference it via
   `{{generated:<generate_key>}}`.
+- `"prompt": true`: asks the installing user for this value in the install
+  form, instead of deriving it from the template -- for things a template
+  can't sensibly default (API tokens, webhook secrets). `"label"` is
+  optional UI copy; `"required": true` blocks install until a non-empty
+  value is supplied (checked upfront, before any rows are created, and
+  again in the orchestrator). The value never becomes part of the template
+  itself -- the caller passes it into `InstallTemplate` as `env_overrides`,
+  keyed by `slug_suffix` then env key (the same shape
+  `memory_overrides_mb` uses), and it's substituted in exactly like a
+  literal `value` would be.
 - `"secret": true`: stored encrypted, same as a manually-added secret env
-  var (see the multi-user doc for who can view/set these).
+  var (see the multi-user doc for who can view/set these) -- independent of
+  whether the value came from `value`, `generate`, or `prompt`.
 
 ### Ordering
 
@@ -74,8 +86,10 @@ install time) enforces:
    the **last** entry in the array.
 2. Every `{{generated:key}}` placeholder references a `generate_key` set
    by an *earlier* deployment in the same array.
-3. Every deployment has a non-empty `image_ref` and a positive
-   `memory_limit_mb`.
+3. Every deployment has a positive `memory_limit_mb`, and a build source:
+   `image_ref` for `build_strategy: "image"` (the default), `git_url` for
+   `build_strategy: "dockerfile"`.
+4. Every env var sets at most one of `value`, `generate`, `prompt`.
 
 The ordering rule exists because deployments install in array order, and
 a later deployment's env (like WordPress's `WORDPRESS_DB_HOST` referencing
