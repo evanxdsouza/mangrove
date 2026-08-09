@@ -78,6 +78,9 @@ func (s *Server) Router() http.Handler {
 				r.Get("/services", s.listServices)
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
+				r.Post("/redeploy", s.redeployDeployment)
+				r.Post("/stop", s.stopDeployment)
+				r.Post("/restart", s.restartDeployment)
 				r.Post("/repo", s.setDeploymentRepo)
 				r.With(auth.RequireOwner).Post("/access", s.setDeploymentAccess)
 			})
@@ -99,6 +102,7 @@ func (s *Server) Router() http.Handler {
 				r.Delete("/env/{key}", s.deleteEnvVar)
 				r.Get("/health", s.getServiceHealth)
 				r.Get("/logs/stream", s.streamServiceLogs)
+				r.Post("/exec", s.execServiceCommand)
 			})
 
 			r.Route("/admin", func(r chi.Router) {

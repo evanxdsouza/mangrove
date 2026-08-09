@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -279,6 +280,105 @@ func (s *Server) triggerRollback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": newHistoryID, "status": "success"})
 }
 
+func (s *Server) stopDeployment(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	if err := s.Orchestrator.StopDeployment(r.Context(), deploymentID); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) restartDeployment(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	if err := s.Orchestrator.RestartDeployment(r.Context(), deploymentID); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// redeployDeployment re-runs the full build+deploy pipeline for whatever
+// source a deployment is already configured with -- a fresh build from the
+// linked repo's current branch tip (for git-backed deployments) or the
+// same image ref (for the image strategy) -- as opposed to POST .../deploy,
+// which expects the caller (CLI, or the webhook handler) to already have
+// resolved and supplied git_url/auth_token itself.
+func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	dep, err := s.Store.GetDeployment(r.Context(), deploymentID)
+	if err == store.ErrNotFound {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	deployReq := orchestrator.DeployRequest{DeploymentID: deploymentID, TriggeredBy: "redeploy"}
+
+	if dep.ProjectRepoID != nil {
+		repo, err := s.Store.GetProjectRepoByID(r.Context(), *dep.ProjectRepoID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "load linked repo: "+err.Error())
+			return
+		}
+		ciphertext, nonce, err := s.Store.GetGithubPATEncrypted(r.Context(), repo.GithubPATID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "load repo credentials: "+err.Error())
+			return
+		}
+		token, err := s.Secrets.Open(patAAD(repo.GithubPATID), ciphertext, nonce)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "decrypt repo credentials: "+err.Error())
+			return
+		}
+		s.Store.TouchGithubPATUsed(r.Context(), repo.GithubPATID)
+
+		branch := dep.GitBranch
+		if branch == "" {
+			branch = repo.DefaultBranch
+		}
+		deployReq.GitURL = fmt.Sprintf("https://github.com/%s/%s.git", repo.RepoOwner, repo.RepoName)
+		deployReq.GitRef = branch
+		deployReq.AuthToken = string(token)
+	} else if dep.BuildStrategy != "image" {
+		writeError(w, http.StatusUnprocessableEntity, "deployment has no linked repository to redeploy from; link a repo first, or use POST .../deploy with explicit git parameters")
+		return
+	}
+
+	var historyID int64
+	switch dep.BuildStrategy {
+	case "compose":
+		historyID, err = s.Orchestrator.DeployCompose(r.Context(), deployReq)
+	case "static":
+		historyID, err = s.Orchestrator.DeployStatic(r.Context(), deployReq)
+	default:
+		historyID, err = s.Orchestrator.Deploy(r.Context(), deployReq)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"deploy_history_id": historyID,
+			"error":             err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "status": "success"})
+}
+
 func (s *Server) getService(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(chi.URLParam(r, "serviceID"))
 	if err != nil {
@@ -295,4 +395,39 @@ func (s *Server) getService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, svc)
+}
+
+type execCommandRequest struct {
+	// Command is exec-form (like Service.Command / RunSpec.Command): passed
+	// straight to `docker exec`, not through a shell, unless an entry
+	// itself invokes one (e.g. ["sh", "-c", "npm run migrate"]).
+	Command []string `json:"command"`
+}
+
+// execServiceCommand runs a one-off command in a service's running
+// container -- e.g. a database migration after a deploy. It is synchronous
+// and buffers output in memory, so it's a fit for short commands, not a
+// long-running or high-volume process.
+func (s *Server) execServiceCommand(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "serviceID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid service id")
+		return
+	}
+	var req execCommandRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if len(req.Command) == 0 {
+		writeError(w, http.StatusBadRequest, "command is required")
+		return
+	}
+
+	result, err := s.Orchestrator.RunServiceCommand(r.Context(), id, req.Command)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"output": result.Output, "exit_code": result.ExitCode})
 }
