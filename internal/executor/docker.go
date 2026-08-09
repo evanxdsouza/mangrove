@@ -201,6 +201,24 @@ func (e *DockerExecutor) inspectImageID(ctx context.Context, ref string) (string
 }
 
 func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
+	// Pull explicitly, before `docker run`, and only if the image isn't
+	// already local: when `docker run` has to pull an image itself, it
+	// interleaves multi-line pull-progress output with the single
+	// container-ID line the code below expects as the *entire* output,
+	// corrupting containerID into a useless blob (and, in turn, silently
+	// defeating the orphan-container cleanup on a later failure, since it
+	// tries to remove that blob instead of the real ID). Skipping the pull
+	// when already-local also matters for locally-built images
+	// (git/dockerfile/nixpacks strategies): those tags only ever exist on
+	// this host, never in any registry, so `docker pull` on them would
+	// just fail.
+	if err := exec.CommandContext(ctx, "docker", "image", "inspect", spec.ImageRef).Run(); err != nil {
+		out, pullErr := exec.CommandContext(ctx, "docker", "pull", spec.ImageRef).CombinedOutput()
+		if pullErr != nil {
+			return RunResult{}, fmt.Errorf("docker pull %s: %w: %s", spec.ImageRef, pullErr, bytes.TrimSpace(out))
+		}
+	}
+
 	args := []string{"run", "-d", "--name", spec.ContainerName, "--network", e.effectiveNetwork(spec)}
 	if spec.NetworkAlias != "" {
 		args = append(args, "--network-alias", spec.NetworkAlias)
@@ -237,7 +255,13 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 	if err != nil {
 		return RunResult{}, fmt.Errorf("docker run: %w: %s", err, out)
 	}
-	containerID := strings.TrimSpace(string(out))
+	// `docker run -d` prints the container ID as its own last line; take
+	// only that (not the whole trimmed output) as a safety net in case
+	// something -- an image already pulled above hitting a registry
+	// mirror notice, a Docker CLI deprecation warning, etc. -- still adds
+	// another line ahead of it.
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	containerID := strings.TrimSpace(lines[len(lines)-1])
 
 	addr := ""
 	if spec.InternalPort > 0 {

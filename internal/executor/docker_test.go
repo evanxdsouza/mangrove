@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,6 +89,55 @@ func TestDockerExecutorRunHealthCheckStopRemove(t *testing.T) {
 	}
 	if err := exec_.Remove(ctx, containerName); err != nil {
 		t.Fatalf("Remove: %v", err)
+	}
+}
+
+// TestDockerExecutorRunPullsMissingImage guards a real bug: when an image
+// isn't cached locally, `docker run` pulls it itself and interleaves
+// multi-line pull-progress output ahead of the final container-ID line on
+// its combined stdout/stderr. Run must pull explicitly first so its own
+// container-ID parsing never has to sort that noise out -- otherwise
+// containerID ends up as the whole blob, which then fails every
+// `docker inspect` call downstream (surfacing as "no such object").
+func TestDockerExecutorRunPullsMissingImage(t *testing.T) {
+	requireDocker(t)
+	ctx := context.Background()
+
+	exec_, err := NewDockerExecutor(ctx, "mangrove-test-net", t.TempDir())
+	if err != nil {
+		t.Fatalf("NewDockerExecutor: %v", err)
+	}
+
+	const image = "nginx:alpine"
+	// Force the image to be absent locally so Run has to pull it itself,
+	// reproducing the exact condition the bug depended on.
+	if exec.Command("docker", "image", "inspect", image).Run() == nil {
+		if out, err := exec.Command("docker", "rmi", image).CombinedOutput(); err != nil {
+			t.Skipf("could not remove %s to set up test: %v: %s", image, err, out)
+		}
+	}
+
+	containerName := "mangrove-test-pull-missing"
+	exec_.Remove(ctx, containerName)
+
+	result, err := exec_.Run(ctx, RunSpec{
+		ImageRef:      image,
+		ContainerName: containerName,
+		InternalPort:  80,
+		MemoryLimitMB: 128,
+		CPULimitCores: 0.5,
+		RestartPolicy: "no",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer exec_.Remove(ctx, containerName)
+
+	if strings.Contains(result.ContainerID, "\n") || len(result.ContainerID) < 12 {
+		t.Fatalf("expected a bare container ID, got %q", result.ContainerID)
+	}
+	if result.ContainerAddr == "" {
+		t.Fatal("expected non-empty container address")
 	}
 }
 
