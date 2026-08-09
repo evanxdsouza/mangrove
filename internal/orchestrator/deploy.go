@@ -61,7 +61,7 @@ func (o *Orchestrator) postCommitStatus(ctx context.Context, dep models.Deployme
 		o.Log.Warn("commit status: failed to load linked repo", "deployment_id", dep.ID, "error", err)
 		return
 	}
-	targetURL := fmt.Sprintf("https://%s.%s", dep.Slug, o.Config.BaseDomain)
+	targetURL := fmt.Sprintf("http://%s.%s", dep.Slug, o.Config.BaseDomain)
 	if err := o.GHStatus.PostStatus(ctx, req.AuthToken, repo.RepoOwner, repo.RepoName, req.CommitSHA, state, description, targetURL); err != nil {
 		o.Log.Warn("commit status: post failed", "deployment_id", dep.ID, "state", state, "error", err)
 	}
