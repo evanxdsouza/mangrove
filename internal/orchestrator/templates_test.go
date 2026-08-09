@@ -27,6 +27,16 @@ type fakeTemplateExecutor struct {
 	removedRefs    []string             // every container ref Remove() was called with
 	removedVolumes []string             // every volume name RemoveVolume() was called with
 	removedImages  []string             // every image tag RemoveImage() was called with
+	stoppedRefs    []string             // every container ref Stop() was called with
+	restartedRefs  []string             // every container ref Restart() was called with
+	execCalls      []execCall           // every (ref, cmd) Exec() was called with
+	execResult     executor.ExecResult  // scripted return value for every Exec() call
+	execErr        error                // scripted error for every Exec() call
+}
+
+type execCall struct {
+	ref string
+	cmd []string
 }
 
 func (f *fakeTemplateExecutor) Build(ctx context.Context, spec executor.BuildSpec, logs io.Writer) (executor.BuildResult, error) {
@@ -39,7 +49,16 @@ func (f *fakeTemplateExecutor) Run(ctx context.Context, spec executor.RunSpec) (
 	return executor.RunResult{ContainerID: "container-" + spec.ContainerName, ContainerAddr: "10.0.0.1:1234"}, nil
 }
 func (f *fakeTemplateExecutor) Stop(ctx context.Context, ref string, timeout time.Duration) error {
+	f.stoppedRefs = append(f.stoppedRefs, ref)
 	return nil
+}
+func (f *fakeTemplateExecutor) Restart(ctx context.Context, ref string, timeout time.Duration) error {
+	f.restartedRefs = append(f.restartedRefs, ref)
+	return nil
+}
+func (f *fakeTemplateExecutor) Exec(ctx context.Context, ref string, cmd []string) (executor.ExecResult, error) {
+	f.execCalls = append(f.execCalls, execCall{ref: ref, cmd: cmd})
+	return f.execResult, f.execErr
 }
 func (f *fakeTemplateExecutor) Remove(ctx context.Context, ref string) error {
 	f.removedRefs = append(f.removedRefs, ref)

@@ -57,8 +57,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err := conn2.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("expected 3 applied migrations, got %d", count)
+	if count != 4 {
+		t.Errorf("expected 4 applied migrations, got %d", count)
 	}
 }
 
@@ -106,5 +106,61 @@ func TestStaticStrategyMigrationPreservesExistingRows(t *testing.T) {
 	}
 	if _, err := conn.Exec(`INSERT INTO deploy_history_artifacts (deploy_history_id, service_id, image_tag, output_path) VALUES (1, 1, '', '/data/static/d-1')`); err != nil {
 		t.Errorf("insert deploy_history_artifacts with output_path: %v", err)
+	}
+}
+
+// TestRedeployTriggerMigrationPreservesExistingRows guards the 0004 rebuild
+// of deploy_history (needed to add 'redeploy' to triggered_by's CHECK
+// constraint): a pre-existing deploy_history row, its dependent
+// deploy_history_artifacts row, and its self-referencing
+// rollback_of_deploy_history_id must all survive the rebuild with foreign
+// keys intact, and the new 'redeploy' value must work afterward.
+func TestRedeployTriggerMigrationPreservesExistingRows(t *testing.T) {
+	dir := t.TempDir()
+	conn, err := Open(filepath.Join(dir, "mangrove.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Exec(`INSERT INTO projects (workspace_id, name, slug) VALUES (1, 'p', 'p')`); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deployments (project_id, name, slug, build_strategy) VALUES (1, 'd', 'd', 'dockerfile')`); err != nil {
+		t.Fatalf("insert deployment: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO services (deployment_id, name, container_name) VALUES (1, 'web', 'mangrove-d-web')`); err != nil {
+		t.Fatalf("insert service: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (1, 'manual', 'success')`); err != nil {
+		t.Fatalf("insert deploy_history: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deploy_history_artifacts (deploy_history_id, service_id, image_tag) VALUES (1, 1, 'img:1')`); err != nil {
+		t.Fatalf("insert deploy_history_artifacts: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status, rollback_of_deploy_history_id) VALUES (1, 'rollback', 'success', 1)`); err != nil {
+		t.Fatalf("insert rollback deploy_history: %v", err)
+	}
+
+	var artifactCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM deploy_history_artifacts WHERE deploy_history_id = 1`).Scan(&artifactCount); err != nil {
+		t.Fatalf("query deploy_history_artifacts: %v", err)
+	}
+	if artifactCount != 1 {
+		t.Fatalf("expected the pre-existing artifact row to survive the deploy_history rebuild, got %d rows", artifactCount)
+	}
+	var rollbackTarget int64
+	if err := conn.QueryRow(`SELECT rollback_of_deploy_history_id FROM deploy_history WHERE id = 2`).Scan(&rollbackTarget); err != nil {
+		t.Fatalf("query rollback_of_deploy_history_id: %v", err)
+	}
+	if rollbackTarget != 1 {
+		t.Errorf("expected the self-referencing FK to survive the rebuild, got %d", rollbackTarget)
+	}
+
+	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (1, 'redeploy', 'success')`); err != nil {
+		t.Errorf("insert deploy_history with triggered_by='redeploy': %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (1, 'not-a-real-trigger', 'success')`); err == nil {
+		t.Error("expected CHECK constraint to still reject an invalid triggered_by after the rebuild")
 	}
 }

@@ -96,6 +96,43 @@ like WordPress+MySQL) go through `DeployCompose`
 (`internal/orchestrator/compose_deploy.go`) instead, which is compose-native
 rather than doing a per-service blue/green swap.
 
+## Lifecycle actions short of a full deploy
+
+`internal/orchestrator/lifecycle.go` covers three actions that operate on a
+deployment's already-running container(s) instead of building anything:
+
+- **Stop** (`POST /api/deployments/{id}/stop`) runs `docker stop` on every
+  service's current container -- it is not removed, so a later Restart is
+  fast -- deletes its Caddy route (if any), and marks the deployment
+  `stopped`. That status matters beyond display: `Store.SumConfiguredMemoryMB`
+  excludes stopped deployments from the admission-control sum `Deploy`
+  checks against `MANGROVE_DEPLOYMENT_MEMORY_CEILING_MB`, so stopping an
+  idle deployment actually frees budget for others.
+- **Restart** (`POST /api/deployments/{id}/restart`) runs `docker restart`
+  on the same container ID (also how a stopped deployment is started back
+  up -- `docker restart` on an exited container just starts it), then
+  re-pushes the Caddy route the same way `SetAccessControl` does after an
+  access-control change: re-resolve the container's internal address via
+  `Exec.ContainerAddr` and `PutRoute` again, since a restart can hand the
+  container a new internal IP even though its ID is unchanged. Unlike
+  `Deploy`, this isn't health-check-gated -- it's a direct cycle of the one
+  container that's there, not a blue/green swap between two.
+- **Redeploy** (`POST /api/deployments/{id}/redeploy`) re-runs the full
+  `Deploy`/`DeployCompose`/`DeployStatic` pipeline against whatever source
+  the deployment is already configured with, resolving `git_url` and a
+  decrypted PAT from its linked `project_repos` row exactly like a webhook
+  push does (`internal/api/webhook.go`'s `handlePushEvent`) rather than
+  requiring the caller to supply them, which plain `POST .../deploy` still
+  does. An image-strategy deployment needs no repo at all; any other
+  strategy without a linked repo is rejected with a 422 rather than
+  attempting a `git clone ""`.
+
+A one-off command against a service's running container (e.g. a database
+migration) is `POST /api/services/{id}/exec`, executed via
+`executor.Executor.Exec` (`docker exec`). It runs synchronously and buffers
+output in memory -- a fit for a short migration command, not a long-running
+or high-volume process.
+
 ## Access control at the proxy layer
 
 A public deployment's optional password protection

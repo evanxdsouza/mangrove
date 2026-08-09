@@ -6,6 +6,7 @@ import { DeployTimeline } from "../components/DeployTimeline";
 import { LogViewer } from "../components/LogViewer";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { RunCommandCard } from "../components/RunCommandCard";
 import { useIsOwner } from "../userContext";
 
 type Tab = "overview" | "history" | "logs" | "env";
@@ -18,6 +19,9 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [deploying, setDeploying] = useState(false);
+  const [redeploying, setRedeploying] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [rollbackBusyId, setRollbackBusyId] = useState<number | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [showDelete, setShowDelete] = useState(false);
@@ -49,6 +53,45 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       setError(errMsg(e));
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const redeploy = async () => {
+    setRedeploying(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/redeploy`, {});
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRedeploying(false);
+    }
+  };
+
+  const stop = async () => {
+    setStopping(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/stop`, {});
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  const restart = async () => {
+    setRestarting(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/restart`, {});
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -84,6 +127,32 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
             {deploying ? "Deploying..." : "Deploy"}
           </button>
+          <button
+            className="btn"
+            onClick={redeploy}
+            disabled={redeploying}
+            title="Rebuild and redeploy from the currently configured source (linked repo branch, or image ref)"
+          >
+            {redeploying ? "Redeploying..." : "Redeploy"}
+          </button>
+          {deployment?.build_strategy !== "static" && (
+            <>
+              {deployment?.status === "stopped" ? (
+                <button className="btn" onClick={restart} disabled={restarting}>
+                  {restarting ? "Starting..." : "Start"}
+                </button>
+              ) : (
+                <>
+                  <button className="btn" onClick={restart} disabled={restarting}>
+                    {restarting ? "Restarting..." : "Restart"}
+                  </button>
+                  <button className="btn" onClick={stop} disabled={stopping}>
+                    {stopping ? "Stopping..." : "Stop"}
+                  </button>
+                </>
+              )}
+            </>
+          )}
           {isOwner && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
               Delete deployment
@@ -359,11 +428,17 @@ function OverviewTab({ services, isStatic }: { services: Service[]; isStatic: bo
     return <div className="card empty-state">No services yet.</div>;
   }
   return (
-    <div className="grid grid-2">
-      {services.map((s) => (
-        <ServiceCard key={s.id} service={s} isStatic={isStatic} />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-2">
+        {services.map((s) => (
+          <ServiceCard key={s.id} service={s} isStatic={isStatic} />
+        ))}
+      </div>
+      {!isStatic &&
+        services.map((s) => (
+          <RunCommandCard key={s.id} serviceId={s.id} serviceName={s.name} showServiceName={services.length > 1} />
+        ))}
+    </>
   );
 }
 

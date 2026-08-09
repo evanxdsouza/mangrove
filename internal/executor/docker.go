@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -354,12 +355,43 @@ func (e *DockerExecutor) Stop(ctx context.Context, containerRef string, timeout 
 	return nil
 }
 
+// Restart stops and starts a container in place -- including one already
+// stopped, since `docker restart` on an exited container just starts it.
+func (e *DockerExecutor) Restart(ctx context.Context, containerRef string, timeout time.Duration) error {
+	secs := int(timeout.Seconds())
+	if secs <= 0 {
+		secs = 10
+	}
+	out, err := exec.CommandContext(ctx, "docker", "restart", "-t", strconv.Itoa(secs), containerRef).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker restart: %w: %s", err, out)
+	}
+	return nil
+}
+
 func (e *DockerExecutor) Remove(ctx context.Context, containerRef string) error {
 	out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerRef).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker rm: %w: %s", err, out)
 	}
 	return nil
+}
+
+// Exec runs cmd inside containerRef via `docker exec`. A non-zero exit
+// status is surfaced through ExecResult, not as a Go error -- only a
+// failure to invoke `docker exec` at all (container gone, daemon
+// unreachable, etc) is returned as an error.
+func (e *DockerExecutor) Exec(ctx context.Context, containerRef string, cmd []string) (ExecResult, error) {
+	args := append([]string{"exec", containerRef}, cmd...)
+	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return ExecResult{Output: string(out), ExitCode: exitErr.ExitCode()}, nil
+		}
+		return ExecResult{}, fmt.Errorf("docker exec: %w: %s", err, out)
+	}
+	return ExecResult{Output: string(out), ExitCode: 0}, nil
 }
 
 func (e *DockerExecutor) HealthCheck(ctx context.Context, containerRef string, cfg HealthCheckSpec) (HealthStatus, error) {

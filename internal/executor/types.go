@@ -19,7 +19,21 @@ type Executor interface {
 	// Run starts a new container from an already-built image.
 	Run(ctx context.Context, spec RunSpec) (RunResult, error)
 	Stop(ctx context.Context, containerRef string, timeout time.Duration) error
+	// Restart stops and starts an already-created container in place (same
+	// container ID, same volumes) -- unlike the blue/green swap Deploy()
+	// performs, this reuses the existing container rather than creating a
+	// new one from a (possibly rebuilt) image. Also the way to start a
+	// container previously stopped via Stop: `docker restart` on an
+	// exited container starts it.
+	Restart(ctx context.Context, containerRef string, timeout time.Duration) error
 	Remove(ctx context.Context, containerRef string) error
+	// Exec runs a one-off command inside an already-running container (e.g.
+	// a database migration) and returns its combined output and exit code.
+	// A non-zero exit is reported via ExecResult.ExitCode, not as a Go
+	// error -- the command ran, it just failed; a returned error means the
+	// command could not be run at all (container gone, docker exec itself
+	// failed to start, etc).
+	Exec(ctx context.Context, containerRef string, cmd []string) (ExecResult, error)
 	// HealthCheck performs a single HTTP probe against the container.
 	HealthCheck(ctx context.Context, containerRef string, cfg HealthCheckSpec) (HealthStatus, error)
 	Logs(ctx context.Context, containerRef string, opts LogOptions) (io.ReadCloser, error)
@@ -152,6 +166,12 @@ type HealthStatus struct {
 	StatusCode     int
 	ResponseTimeMS int64
 	Error          string
+}
+
+// ExecResult is the outcome of a one-off command run via Executor.Exec.
+type ExecResult struct {
+	Output   string // combined stdout+stderr
+	ExitCode int
 }
 
 type LogOptions struct {
