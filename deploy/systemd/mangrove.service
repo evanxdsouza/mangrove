@@ -44,6 +44,17 @@ Environment=HOME=/var/lib/mangrove
 EnvironmentFile=-/etc/mangrove/mangrove.env
 Environment=MANGROVE_STATIC_SITES_DIR=/var/lib/mangrove-static
 
+# mangrove.slice's MemoryHigh=512M (see mangrove.slice) is a *soft* ceiling
+# shared with caddy.service -- without a GOMEMLIMIT, the Go runtime paces
+# GC off GOGC alone and won't know that ceiling exists, so heap growth can
+# push the whole slice into cgroup memory throttling before Go's own GC
+# would otherwise trigger. 320MiB leaves headroom under 512M for Caddy and
+# OS/runtime overhead while giving the garbage collector a target to GC
+# ahead of. GOGC is left at its default (100) deliberately: GOMEMLIMIT is a
+# backstop, not the primary pacing knob, so normal collections stay
+# CPU-cheap and only tighten under real memory pressure.
+Environment=GOMEMLIMIT=320MiB
+
 User=mangrove
 Group=mangrove
 # The mangrove user must be in the `docker` group to reach the daemon

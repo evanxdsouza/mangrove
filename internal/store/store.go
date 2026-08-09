@@ -175,24 +175,31 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 	return s.GetDeployment(ctx, id)
 }
 
-func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment, error) {
+// deploymentColumns is shared by every query that scans a full
+// models.Deployment row (GetDeployment, ListDeployments,
+// ListAllDeployments), so the column list and scanDeploymentRow stay in
+// lockstep with each other by construction.
+const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
+	       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
+	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
+	       auto_deploy_on_push, is_public, password_protected, image_retention_count, status, node_id,
+	       created_at, updated_at, last_deployed_at`
+
+// rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
+// scanDeploymentRow serve single-row lookups and multi-row list queries
+// with one scan implementation.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var d models.Deployment
-	var projectRepoID, lastDeployedAt sql.NullInt64
+	var projectRepoID sql.NullInt64
 	var lastDeployedAtT sql.NullTime
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
-		       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
-		       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
-		       auto_deploy_on_push, is_public, password_protected, image_retention_count, status, node_id,
-		       created_at, updated_at, last_deployed_at
-		FROM deployments WHERE id = ?`, id,
-	).Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
+	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Status, &d.NodeID,
 		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
-	if err == sql.ErrNoRows {
-		return models.Deployment{}, ErrNotFound
-	}
 	if err != nil {
 		return models.Deployment{}, err
 	}
@@ -203,35 +210,37 @@ func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment,
 		t := lastDeployedAtT.Time
 		d.LastDeployedAt = &t
 	}
-	_ = lastDeployedAt
+	return d, nil
+}
+
+func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment, error) {
+	row := s.DB.QueryRowContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE id = ?`, id)
+	d, err := scanDeploymentRow(row)
+	if err == sql.ErrNoRows {
+		return models.Deployment{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Deployment{}, err
+	}
 	return d, nil
 }
 
 func (s *Store) ListDeployments(ctx context.Context, projectID int64) ([]models.Deployment, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM deployments WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE project_id = ? ORDER BY created_at DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
+	defer rows.Close()
 
-	out := make([]models.Deployment, 0, len(ids))
-	for _, id := range ids {
-		d, err := s.GetDeployment(ctx, id)
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, d)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // DeleteDeployment removes a single deployment and everything that hangs
@@ -303,30 +312,21 @@ func (s *Store) DeleteDeployment(ctx context.Context, id int64) error {
 // used by the pruning scheduler, which sweeps the whole host rather than
 // one project at a time.
 func (s *Store) ListAllDeployments(ctx context.Context) ([]models.Deployment, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM deployments ORDER BY id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
+	defer rows.Close()
 
-	out := make([]models.Deployment, 0, len(ids))
-	for _, id := range ids {
-		d, err := s.GetDeployment(ctx, id)
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, d)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *Store) UpdateDeploymentStatus(ctx context.Context, id int64, status string) error {
