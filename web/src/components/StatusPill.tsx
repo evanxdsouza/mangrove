@@ -1,4 +1,4 @@
-const STATUS_COLORS: Record<string, "green" | "red" | "yellow" | "gray"> = {
+export const STATUS_COLORS: Record<string, "green" | "red" | "yellow" | "gray"> = {
   running: "green",
   success: "green",
   healthy: "green",

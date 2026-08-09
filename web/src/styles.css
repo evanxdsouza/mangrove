@@ -153,6 +153,27 @@ button, input, select {
   color: var(--text-faint);
 }
 
+.mode-toggle {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 2px;
+}
+.mode-toggle-option {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+.mode-toggle-option.active { background: var(--accent-dim); color: #cfe0ff; }
+
 .main {
   flex: 1;
   min-width: 0;

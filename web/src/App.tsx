@@ -7,7 +7,10 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
+import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
+import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
 import { UserProvider } from "./userContext";
+import { UiModeProvider, useUiMode } from "./uiMode";
 
 type AuthState =
   | { kind: "loading" }
@@ -47,24 +50,36 @@ function useAuthState() {
 
 function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
   const { path } = useRouter();
+  const { mode } = useUiMode();
 
   let body: ReactElement;
   let projectParams = matchPath("/projects/:projectId", path);
   let deploymentParams = matchPath("/projects/:projectId/deployments/:deploymentId", path);
 
   if (deploymentParams) {
-    body = (
-      <DeploymentDetailPage
-        projectId={Number(deploymentParams.projectId)}
-        deploymentId={Number(deploymentParams.deploymentId)}
-      />
-    );
+    const projectId = Number(deploymentParams.projectId);
+    const deploymentId = Number(deploymentParams.deploymentId);
+    body =
+      mode === "simple" ? (
+        <SimpleAppDetailPage deploymentId={deploymentId} />
+      ) : (
+        <DeploymentDetailPage projectId={projectId} deploymentId={deploymentId} />
+      );
   } else if (projectParams) {
-    body = <ProjectDetailPage projectId={Number(projectParams.projectId)} />;
+    // Simple mode has no notion of a "project" grouping page -- an app is
+    // a deployment, reached straight from the apps list. A stray link
+    // into a bare project page (e.g. an old bookmark) just bounces to
+    // the apps list rather than rendering a page simple mode has no
+    // equivalent for.
+    body = mode === "simple" ? <SimpleAppsPage /> : <ProjectDetailPage projectId={Number(projectParams.projectId)} />;
   } else if (path === "/admin") {
+    // Admin stays technical-only regardless of mode (see Layout, which
+    // already hides its nav entry point in simple mode) -- someone who
+    // navigates here directly still gets the real admin page rather than
+    // a dead end.
     body = <AdminPage />;
   } else {
-    body = <ProjectsPage />;
+    body = mode === "simple" ? <SimpleAppsPage /> : <ProjectsPage />;
   }
 
   return (
@@ -106,7 +121,9 @@ function AppInner() {
 export default function App() {
   return (
     <Router>
-      <AppInner />
+      <UiModeProvider>
+        <AppInner />
+      </UiModeProvider>
     </Router>
   );
 }
