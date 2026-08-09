@@ -43,6 +43,9 @@ func TestDeleteDeploymentTearsDownAndCascades(t *testing.T) {
 	if len(fake.removedVolumes) != 1 || fake.removedVolumes[0] != vols[0].DockerVolumeName {
 		t.Errorf("expected volume %q removed, got %v", vols[0].DockerVolumeName, fake.removedVolumes)
 	}
+	if len(fake.removedImages) != 1 || fake.removedImages[0] != svc.ImageTagCurrent {
+		t.Errorf("expected image %q removed, got %v", svc.ImageTagCurrent, fake.removedImages)
+	}
 
 	if _, err := st.GetDeployment(ctx, depID); err != store.ErrNotFound {
 		t.Errorf("expected deployment row gone, got err=%v", err)

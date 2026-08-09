@@ -25,6 +25,7 @@ type fakeTemplateExecutor struct {
 	runSpecs       []executor.RunSpec // every RunSpec Run() was called with, in order -- so tests can assert on what actually would have hit `docker run`, not just that Deploy() returned success
 	removedRefs    []string           // every container ref Remove() was called with
 	removedVolumes []string           // every volume name RemoveVolume() was called with
+	removedImages  []string           // every image tag RemoveImage() was called with
 }
 
 func (f *fakeTemplateExecutor) Build(ctx context.Context, spec executor.BuildSpec, logs io.Writer) (executor.BuildResult, error) {
@@ -56,6 +57,10 @@ func (f *fakeTemplateExecutor) Prune(ctx context.Context, opts executor.PruneOpt
 }
 func (f *fakeTemplateExecutor) RemoveVolume(ctx context.Context, name string) error {
 	f.removedVolumes = append(f.removedVolumes, name)
+	return nil
+}
+func (f *fakeTemplateExecutor) RemoveImage(ctx context.Context, ref string) error {
+	f.removedImages = append(f.removedImages, ref)
 	return nil
 }
 func (f *fakeTemplateExecutor) ContainerAddr(ctx context.Context, ref string, port int) (string, error) {

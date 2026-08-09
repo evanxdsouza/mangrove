@@ -452,6 +452,16 @@ func (e *DockerExecutor) RemoveVolume(ctx context.Context, name string) error {
 	return nil
 }
 
+// RemoveImage deletes a specific tagged image. Not an error if it's already
+// gone -- "-f" no-ops rather than failing on a missing image.
+func (e *DockerExecutor) RemoveImage(ctx context.Context, ref string) error {
+	out, err := exec.CommandContext(ctx, "docker", "rmi", "-f", ref).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker rmi: %w: %s", err, out)
+	}
+	return nil
+}
+
 func (e *DockerExecutor) Prune(ctx context.Context, opts PruneOptions) (PruneResult, error) {
 	args := []string{"image", "prune", "-f"}
 	for _, tag := range opts.KeepImageTags {

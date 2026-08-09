@@ -27,6 +27,14 @@ type Executor interface {
 	// Prune removes dangling images/build cache, keeping anything whose tag
 	// is listed in opts.KeepImageTags regardless of age.
 	Prune(ctx context.Context, opts PruneOptions) (PruneResult, error)
+	// RemoveImage deletes a specific tagged image outright, unlike Prune
+	// (which only ever sweeps dangling/untagged layers). Used when tearing
+	// down a service/deployment/project, where every image tag it ever
+	// built must go, not just the ones that happen to be dangling.
+	// Best-effort by convention -- callers log rather than fail a delete
+	// over it, since an image already gone shouldn't block the rest of a
+	// teardown.
+	RemoveImage(ctx context.Context, ref string) error
 	// RemoveVolume deletes a named Docker volume. Best-effort by
 	// convention -- callers log rather than fail a delete over it, since a
 	// volume already gone (or still referenced by something outside

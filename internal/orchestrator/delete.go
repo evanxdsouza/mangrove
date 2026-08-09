@@ -88,18 +88,25 @@ func (o *Orchestrator) teardownServices(ctx context.Context, logPrefix string, s
 
 		// Same reasoning for a static deployment's output directories --
 		// they live on disk under StaticSitesDir independent of any
-		// container and would otherwise be orphaned.
+		// container and would otherwise be orphaned. Same for every image
+		// this service ever built: once its service/deployment/project row
+		// is gone, the scheduled Pruner has no service to walk anymore and
+		// can never reclaim them, so they'd sit on disk forever otherwise.
 		artifacts, err := o.Store.ListArtifactsForService(ctx, svc.ID)
 		if err != nil {
 			o.Log.Warn(logPrefix+": list artifacts failed", "service_id", svc.ID, "error", err)
 			continue
 		}
 		for _, a := range artifacts {
-			if a.OutputPath == "" {
-				continue
+			if a.OutputPath != "" {
+				if err := os.RemoveAll(a.OutputPath); err != nil {
+					o.Log.Warn(logPrefix+": remove static output failed", "service_id", svc.ID, "path", a.OutputPath, "error", err)
+				}
 			}
-			if err := os.RemoveAll(a.OutputPath); err != nil {
-				o.Log.Warn(logPrefix+": remove static output failed", "service_id", svc.ID, "path", a.OutputPath, "error", err)
+			if a.ImageTag != "" {
+				if err := o.Exec.RemoveImage(ctx, a.ImageTag); err != nil {
+					o.Log.Warn(logPrefix+": remove image failed", "service_id", svc.ID, "image_tag", a.ImageTag, "error", err)
+				}
 			}
 		}
 	}
