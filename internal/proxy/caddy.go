@@ -132,6 +132,18 @@ func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, op
 	handlers = append(handlers, map[string]any{
 		"handler":   "reverse_proxy",
 		"upstreams": []map[string]any{{"dial": upstreamAddr}},
+		// Nest's edge terminates HTTPS for visitors but forwards plain HTTP
+		// to this box with no indication of the original scheme. Without
+		// this, backend apps (Ghost, WordPress, etc.) assume HTTP and can
+		// misbuild absolute URLs or, worse, redirect-loop enforcing HTTPS
+		// against a connection that's actually HTTP.
+		"headers": map[string]any{
+			"request": map[string]any{
+				"set": map[string][]string{
+					"X-Forwarded-Proto": {"https"},
+				},
+			},
+		},
 	})
 
 	server := map[string]any{

@@ -17,7 +17,7 @@
       ],
       "env": [
         { "key": "NODE_ENV", "value": "production" },
-        { "key": "url", "value": "http://{{slug}}.{{base_domain}}" },
+        { "key": "url", "value": "https://{{slug}}.{{base_domain}}" },
         { "key": "database__client", "value": "sqlite3" },
         { "key": "database__connection__filename", "value": "/var/lib/ghost/content/data/ghost.db" }
       ]

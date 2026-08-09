@@ -82,6 +82,7 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 			return fmt.Errorf("allocate port: %w", err)
 		}
 		hostPort = &p
+		o.notifyAccessChanged(ctx, dep, *hostPort)
 	}
 
 	addr, err := o.Exec.ContainerAddr(ctx, svc.ContainerIDCurrent, svc.InternalPort)
