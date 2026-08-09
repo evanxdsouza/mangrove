@@ -8,13 +8,22 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/templates"
 )
 
+type templatePromptedEnvVar struct {
+	Key      string `json:"key"`
+	Label    string `json:"label,omitempty"`
+	Required bool   `json:"required,omitempty"`
+}
+
 type templateDeploymentSummary struct {
-	SlugSuffix        string  `json:"slug_suffix"`
-	NameSuffix        string  `json:"name_suffix"`
-	ImageRef          string  `json:"image_ref"`
-	MemoryLimitMB     int     `json:"memory_limit_mb"`
-	CPULimitCores     float64 `json:"cpu_limit_cores"`
-	ForceInternalOnly bool    `json:"force_internal_only"`
+	SlugSuffix        string                   `json:"slug_suffix"`
+	NameSuffix        string                   `json:"name_suffix"`
+	BuildStrategy     string                   `json:"build_strategy"`
+	ImageRef          string                   `json:"image_ref,omitempty"`
+	GitURL            string                   `json:"git_url,omitempty"`
+	MemoryLimitMB     int                      `json:"memory_limit_mb"`
+	CPULimitCores     float64                  `json:"cpu_limit_cores"`
+	ForceInternalOnly bool                     `json:"force_internal_only"`
+	PromptedEnv       []templatePromptedEnvVar `json:"prompted_env,omitempty"`
 }
 
 type templateSummary struct {
@@ -35,13 +44,26 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
 	for _, t := range all {
 		deps := make([]templateDeploymentSummary, 0, len(t.Deployments))
 		for _, d := range t.Deployments {
+			buildStrategy := d.BuildStrategy
+			if buildStrategy == "" {
+				buildStrategy = "image"
+			}
+			var prompted []templatePromptedEnvVar
+			for _, ev := range d.Env {
+				if ev.Prompt {
+					prompted = append(prompted, templatePromptedEnvVar{Key: ev.Key, Label: ev.Label, Required: ev.Required})
+				}
+			}
 			deps = append(deps, templateDeploymentSummary{
 				SlugSuffix:        d.SlugSuffix,
 				NameSuffix:        d.NameSuffix,
+				BuildStrategy:     buildStrategy,
 				ImageRef:          d.ImageRef,
+				GitURL:            d.GitURL,
 				MemoryLimitMB:     d.MemoryLimitMB,
 				CPULimitCores:     d.CPULimitCores,
 				ForceInternalOnly: d.ForceInternalOnly,
+				PromptedEnv:       prompted,
 			})
 		}
 		out = append(out, templateSummary{
@@ -53,8 +75,9 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
 }
 
 type installTemplateRequest struct {
-	Slug              string         `json:"slug"`
-	MemoryOverridesMB map[string]int `json:"memory_overrides_mb,omitempty"`
+	Slug              string                       `json:"slug"`
+	MemoryOverridesMB map[string]int               `json:"memory_overrides_mb,omitempty"`
+	EnvOverrides      map[string]map[string]string `json:"env_overrides,omitempty"` // slug_suffix -> env key -> value, for the template's prompted env vars
 }
 
 // installTemplate expands a template into real deployment/service/volume/
@@ -86,7 +109,7 @@ func (s *Server) installTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.Orchestrator.InstallTemplate(r.Context(), projectID, templateKey, req.Slug, req.MemoryOverridesMB)
+	result, err := s.Orchestrator.InstallTemplate(r.Context(), projectID, templateKey, req.Slug, req.MemoryOverridesMB, req.EnvOverrides)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"result": result,

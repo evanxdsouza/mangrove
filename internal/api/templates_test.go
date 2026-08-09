@@ -39,7 +39,7 @@ func withURLParams(r *http.Request, params map[string]string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestListTemplatesReturnsAllTenBuiltIns(t *testing.T) {
+func TestListTemplatesReturnsAllBuiltIns(t *testing.T) {
 	env := newAPITestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/templates", nil)
@@ -53,8 +53,8 @@ func TestListTemplatesReturnsAllTenBuiltIns(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(out) != 10 {
-		t.Fatalf("expected 10 templates, got %d", len(out))
+	if len(out) != 11 {
+		t.Fatalf("expected 11 templates, got %d", len(out))
 	}
 	for _, tpl := range out {
 		if tpl.TotalMemoryMB <= 0 {
@@ -63,6 +63,59 @@ func TestListTemplatesReturnsAllTenBuiltIns(t *testing.T) {
 		if len(tpl.Deployments) == 0 {
 			t.Errorf("template %q: expected at least 1 deployment summary", tpl.Key)
 		}
+	}
+}
+
+// TestListTemplatesExposesPromptedEnvVars asserts that nephthys's required
+// Slack/AI env vars come through in the gallery response -- this is what
+// the install form reads to know which inputs to render before allowing
+// submit (see TemplateGalleryModal.tsx's InstallTemplateForm).
+func TestListTemplatesExposesPromptedEnvVars(t *testing.T) {
+	env := newAPITestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/templates", nil)
+	rec := httptest.NewRecorder()
+	env.server.listTemplates(rec, req)
+
+	var out []templateSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var nephthys *templateSummary
+	for i := range out {
+		if out[i].Key == "nephthys" {
+			nephthys = &out[i]
+		}
+	}
+	if nephthys == nil {
+		t.Fatal("expected a nephthys template in the response")
+	}
+	var primary *templateDeploymentSummary
+	for i := range nephthys.Deployments {
+		if nephthys.Deployments[i].SlugSuffix == "" {
+			primary = &nephthys.Deployments[i]
+		}
+	}
+	if primary == nil {
+		t.Fatal("expected nephthys to have a primary deployment")
+	}
+	if primary.BuildStrategy != "dockerfile" || primary.GitURL == "" {
+		t.Errorf("expected nephthys primary deployment to be a dockerfile build with a git_url, got strategy=%q git_url=%q", primary.BuildStrategy, primary.GitURL)
+	}
+	if len(primary.PromptedEnv) == 0 {
+		t.Fatal("expected nephthys primary deployment to expose prompted env vars")
+	}
+	foundRequired := false
+	for _, ev := range primary.PromptedEnv {
+		if ev.Key == "SLACK_BOT_TOKEN" {
+			foundRequired = true
+			if !ev.Required {
+				t.Error("expected SLACK_BOT_TOKEN to be required")
+			}
+		}
+	}
+	if !foundRequired {
+		t.Error("expected SLACK_BOT_TOKEN in prompted_env")
 	}
 }
 

@@ -49,20 +49,38 @@ var (
 // control, port registry, and volume wiring as any other deployment. A
 // linked dependency (e.g. WordPress's MySQL) is created and deployed
 // first, so its stable network alias and any generated credentials it
-// produced exist before the deployment that references them is created.
+// produced exist before the deployment that references them is created. A
+// "dockerfile"-strategy deployment builds from its GitURL/GitBranch the
+// same way a hand-created git-backed deployment does, with no AuthToken --
+// only public repos are reachable this way.
+//
+// envOverrides supplies values for the template's Prompt env vars, keyed by
+// slug_suffix then env key (the same shape memoryOverridesMB uses for
+// per-deployment memory) -- these come from the caller (the install form)
+// and are substituted in at install time, never stored as part of the
+// template itself. Every Required prompt var across the whole template
+// must have a non-empty override before anything is created, so a missing
+// value fails fast rather than leaving a half-installed template behind.
 //
 // If a deployment's rows fail to create, installation stops immediately
 // (nothing useful can follow). If a deployment's rows are created but its
 // Deploy() call fails, installation also stops there -- deployments
 // created and deployed so far are left running (not rolled back), and the
 // failure is reported in the result for whichever deployment hit it.
-func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, templateKey, baseSlug string, memoryOverridesMB map[string]int) (TemplateInstallResult, error) {
+func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, templateKey, baseSlug string, memoryOverridesMB map[string]int, envOverrides map[string]map[string]string) (TemplateInstallResult, error) {
 	tpl, ok := templates.Get(templateKey)
 	if !ok {
 		return TemplateInstallResult{}, fmt.Errorf("unknown template %q", templateKey)
 	}
 	if baseSlug == "" {
 		return TemplateInstallResult{}, fmt.Errorf("slug is required")
+	}
+	for _, d := range tpl.Deployments {
+		for _, ev := range d.Env {
+			if ev.Prompt && ev.Required && envOverrides[d.SlugSuffix][ev.Key] == "" {
+				return TemplateInstallResult{}, fmt.Errorf("missing required value for %s", ev.Key)
+			}
+		}
 	}
 
 	result := TemplateInstallResult{TemplateKey: templateKey, Credentials: map[string]string{}}
@@ -83,6 +101,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 			Name:          name,
 			Slug:          slug,
 			BuildStrategy: buildStrategy,
+			GitBranch:     d.GitBranch,
 			ImageRef:      d.ImageRef,
 			RootPath:      ".",
 		})
@@ -128,7 +147,12 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 
 		for _, ev := range d.Env {
 			var value string
-			if ev.Generate != "" {
+			switch {
+			case ev.Prompt:
+				// Required-and-missing already failed fast above; an
+				// optional prompt var with no override installs as empty.
+				value = envOverrides[d.SlugSuffix][ev.Key]
+			case ev.Generate != "":
 				value, err = generateValue(ev.Generate)
 				if err != nil {
 					return result, fmt.Errorf("generate value for %s on %q: %w", ev.Key, slug, err)
@@ -137,7 +161,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 					generatedValues[ev.GenerateKey] = value
 				}
 				result.Credentials[fmt.Sprintf("%s: %s", name, ev.Key)] = value
-			} else {
+			default:
 				value, err = resolvePlaceholders(ev.Value, slug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
 				if err != nil {
 					return result, fmt.Errorf("resolve value for %s on %q: %w", ev.Key, slug, err)
@@ -162,8 +186,16 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 
 		aliasBySuffix[d.SlugSuffix] = containerName
 
+		deployReq := DeployRequest{DeploymentID: dep.ID, TriggeredBy: "api"}
+		if buildStrategy != "image" {
+			// No AuthToken: template repos are built as unauthenticated
+			// public clones (see Deployment's doc comment).
+			deployReq.GitURL = d.GitURL
+			deployReq.GitRef = d.GitBranch
+		}
+
 		installed := InstalledDeployment{DeploymentID: dep.ID, Slug: slug, Name: name}
-		if _, deployErr := o.Deploy(ctx, DeployRequest{DeploymentID: dep.ID, TriggeredBy: "api"}); deployErr != nil {
+		if _, deployErr := o.Deploy(ctx, deployReq); deployErr != nil {
 			installed.DeployError = deployErr.Error()
 			result.Deployments = append(result.Deployments, installed)
 			return result, fmt.Errorf("deploy %q: %w", slug, deployErr)

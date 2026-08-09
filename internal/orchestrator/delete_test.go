@@ -16,7 +16,7 @@ func TestDeleteDeploymentTearsDownAndCascades(t *testing.T) {
 	o, st, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	result, err := o.InstallTemplate(ctx, projectID, "postgres", "mydb", nil)
+	result, err := o.InstallTemplate(ctx, projectID, "postgres", "mydb", nil, nil)
 	if err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestDeleteDeploymentLeavesSiblingDeploymentsIntact(t *testing.T) {
 	o, st, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil)
+	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil, nil)
 	if err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestDeleteProjectTearsDownEveryDeployment(t *testing.T) {
 	o, st, projectID := newTestOrchestrator(t)
 	ctx := context.Background()
 
-	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil)
+	result, err := o.InstallTemplate(ctx, projectID, "wordpress", "blog", nil, nil)
 	if err != nil {
 		t.Fatalf("InstallTemplate: %v", err)
 	}

@@ -75,6 +75,10 @@ export function TemplateGalleryModal({
   );
 }
 
+function envFieldKey(slugSuffix: string, key: string): string {
+  return `${slugSuffix} ${key}`;
+}
+
 function InstallTemplateForm({
   projectId,
   template,
@@ -89,16 +93,30 @@ function InstallTemplateForm({
   onInstalled: (result: TemplateInstallResult) => void;
 }) {
   const [slug, setSlug] = useState(slugify(template.name));
+  const [envValues, setEnvValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const promptedVars = template.deployments.flatMap((d) =>
+    (d.prompted_env ?? []).map((ev) => ({ slugSuffix: d.slug_suffix, ...ev }))
+  );
+  const missingRequired = promptedVars.some((ev) => ev.required && !envValues[envFieldKey(ev.slugSuffix, ev.key)]);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (missingRequired) return;
     setBusy(true);
     setError(null);
     try {
+      const envOverrides: Record<string, Record<string, string>> = {};
+      for (const ev of promptedVars) {
+        const value = envValues[envFieldKey(ev.slugSuffix, ev.key)];
+        if (!value) continue;
+        (envOverrides[ev.slugSuffix] ??= {})[ev.key] = value;
+      }
       const result = await api.post<TemplateInstallResult>(`/api/projects/${projectId}/templates/${template.key}/install`, {
         slug,
+        env_overrides: envOverrides,
       });
       onInstalled(result);
     } catch (e) {
@@ -125,6 +143,33 @@ function InstallTemplateForm({
           </div>
         </div>
 
+        {promptedVars.length > 0 && (
+          <>
+            <div className="card-title" style={{ marginTop: 18 }}>
+              Required configuration
+            </div>
+            {promptedVars.map((ev) => {
+              const fieldKey = envFieldKey(ev.slugSuffix, ev.key);
+              return (
+                <div className="field" key={fieldKey}>
+                  <label htmlFor={`template-env-${fieldKey}`}>
+                    {ev.label || ev.key}
+                    {ev.required ? " *" : ""}
+                  </label>
+                  <input
+                    id={`template-env-${fieldKey}`}
+                    className="input mono"
+                    required={ev.required}
+                    value={envValues[fieldKey] ?? ""}
+                    onChange={(e) => setEnvValues((prev) => ({ ...prev, [fieldKey]: e.target.value }))}
+                  />
+                  <div className="field-hint">{ev.key}</div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
         <div className="card-title" style={{ marginTop: 18 }}>
           What this creates
         </div>
@@ -136,7 +181,8 @@ function InstallTemplateForm({
                 {d.slug_suffix}
               </span>
               <span className="kv-value">
-                {d.image_ref} &middot; {d.cpu_limit_cores} CPU / {d.memory_limit_mb}MB
+                {d.build_strategy === "dockerfile" ? `built from ${d.git_url}` : d.image_ref} &middot; {d.cpu_limit_cores} CPU /{" "}
+                {d.memory_limit_mb}MB
                 {d.force_internal_only ? " · internal only" : ""}
               </span>
             </div>
@@ -151,7 +197,7 @@ function InstallTemplateForm({
           <button type="button" className="btn" onClick={onBack} disabled={busy}>
             Back
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy || missingRequired}>
             {busy ? "Deploying..." : "Deploy"}
           </button>
         </div>
