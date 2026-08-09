@@ -21,8 +21,10 @@ import (
 // per-deployment ordering) can be tested without a daemon. Every container
 // is reported healthy immediately.
 type fakeTemplateExecutor struct {
-	builds   int
-	runSpecs []executor.RunSpec // every RunSpec Run() was called with, in order -- so tests can assert on what actually would have hit `docker run`, not just that Deploy() returned success
+	builds         int
+	runSpecs       []executor.RunSpec // every RunSpec Run() was called with, in order -- so tests can assert on what actually would have hit `docker run`, not just that Deploy() returned success
+	removedRefs    []string           // every container ref Remove() was called with
+	removedVolumes []string           // every volume name RemoveVolume() was called with
 }
 
 func (f *fakeTemplateExecutor) Build(ctx context.Context, spec executor.BuildSpec, logs io.Writer) (executor.BuildResult, error) {
@@ -36,7 +38,10 @@ func (f *fakeTemplateExecutor) Run(ctx context.Context, spec executor.RunSpec) (
 func (f *fakeTemplateExecutor) Stop(ctx context.Context, ref string, timeout time.Duration) error {
 	return nil
 }
-func (f *fakeTemplateExecutor) Remove(ctx context.Context, ref string) error { return nil }
+func (f *fakeTemplateExecutor) Remove(ctx context.Context, ref string) error {
+	f.removedRefs = append(f.removedRefs, ref)
+	return nil
+}
 func (f *fakeTemplateExecutor) HealthCheck(ctx context.Context, ref string, cfg executor.HealthCheckSpec) (executor.HealthStatus, error) {
 	return executor.HealthStatus{Healthy: true, StatusCode: 200}, nil
 }
@@ -49,7 +54,10 @@ func (f *fakeTemplateExecutor) Stats(ctx context.Context, ref string) (executor.
 func (f *fakeTemplateExecutor) Prune(ctx context.Context, opts executor.PruneOptions) (executor.PruneResult, error) {
 	return executor.PruneResult{}, nil
 }
-func (f *fakeTemplateExecutor) RemoveVolume(ctx context.Context, name string) error { return nil }
+func (f *fakeTemplateExecutor) RemoveVolume(ctx context.Context, name string) error {
+	f.removedVolumes = append(f.removedVolumes, name)
+	return nil
+}
 func (f *fakeTemplateExecutor) ContainerAddr(ctx context.Context, ref string, port int) (string, error) {
 	return "10.0.0.1:1234", nil
 }

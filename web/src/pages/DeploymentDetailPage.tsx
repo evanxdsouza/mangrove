@@ -5,6 +5,7 @@ import { StatusPill } from "../components/StatusPill";
 import { DeployTimeline } from "../components/DeployTimeline";
 import { LogViewer } from "../components/LogViewer";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
+import { ConfirmModal } from "../components/ConfirmModal";
 
 type Tab = "overview" | "history" | "logs" | "env";
 
@@ -17,6 +18,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   const [deploying, setDeploying] = useState(false);
   const [rollbackBusyId, setRollbackBusyId] = useState<number | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
 
   const load = () => {
     api.get<Deployment>(`/api/deployments/${deploymentId}`).then(setDeployment).catch((e) => setError(errMsg(e)));
@@ -76,9 +78,14 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             </p>
           )}
         </div>
-        <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
-          {deploying ? "Deploying..." : "Deploy"}
-        </button>
+        <div className="flex gap-8">
+          <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
+            {deploying ? "Deploying..." : "Deploy"}
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+            Delete deployment
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -150,6 +157,19 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             ))
           )}
         </div>
+      )}
+
+      {showDelete && (
+        <ConfirmModal
+          title="Delete deployment"
+          body={`This permanently deletes "${deployment?.name ?? "this deployment"}" -- stopping its container(s), removing volumes, and releasing its port. This cannot be undone.`}
+          confirmLabel="Delete deployment"
+          onClose={() => setShowDelete(false)}
+          onConfirm={async () => {
+            await api.del(`/api/deployments/${deploymentId}`);
+            window.location.href = `/projects/${projectId}`;
+          }}
+        />
       )}
     </>
   );

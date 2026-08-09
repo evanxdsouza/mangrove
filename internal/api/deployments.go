@@ -134,6 +134,19 @@ func (s *Server) getDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dep)
 }
 
+func (s *Server) deleteDeployment(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	if err := s.Orchestrator.DeleteDeployment(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
 	if err != nil {

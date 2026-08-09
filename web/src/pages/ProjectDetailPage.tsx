@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link } from "../router";
 import { Modal } from "../components/Modal";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { StatusPill } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { slugify } from "./ProjectsPage";
@@ -22,6 +23,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showLinkRepo, setShowLinkRepo] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
   const load = () => {
     api.get<Project>(`/api/projects/${projectId}`).then(setProject).catch((e) => setError(errMsg(e)));
@@ -53,6 +55,9 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           </button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
             + New deployment
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+            Delete project
           </button>
         </div>
       </div>
@@ -165,6 +170,19 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           onInstalled={() => {
             setShowTemplates(false);
             load();
+          }}
+        />
+      )}
+
+      {showDelete && (
+        <ConfirmModal
+          title="Delete project"
+          body={`This permanently deletes "${project?.name ?? "this project"}" and every deployment in it -- stopping containers, removing volumes, and releasing ports. This cannot be undone.`}
+          confirmLabel="Delete project"
+          onClose={() => setShowDelete(false)}
+          onConfirm={async () => {
+            await api.del(`/api/projects/${projectId}`);
+            window.location.href = "/";
           }}
         />
       )}

@@ -234,9 +234,69 @@ func (s *Store) ListDeployments(ctx context.Context, projectID int64) ([]models.
 	return out, nil
 }
 
+// DeleteDeployment removes a single deployment and everything that hangs
+// off it -- services, deploy history, env vars, volumes, etc -- following
+// the same leaves-first ordering as DeleteProjectCascade, just scoped to
+// one deployment_id instead of a project's whole set. Callers are
+// responsible for stopping/removing any live containers and Caddy routes
+// first; see Orchestrator.DeleteDeployment for the full teardown sequence.
 func (s *Store) DeleteDeployment(ctx context.Context, id int64) error {
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM deployments WHERE id = ?`, id)
-	return err
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const servicesSub = `(SELECT id FROM services WHERE deployment_id = ?)`
+	const deployHistorySub = `(SELECT id FROM deploy_history WHERE deployment_id = ?)`
+
+	var ports []int
+	rows, err := tx.QueryContext(ctx, `SELECT host_port FROM services WHERE deployment_id = ? AND host_port IS NOT NULL`, id)
+	if err != nil {
+		return fmt.Errorf("collect ports: %w", err)
+	}
+	for rows.Next() {
+		var p int
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return err
+		}
+		ports = append(ports, p)
+	}
+	rows.Close()
+
+	stmts := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM deploy_history_artifacts WHERE deploy_history_id IN ` + deployHistorySub, []any{id}},
+		{`DELETE FROM health_checks WHERE service_id IN ` + servicesSub, []any{id}},
+		{`DELETE FROM env_vars WHERE service_id IN ` + servicesSub, []any{id}},
+		{`DELETE FROM volumes WHERE deployment_id = ?`, []any{id}},
+		{`DELETE FROM notifications_log WHERE deployment_id = ?`, []any{id}},
+		{`DELETE FROM services WHERE deployment_id = ?`, []any{id}},
+		{`DELETE FROM deploy_history WHERE deployment_id = ?`, []any{id}},
+		{`DELETE FROM deployments WHERE id = ?`, []any{id}},
+	}
+	for _, st := range stmts {
+		if _, err := tx.ExecContext(ctx, st.query, st.args...); err != nil {
+			return fmt.Errorf("cascade delete (%s): %w", st.query, err)
+		}
+	}
+	if len(ports) > 0 {
+		placeholders := make([]string, len(ports))
+		args := make([]any, len(ports))
+		for i, p := range ports {
+			placeholders[i] = "?"
+			args[i] = p
+		}
+		q := `DELETE FROM port_registry WHERE port IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			return fmt.Errorf("release ports: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ListAllDeployments returns every deployment across every project --

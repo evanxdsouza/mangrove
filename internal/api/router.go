@@ -74,6 +74,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Route("/deployments/{deploymentID}", func(r chi.Router) {
 				r.Get("/", s.getDeployment)
+				r.Delete("/", s.deleteDeployment)
 				r.Get("/services", s.listServices)
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
