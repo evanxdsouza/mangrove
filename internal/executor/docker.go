@@ -241,8 +241,14 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 
 	addr := ""
 	if spec.InternalPort > 0 {
-		ip, err := e.containerIP(ctx, containerID, spec.Network)
+		ip, err := e.containerIPWithRetry(ctx, containerID, spec.Network)
 		if err != nil {
+			// The container above was already created and started by
+			// `docker run`; don't leak it just because we couldn't
+			// determine its address -- the caller only sees this error,
+			// never the containerID, so it has no way to clean this up
+			// itself.
+			_, _ = exec.CommandContext(ctx, "docker", "rm", "-f", containerID).CombinedOutput()
 			return RunResult{}, err
 		}
 		addr = net.JoinHostPort(ip, strconv.Itoa(spec.InternalPort))
@@ -265,15 +271,43 @@ func (e *DockerExecutor) containerIP(ctx context.Context, containerID, network s
 	// Network names commonly contain hyphens, which Go's text/template
 	// can't address via dotted field syntax — use `index` instead.
 	format := fmt.Sprintf(`{{index .NetworkSettings.Networks %q "IPAddress"}}`, network)
-	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", format, containerID).Output()
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", format, containerID).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("inspect container IP: %w", err)
+		// CombinedOutput (not Output): exec.ExitError's own Error() text is
+		// just "exit status 1" -- the actual reason docker gave lives in
+		// this command's stderr, and without it here this failure is
+		// undiagnosable from the caller's error string alone.
+		return "", fmt.Errorf("inspect container IP: %w: %s", err, bytes.TrimSpace(out))
 	}
 	ip := strings.TrimSpace(string(out))
 	if ip == "" {
 		return "", fmt.Errorf("container %s has no address on network %s", containerID, network)
 	}
 	return ip, nil
+}
+
+// containerIPWithRetry retries containerIP briefly. Run is the only caller
+// that hits this immediately after `docker run -d` returns; the container's
+// endpoint on spec.Network can very occasionally not be visible to `docker
+// inspect` yet in that exact window, which otherwise surfaces as a
+// leaked-but-running container plus a failed deploy.
+func (e *DockerExecutor) containerIPWithRetry(ctx context.Context, containerID, network string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+		ip, err := e.containerIP(ctx, containerID, network)
+		if err == nil {
+			return ip, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
 }
 
 func (e *DockerExecutor) ContainerAddr(ctx context.Context, containerRef string, port int) (string, error) {
