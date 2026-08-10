@@ -27,9 +27,9 @@
       "build_strategy": "image",
       "image_ref": "nocodb/nocodb:latest",
       "internal_port": 8080,
-      "memory_limit_mb": 512,
+      "memory_limit_mb": 1024,
       "cpu_limit_cores": 0.5,
-      "health_check_path": "/health",
+      "health_check_path": "/api/v1/health",
       "volumes": [
         { "name": "data", "mount_path": "/usr/app/data" }
       ],
