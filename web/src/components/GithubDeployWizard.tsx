@@ -42,37 +42,45 @@ export function GithubDeployWizard({
   const [error, setError] = useState<string | null>(null);
 
   const [repos, setRepos] = useState<GithubRepo[] | null>(null);
+  const [reposError, setReposError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null);
   const [branch, setBranch] = useState("main");
 
-  const loadCreds = () => {
+  // preferNewest is true only right after a fresh OAuth connect -- it forces
+  // switching to the just-connected credential even if one was already
+  // selected (e.g. a stale/revoked PAT from before this feature existed,
+  // which would otherwise stay selected forever since credId only defaults
+  // on first load).
+  const loadCreds = (preferNewest = false) => {
     api
       .get<GithubCredential[]>("/api/github/pats")
       .then((list) => {
         const all = list ?? [];
         setCreds(all);
         if (all.length > 0) {
-          setCredId((prev) => (prev === "" ? all[0].id : prev));
+          setCredId((prev) => (preferNewest || prev === "" ? all[0].id : prev));
           setStep((s) => (s === "connect" ? "repo" : s));
         }
       })
       .catch((e) => setError(errMsg(e)));
   };
 
-  useEffect(loadCreds, []);
+  useEffect(() => loadCreds(), []);
 
   useEffect(() => {
     if (step !== "repo" || !credId) return;
     setRepos(null);
+    setReposError(null);
     api
       .get<GithubRepo[]>(`/api/github/repos?github_pat_id=${credId}`)
       .then((r) => setRepos(r ?? []))
-      .catch((e) => setError(errMsg(e)));
+      .catch((e) => setReposError(errMsg(e)));
   }, [step, credId]);
 
   const connect = () => {
     setError(null);
+    setReposError(null);
     const popup = window.open("/api/github/oauth/start", "mangrove-github-oauth", "width=680,height=780");
     if (!popup) {
       setError("Your browser blocked the popup -- allow popups for this site and try again.");
@@ -84,7 +92,7 @@ export function GithubDeployWizard({
       if (!data || data.type !== "mangrove-github-oauth") return;
       window.removeEventListener("message", handler);
       if (data.ok) {
-        loadCreds();
+        loadCreds(true);
       } else {
         setError(data.error || "GitHub connection failed.");
       }
@@ -155,18 +163,29 @@ export function GithubDeployWizard({
               </select>
             </div>
           )}
-          <div className="field">
-            <label htmlFor="gh-filter">Find a repo</label>
-            <input
-              id="gh-filter"
-              className="input"
-              placeholder="owner/name"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              autoFocus
-            />
-          </div>
-          {repos === null ? (
+          {reposError ? (
+            <div className="error-banner">
+              This GitHub connection isn't working ({reposError}) -- it may be expired or revoked.
+              <div className="modal-actions" style={{ justifyContent: "flex-start", marginTop: 10 }}>
+                <button type="button" className="btn btn-primary" onClick={connect}>
+                  Reconnect GitHub
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="field">
+              <label htmlFor="gh-filter">Find a repo</label>
+              <input
+                id="gh-filter"
+                className="input"
+                placeholder="owner/name"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                autoFocus
+              />
+            </div>
+          )}
+          {reposError ? null : repos === null ? (
             <div className="center-loading">
               <div className="spinner" />
             </div>
