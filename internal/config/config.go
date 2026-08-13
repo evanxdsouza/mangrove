@@ -59,6 +59,19 @@ type Config struct {
 	// deploy-success emails -- Mangrove never registers it (Nest has no
 	// public domain API).
 	BaseDomain string
+
+	// GithubOAuthClientID/Secret enable the "Deploy from GitHub" flow (OAuth
+	// App, not a GitHub App -- see internal/github/oauth.go). Both empty
+	// (the default) disables the feature entirely; handlers check this
+	// rather than crashing on a missing credential.
+	GithubOAuthClientID     string
+	GithubOAuthClientSecret string
+}
+
+// GithubOAuthEnabled reports whether an OAuth App has been registered via
+// MANGROVE_GITHUB_OAUTH_CLIENT_ID/_SECRET.
+func (c Config) GithubOAuthEnabled() bool {
+	return c.GithubOAuthClientID != "" && c.GithubOAuthClientSecret != ""
 }
 
 func Load() Config {
@@ -77,6 +90,8 @@ func Load() Config {
 		ResendAPIKey:              os.Getenv("MANGROVE_RESEND_API_KEY"),
 		NotifyToEmail:             os.Getenv("MANGROVE_NOTIFY_EMAIL"),
 		BaseDomain:                getEnv("MANGROVE_BASE_DOMAIN", "evanxdsouza.hackclub.app"),
+		GithubOAuthClientID:       os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_ID"),
+		GithubOAuthClientSecret:   os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_SECRET"),
 	}
 }
 

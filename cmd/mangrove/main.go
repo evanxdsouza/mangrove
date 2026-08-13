@@ -111,13 +111,21 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Log:      log,
 	}
 
+	if !cfg.GithubOAuthEnabled() {
+		log.Info("MANGROVE_GITHUB_OAUTH_CLIENT_ID/_SECRET not set -- \"Deploy from GitHub\" OAuth connect is disabled; pasted PATs still work")
+	}
+
 	server := &api.Server{
-		Store:           st,
-		Orchestrator:    orch,
-		Secrets:         box,
-		Log:             log,
-		DataDir:         cfg.DataDir,
-		MemoryCeilingMB: cfg.DeploymentMemoryCeilingMB,
+		Store:                   st,
+		Orchestrator:            orch,
+		Secrets:                 box,
+		Log:                     log,
+		DataDir:                 cfg.DataDir,
+		MemoryCeilingMB:         cfg.DeploymentMemoryCeilingMB,
+		GithubOAuthClientID:     cfg.GithubOAuthClientID,
+		GithubOAuthClientSecret: cfg.GithubOAuthClientSecret,
+		GithubOAuth:             github.NewOAuthClient(),
+		GithubRepos:             github.NewReposClient(),
 	}
 
 	healthChecker := scheduler.NewHealthChecker(st, dockerExec, log)

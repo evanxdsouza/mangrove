@@ -159,6 +159,36 @@ export interface TemplateSummary {
   deployments: TemplateDeploymentSummary[];
 }
 
+export interface GithubCredential {
+  id: number;
+  label: string;
+  source: "pat" | "oauth";
+  github_login?: string;
+  created_at: string;
+  last_used_at?: string;
+}
+
+export interface GithubRepo {
+  owner: string;
+  name: string;
+  private: boolean;
+  default_branch: string;
+  description?: string;
+  pushed_at?: string;
+}
+
+export interface DetectedEnvVar {
+  key: string;
+  secret: boolean;
+}
+
+export interface DetectionResult {
+  build_strategy: "dockerfile" | "nixpacks" | "compose" | "static";
+  dockerfile_path?: string;
+  compose_path?: string;
+  env_vars?: DetectedEnvVar[];
+}
+
 export interface TemplateInstallResult {
   template_key: string;
   deployments: {

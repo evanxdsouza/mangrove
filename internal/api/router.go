@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/httprate"
 
 	"github.com/evanxdsouza/mangrove/internal/auth"
+	ghclient "github.com/evanxdsouza/mangrove/internal/github"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
@@ -26,6 +27,19 @@ type Server struct {
 	Log             *slog.Logger
 	DataDir         string // for disk-usage stats in the admin resource budget
 	MemoryCeilingMB int
+
+	// GitHub OAuth App credentials for "Deploy from GitHub" -- both empty
+	// disables the feature (startGithubOAuth/githubOAuthCallback answer
+	// 501). GithubOAuth/GithubRepos are always set regardless (they're
+	// stateless HTTP clients); only the credentials gate the feature.
+	GithubOAuthClientID     string
+	GithubOAuthClientSecret string
+	GithubOAuth             *ghclient.OAuthClient
+	GithubRepos             *ghclient.ReposClient
+}
+
+func (s *Server) GithubOAuthEnabled() bool {
+	return s.GithubOAuthClientID != "" && s.GithubOAuthClientSecret != ""
 }
 
 func (s *Server) Router() http.Handler {
@@ -90,6 +104,16 @@ func (s *Server) Router() http.Handler {
 				r.Post("/", s.createGithubPAT)
 				r.Delete("/{patID}", s.deleteGithubPAT)
 			})
+
+			// "Deploy from GitHub": OAuth connect (start/callback are real
+			// browser navigations, not fetch calls -- see startGithubOAuth),
+			// then repo listing and build-strategy detection for the picker.
+			r.Route("/github/oauth", func(r chi.Router) {
+				r.Get("/start", s.startGithubOAuth)
+				r.Get("/callback", s.githubOAuthCallback)
+			})
+			r.Get("/github/repos", s.listGithubRepos)
+			r.Post("/github/detect", s.detectGithubRepo)
 
 			r.Route("/deploy-history/{historyID}", func(r chi.Router) {
 				r.Post("/rollback", s.triggerRollback)

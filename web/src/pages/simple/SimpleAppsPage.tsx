@@ -3,6 +3,7 @@ import { api, ApiError, type Deployment, type Project } from "../../api";
 import { useRouter } from "../../router";
 import { STATUS_COLORS } from "../../components/StatusPill";
 import { AddAppModal } from "../../components/simple/AddAppModal";
+import { GithubDeployWizard } from "../../components/GithubDeployWizard";
 import { plainStatus } from "./plainCopy";
 
 interface FlatApp {
@@ -18,6 +19,7 @@ export function SimpleAppsPage() {
   const [apps, setApps] = useState<FlatApp[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showGithub, setShowGithub] = useState(false);
 
   const load = () => {
     api
@@ -45,9 +47,14 @@ export function SimpleAppsPage() {
           <h1>Your apps</h1>
           <p>Everything you've set up, in one place.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          + Add an app
-        </button>
+        <div className="flex gap-8">
+          <button className="btn" onClick={() => setShowGithub(true)}>
+            + From GitHub
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+            + Add an app
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -85,6 +92,16 @@ export function SimpleAppsPage() {
           onClose={() => setShowAdd(false)}
           onAdded={(projectId, deploymentId) => {
             setShowAdd(false);
+            navigate(`/projects/${projectId}/deployments/${deploymentId}`);
+          }}
+        />
+      )}
+
+      {showGithub && (
+        <GithubDeployWizard
+          onClose={() => setShowGithub(false)}
+          onDeployed={(projectId, deploymentId) => {
+            setShowGithub(false);
             navigate(`/projects/${projectId}/deployments/${deploymentId}`);
           }}
         />

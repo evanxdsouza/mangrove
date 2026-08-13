@@ -87,6 +87,7 @@ defaults (see `internal/config/config.go`):
 | `MANGROVE_DEPLOYMENT_MEMORY_CEILING_MB` | `1536` | Admission-control ceiling across all deployments |
 | `MANGROVE_RESEND_API_KEY` / `MANGROVE_NOTIFY_EMAIL` | (empty) | Optional deploy-result email notifications |
 | `MANGROVE_BASE_DOMAIN` | `evanxdsouza.hackclub.app` | Cosmetic only -- suggested domain in notification emails |
+| `MANGROVE_GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | (empty) | Enables "Deploy from GitHub" (OAuth connect + repo picker); both empty disables it, pasted PATs still work. Register an OAuth App at github.com/settings/developers with callback URL `https://<your-host>/api/github/oauth/callback` |
 
 ### Running the test suite
 
