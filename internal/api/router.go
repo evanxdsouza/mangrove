@@ -36,6 +36,10 @@ type Server struct {
 	GithubOAuthClientSecret string
 	GithubOAuth             *ghclient.OAuthClient
 	GithubRepos             *ghclient.ReposClient
+
+	// PublicURL, when set, overrides request-derived scheme+host detection
+	// in requestBaseURL -- see config.Config.PublicURL.
+	PublicURL string
 }
 
 func (s *Server) GithubOAuthEnabled() bool {

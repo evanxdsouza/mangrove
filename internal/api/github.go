@@ -16,13 +16,16 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/webhook"
 )
 
-// requestBaseURL reconstructs Mangrove's own externally-visible origin from
-// the incoming request -- there's no MANGROVE_PUBLIC_URL config, so this is
-// the only way to build an absolute callback URL (for the GitHub OAuth
-// redirect_uri, and for auto-registering a repo's push webhook). Caddy
-// fronts every production install and sets X-Forwarded-Proto; local dev
-// falls back to the connection's own scheme.
-func requestBaseURL(r *http.Request) string {
+// requestBaseURL returns Mangrove's own externally-visible origin, for
+// building an absolute callback URL (the GitHub OAuth redirect_uri, and an
+// auto-registered repo webhook's URL). MANGROVE_PUBLIC_URL, when set,
+// always wins -- request-derived scheme detection is only a best-effort
+// fallback, and is wrong behind an edge that doesn't forward
+// X-Forwarded-Proto to this particular route (see config.Config.PublicURL).
+func (s *Server) requestBaseURL(r *http.Request) string {
+	if s.PublicURL != "" {
+		return s.PublicURL
+	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -163,7 +166,7 @@ func (s *Server) linkProjectRepo(w http.ResponseWriter, r *http.Request) {
 	if pat, err := s.Store.GetGithubPAT(r.Context(), req.GithubPATID); err == nil && pat.Source == "oauth" {
 		if ciphertext, nonce, err := s.Store.GetGithubPATEncrypted(r.Context(), req.GithubPATID); err == nil {
 			if tok, err := s.Secrets.Open(patAAD(req.GithubPATID), ciphertext, nonce); err == nil {
-				callbackURL := requestBaseURL(r) + "/webhooks/github/" + token
+				callbackURL := s.requestBaseURL(r) + "/webhooks/github/" + token
 				if err := s.GithubRepos.CreateWebhook(r.Context(), string(tok), req.RepoOwner, req.RepoName, callbackURL, secret); err == nil {
 					webhookRegistered = true
 				}
@@ -250,7 +253,7 @@ func (s *Server) startGithubOAuth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	redirectURI := requestBaseURL(r) + "/api/github/oauth/callback"
+	redirectURI := s.requestBaseURL(r) + "/api/github/oauth/callback"
 	if err := s.Store.CreateGithubOAuthState(r.Context(), state, userID, redirectURI, 10*time.Minute); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

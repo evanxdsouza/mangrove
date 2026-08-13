@@ -126,6 +126,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		GithubOAuthClientSecret: cfg.GithubOAuthClientSecret,
 		GithubOAuth:             github.NewOAuthClient(),
 		GithubRepos:             github.NewReposClient(),
+		PublicURL:               cfg.PublicURL,
 	}
 
 	healthChecker := scheduler.NewHealthChecker(st, dockerExec, log)

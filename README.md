@@ -88,6 +88,7 @@ defaults (see `internal/config/config.go`):
 | `MANGROVE_RESEND_API_KEY` / `MANGROVE_NOTIFY_EMAIL` | (empty) | Optional deploy-result email notifications |
 | `MANGROVE_BASE_DOMAIN` | `evanxdsouza.hackclub.app` | Cosmetic only -- suggested domain in notification emails |
 | `MANGROVE_GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | (empty) | Enables "Deploy from GitHub" (OAuth connect + repo picker); both empty disables it, pasted PATs still work. Register an OAuth App at github.com/settings/developers with callback URL `https://<your-host>/api/github/oauth/callback` |
+| `MANGROVE_PUBLIC_URL` | (empty; request-derived) | Overrides scheme+host detection for GitHub callback URLs (OAuth redirect, auto-registered webhooks). Set this if you're behind an edge that terminates HTTPS but doesn't forward `X-Forwarded-Proto` to Mangrove's own dashboard route, e.g. `https://mangrove.example.com` |
 
 ### Running the test suite
 
