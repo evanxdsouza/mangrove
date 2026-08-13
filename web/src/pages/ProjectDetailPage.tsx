@@ -5,6 +5,7 @@ import { Modal, useModalClose } from "../components/Modal";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { StatusPill } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
+import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useIsOwner } from "../userContext";
 
@@ -25,6 +26,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showLinkRepo, setShowLinkRepo] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showGithubWizard, setShowGithubWizard] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
 
   const load = () => {
@@ -54,6 +56,9 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         <div className="flex gap-8">
           <button className="btn" onClick={() => setShowTemplates(true)}>
             Deploy from template
+          </button>
+          <button className="btn" onClick={() => setShowGithubWizard(true)}>
+            Deploy from GitHub
           </button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
             + New deployment
@@ -174,6 +179,16 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           onInstalled={() => {
             setShowTemplates(false);
             load();
+          }}
+        />
+      )}
+
+      {showGithubWizard && (
+        <GithubDeployWizard
+          projectId={projectId}
+          onClose={() => setShowGithubWizard(false)}
+          onDeployed={(_pid, deploymentId) => {
+            window.location.href = `/projects/${projectId}/deployments/${deploymentId}`;
           }}
         />
       )}

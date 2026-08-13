@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 )
@@ -59,6 +60,29 @@ type Config struct {
 	// deploy-success emails -- Mangrove never registers it (Nest has no
 	// public domain API).
 	BaseDomain string
+
+	// GithubOAuthClientID/Secret enable the "Deploy from GitHub" flow (OAuth
+	// App, not a GitHub App -- see internal/github/oauth.go). Both empty
+	// (the default) disables the feature entirely; handlers check this
+	// rather than crashing on a missing credential.
+	GithubOAuthClientID     string
+	GithubOAuthClientSecret string
+
+	// PublicURL, when set, overrides request-derived scheme+host detection
+	// for building absolute URLs Mangrove hands to GitHub (the OAuth
+	// redirect_uri, and an auto-registered webhook's callback URL). Needed
+	// behind an edge that terminates HTTPS but doesn't forward
+	// X-Forwarded-Proto to this box's own dashboard route (see
+	// internal/proxy/caddy.go's PutRoute comment -- that header rewrite is
+	// only applied to deployment routes, not Mangrove's own). No trailing
+	// slash, e.g. "https://mangrove.example.com".
+	PublicURL string
+}
+
+// GithubOAuthEnabled reports whether an OAuth App has been registered via
+// MANGROVE_GITHUB_OAUTH_CLIENT_ID/_SECRET.
+func (c Config) GithubOAuthEnabled() bool {
+	return c.GithubOAuthClientID != "" && c.GithubOAuthClientSecret != ""
 }
 
 func Load() Config {
@@ -77,6 +101,9 @@ func Load() Config {
 		ResendAPIKey:              os.Getenv("MANGROVE_RESEND_API_KEY"),
 		NotifyToEmail:             os.Getenv("MANGROVE_NOTIFY_EMAIL"),
 		BaseDomain:                getEnv("MANGROVE_BASE_DOMAIN", "evanxdsouza.hackclub.app"),
+		GithubOAuthClientID:       os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_ID"),
+		GithubOAuthClientSecret:   os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_SECRET"),
+		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
 	}
 }
 

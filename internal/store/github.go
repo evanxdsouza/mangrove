@@ -9,15 +9,17 @@ import (
 // ---- GitHub PATs ----
 
 type GithubPAT struct {
-	ID         int64      `json:"id"`
-	Label      string     `json:"label"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ID          int64      `json:"id"`
+	Label       string     `json:"label"`
+	Source      string     `json:"source"` // "pat" (pasted) or "oauth" (connected via GitHub OAuth)
+	GithubLogin string     `json:"github_login,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 }
 
 func (s *Store) CreateGithubPAT(ctx context.Context, label string, ciphertext, nonce []byte) (int64, error) {
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO github_pats (org_id, label, token_encrypted, token_nonce) VALUES (1, ?, ?, ?)`,
+		`INSERT INTO github_pats (org_id, label, token_encrypted, token_nonce, source) VALUES (1, ?, ?, ?, 'pat')`,
 		label, ciphertext, nonce,
 	)
 	if err != nil {
@@ -26,8 +28,23 @@ func (s *Store) CreateGithubPAT(ctx context.Context, label string, ciphertext, n
 	return res.LastInsertId()
 }
 
+// CreateGithubOAuthToken stores a token obtained through the GitHub OAuth
+// flow -- same table and encryption as a pasted PAT (see
+// internal/api/github.go's re-seal-with-real-id pattern), just tagged with
+// where it came from and which account it belongs to.
+func (s *Store) CreateGithubOAuthToken(ctx context.Context, login string, ciphertext, nonce []byte) (int64, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO github_pats (org_id, label, token_encrypted, token_nonce, source, github_login) VALUES (1, ?, ?, ?, 'oauth', ?)`,
+		"GitHub (@"+login+")", ciphertext, nonce, login,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
 func (s *Store) ListGithubPATs(ctx context.Context) ([]GithubPAT, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, label, created_at, last_used_at FROM github_pats ORDER BY created_at DESC`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, label, source, COALESCE(github_login,''), created_at, last_used_at FROM github_pats ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +54,7 @@ func (s *Store) ListGithubPATs(ctx context.Context) ([]GithubPAT, error) {
 	for rows.Next() {
 		var p GithubPAT
 		var lastUsed sql.NullTime
-		if err := rows.Scan(&p.ID, &p.Label, &p.CreatedAt, &lastUsed); err != nil {
+		if err := rows.Scan(&p.ID, &p.Label, &p.Source, &p.GithubLogin, &p.CreatedAt, &lastUsed); err != nil {
 			return nil, err
 		}
 		if lastUsed.Valid {
@@ -46,6 +63,28 @@ func (s *Store) ListGithubPATs(ctx context.Context) ([]GithubPAT, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// GetGithubPAT returns a credential's metadata (label/source/login) without
+// touching the encrypted token -- used where callers need to branch on
+// Source (e.g. "was this OAuth-obtained, so can it also register a
+// webhook?") but don't need to decrypt anything.
+func (s *Store) GetGithubPAT(ctx context.Context, id int64) (GithubPAT, error) {
+	var p GithubPAT
+	var lastUsed sql.NullTime
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, label, source, COALESCE(github_login,''), created_at, last_used_at FROM github_pats WHERE id = ?`, id,
+	).Scan(&p.ID, &p.Label, &p.Source, &p.GithubLogin, &p.CreatedAt, &lastUsed)
+	if err == sql.ErrNoRows {
+		return GithubPAT{}, ErrNotFound
+	}
+	if err != nil {
+		return GithubPAT{}, err
+	}
+	if lastUsed.Valid {
+		p.LastUsedAt = &lastUsed.Time
+	}
+	return p, nil
 }
 
 func (s *Store) DeleteGithubPAT(ctx context.Context, id int64) error {
@@ -204,4 +243,34 @@ func (s *Store) UpdateWebhookEventStatus(ctx context.Context, id int64, status s
 		status, deployHistoryID, id,
 	)
 	return err
+}
+
+// ---- GitHub OAuth CSRF state ----
+
+// CreateGithubOAuthState records a random, single-use state value before
+// redirecting the user's browser to GitHub, bound to both the user who
+// started the flow and the exact redirect_uri used (GitHub requires it to
+// match on token exchange).
+func (s *Store) CreateGithubOAuthState(ctx context.Context, state string, userID int64, redirectURI string, ttl time.Duration) error {
+	_, err := s.DB.ExecContext(ctx,
+		`INSERT INTO github_oauth_states (state, user_id, redirect_uri, expires_at) VALUES (?, ?, ?, ?)`,
+		state, userID, redirectURI, time.Now().Add(ttl),
+	)
+	return err
+}
+
+// ConsumeGithubOAuthState validates and deletes a state value in one shot
+// (single-use, whether or not it's valid) -- returns the redirect_uri it
+// was created with, or ErrNotFound if the state is missing, already used,
+// expired, or belongs to a different user than the callback's session.
+func (s *Store) ConsumeGithubOAuthState(ctx context.Context, state string, userID int64) (redirectURI string, err error) {
+	err = s.DB.QueryRowContext(ctx,
+		`SELECT redirect_uri FROM github_oauth_states WHERE state = ? AND user_id = ? AND expires_at > CURRENT_TIMESTAMP`,
+		state, userID,
+	).Scan(&redirectURI)
+	s.DB.ExecContext(ctx, `DELETE FROM github_oauth_states WHERE state = ?`, state)
+	if err == sql.ErrNoRows {
+		return "", ErrNotFound
+	}
+	return redirectURI, err
 }
