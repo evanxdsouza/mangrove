@@ -1,0 +1,25 @@
+{
+  "key": "supabase",
+  "name": "Supabase",
+  "description": "Standalone Supabase Postgres service for app backends that need PostgreSQL with Supabase's extension set. Internal-only: Caddy only routes HTTP, so there's no way to expose a raw TCP database through it -- reach this from another deployment on the same project by its slug (see that deployment's linked-service address).",
+  "category": "database",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "supabase/postgres:latest",
+      "internal_port": 5432,
+      "force_internal_only": true,
+      "memory_limit_mb": 256,
+      "cpu_limit_cores": 0.4,
+      "volumes": [
+        { "name": "data", "mount_path": "/var/lib/postgresql/data" }
+      ],
+      "env": [
+        { "key": "POSTGRES_USER", "value": "postgres" },
+        { "key": "POSTGRES_DB", "value": "postgres" },
+        { "key": "POSTGRES_PASSWORD", "generate": "password", "generate_key": "supabase_postgres_password", "secret": true }
+      ]
+    }
+  ]
+}

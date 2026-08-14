@@ -4,18 +4,18 @@ import "testing"
 
 func TestAllBuiltInTemplatesLoad(t *testing.T) {
 	all := List()
-	if len(all) != 12 {
+	if len(all) != 14 {
 		names := make([]string, len(all))
 		for i, tpl := range all {
 			names[i] = tpl.Key
 		}
-		t.Fatalf("expected 12 built-in templates, got %d: %v", len(all), names)
+		t.Fatalf("expected 14 built-in templates, got %d: %v", len(all), names)
 	}
 
 	wantKeys := []string{
 		"postgres", "redis", "mysql", "mongodb", "n8n", "ghost",
 		"wordpress", "uptime-kuma", "vaultwarden", "umami", "nephthys",
-		"nocodb",
+		"nocodb", "pocketbase", "supabase",
 	}
 	for _, k := range wantKeys {
 		if _, ok := Get(k); !ok {
@@ -35,6 +35,7 @@ func TestForceInternalOnlyOnRawTCPServices(t *testing.T) {
 		"redis":    "",
 		"mysql":    "",
 		"mongodb":  "",
+		"supabase": "",
 	}
 	for key := range rawTCP {
 		tpl, ok := Get(key)

@@ -1,0 +1,21 @@
+{
+  "key": "pocketbase",
+  "name": "PocketBase",
+  "description": "Open-source backend with auth, realtime subscriptions, and an admin UI in a single deployment. Create your admin account on first visit at /_/. Starts internal-only -- flip it public from the deployment's Access control tab once it's up.",
+  "category": "backend",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "pocketbase/pocketbase:latest",
+      "internal_port": 8090,
+      "memory_limit_mb": 256,
+      "cpu_limit_cores": 0.4,
+      "health_check_path": "/",
+      "volumes": [
+        { "name": "data", "mount_path": "/pb_data" }
+      ],
+      "env": []
+    }
+  ]
+}
