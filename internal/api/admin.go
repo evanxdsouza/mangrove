@@ -13,6 +13,7 @@ import (
 
 type resourceBudgetResponse struct {
 	MemoryAllocatedMB int     `json:"memory_allocated_mb"`
+	MemoryUsedMB      float64 `json:"memory_used_mb"`
 	MemoryCeilingMB   int     `json:"memory_ceiling_mb"`
 	RunningContainers int     `json:"running_containers"`
 	DiskTotalGB       float64 `json:"disk_total_gb"`
@@ -35,6 +36,25 @@ func (s *Server) getResourceBudget(w http.ResponseWriter, r *http.Request) {
 		MemoryAllocatedMB: allocated,
 		MemoryCeilingMB:   s.MemoryCeilingMB,
 		RunningContainers: running,
+	}
+
+	// Actual memory usage is summed from `docker stats` over every running
+	// service's live container. Best-effort per container: a container that
+	// exited between the DB listing and the stats call is skipped rather
+	// than failing the whole dashboard (allocation figures still render).
+	if s.Orchestrator != nil {
+		containerIDs, err := s.Store.ListRunningContainerIDs(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, id := range containerIDs {
+			stats, err := s.Orchestrator.Exec.Stats(r.Context(), id)
+			if err != nil {
+				continue
+			}
+			resp.MemoryUsedMB += stats.MemUsageMB
+		}
 	}
 
 	var stat syscall.Statfs_t

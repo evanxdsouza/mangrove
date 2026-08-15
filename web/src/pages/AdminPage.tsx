@@ -4,6 +4,7 @@ import { useIsOwner } from "../userContext";
 
 interface ResourceBudget {
   memory_allocated_mb: number;
+  memory_used_mb: number;
   memory_ceiling_mb: number;
   running_containers: number;
   disk_total_gb: number;
@@ -144,11 +145,16 @@ export function AdminPage() {
       <div className="card">
         <div className="card-title">Resource budget</div>
         {budget ? (
-          <div className="grid grid-3">
+          <div className="grid grid-4">
             <StatTile
               label="Memory allocated"
               value={`${budget.memory_allocated_mb} / ${budget.memory_ceiling_mb} MB`}
               fraction={budget.memory_allocated_mb / Math.max(budget.memory_ceiling_mb, 1)}
+            />
+            <StatTile
+              label="Memory used"
+              value={`${budget.memory_used_mb.toFixed(0)} MB`}
+              fraction={budget.memory_used_mb / Math.max(budget.memory_ceiling_mb, 1)}
             />
             <div className="stat-tile">
               <div className="stat-value">{budget.running_containers}</div>

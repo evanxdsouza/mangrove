@@ -1162,6 +1162,29 @@ func (s *Store) CountRunningContainers(ctx context.Context) (int, error) {
 	return n, err
 }
 
+// ListRunningContainerIDs returns the live Docker container ID of every
+// running service -- what the admin resource budget sums `docker stats`
+// over to report actual (not just allocated) memory usage.
+func (s *Store) ListRunningContainerIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT container_id_current FROM services
+		WHERE status = 'running' AND container_id_current IS NOT NULL AND container_id_current != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) DeleteSessionByID(ctx context.Context, id int64) error {
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
 	return err
