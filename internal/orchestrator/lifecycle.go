@@ -6,8 +6,25 @@ import (
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
 )
+
+// serviceContainerIDs returns the full set of running container IDs for a
+// service -- the primary (container_id_current) plus any replicas recorded
+// from a replicated deploy -- deduplicated and primary-first.
+func serviceContainerIDs(svc models.Service) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, id := range append([]string{svc.ContainerIDCurrent}, svc.ReplicaContainerIDs...) {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
 
 // StopDeployment stops every service's running container without removing
 // it, its volumes, or any DB rows -- unlike DeleteDeployment. Marking the
@@ -27,13 +44,16 @@ func (o *Orchestrator) StopDeployment(ctx context.Context, deploymentID int64) e
 
 	stoppedAny := false
 	for _, svc := range services {
-		if svc.ContainerIDCurrent == "" {
+		ids := serviceContainerIDs(svc)
+		if len(ids) == 0 {
 			// A static site (no container ever runs) or a service that was
 			// never successfully deployed -- nothing to stop.
 			continue
 		}
-		if err := o.Exec.Stop(ctx, svc.ContainerIDCurrent, 10*time.Second); err != nil {
-			return fmt.Errorf("stop service %q: %w", svc.Name, err)
+		for _, id := range ids {
+			if err := o.Exec.Stop(ctx, id, 10*time.Second); err != nil {
+				return fmt.Errorf("stop service %q: %w", svc.Name, err)
+			}
 		}
 		stoppedAny = true
 
@@ -76,11 +96,14 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 
 	restartedAny := false
 	for _, svc := range services {
-		if svc.ContainerIDCurrent == "" {
+		ids := serviceContainerIDs(svc)
+		if len(ids) == 0 {
 			continue
 		}
-		if err := o.Exec.Restart(ctx, svc.ContainerIDCurrent, 10*time.Second); err != nil {
-			return fmt.Errorf("restart service %q: %w", svc.Name, err)
+		for _, id := range ids {
+			if err := o.Exec.Restart(ctx, id, 10*time.Second); err != nil {
+				return fmt.Errorf("restart service %q: %w", svc.Name, err)
+			}
 		}
 		restartedAny = true
 		if err := o.Store.UpdateServiceStatus(ctx, svc.ID, "running"); err != nil {
@@ -90,24 +113,31 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 		// Re-push the Caddy route unconditionally: StopDeployment removes it
 		// entirely, and even a restart of an already-running container can
 		// hand it a new internal IP. Best-effort, mirroring
-		// SetAccessControl's same re-push-on-restart pattern.
-		if o.Proxy != nil && !svc.IsInternalOnly && svc.HostPort != nil {
-			addr, err := o.Exec.ContainerAddr(ctx, svc.ContainerIDCurrent, svc.InternalPort)
-			if err != nil {
-				o.Log.Warn("restart deployment: resolve container address failed", "service_id", svc.ID, "error", err)
-				continue
-			}
-			routeOpts := proxy.RouteOptions{}
-			if dep.PasswordProtected {
-				hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
+		// SetAccessControl's same re-push-on-restart pattern. A replicated
+		// deployment re-pushes every replica as a load-balanced upstream.
+		if o.Proxy != nil && !svc.IsInternalOnly && svc.HostPort != nil && len(ids) > 0 {
+			upstreams := make([]string, 0, len(ids))
+			for _, id := range ids {
+				addr, err := o.Exec.ContainerAddr(ctx, id, svc.InternalPort)
 				if err != nil {
-					o.Log.Warn("restart deployment: failed to load password hash; route will be unprotected", "deployment_id", dep.ID, "error", err)
-				} else {
-					routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
+					o.Log.Warn("restart deployment: resolve container address failed", "service_id", svc.ID, "container_id", id, "error", err)
+					continue
 				}
+				upstreams = append(upstreams, addr)
 			}
-			if err := o.Proxy.PutRoute(ctx, *svc.HostPort, addr, routeOpts); err != nil {
-				o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)
+			if len(upstreams) > 0 {
+				routeOpts := proxy.RouteOptions{}
+				if dep.PasswordProtected {
+					hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
+					if err != nil {
+						o.Log.Warn("restart deployment: failed to load password hash; route will be unprotected", "deployment_id", dep.ID, "error", err)
+					} else {
+						routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
+					}
+				}
+				if err := o.Proxy.PutRouteMulti(ctx, *svc.HostPort, upstreams, routeOpts); err != nil {
+					o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)
+				}
 			}
 		}
 	}

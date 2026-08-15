@@ -9,7 +9,19 @@ import (
 )
 
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
-	projects, err := s.Store.ListProjects(r.Context())
+	workspaceID := r.URL.Query().Get("workspace_id")
+	var projects []store.ProjectWithWorkspace
+	var err error
+	if workspaceID != "" {
+		var id int64
+		if id, err = parseID(workspaceID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid workspace_id")
+			return
+		}
+		projects, err = s.Store.ListProjectsByWorkspace(r.Context(), id)
+	} else {
+		projects, err = s.Store.ListProjects(r.Context())
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -21,6 +33,9 @@ type createProjectRequest struct {
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
 	Description string `json:"description"`
+	// WorkspaceID is which workspace the project belongs to; 0/omitted
+	// means the default workspace (1).
+	WorkspaceID int64 `json:"workspace_id"`
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
@@ -33,8 +48,12 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
+	workspaceID := req.WorkspaceID
+	if workspaceID < 1 {
+		workspaceID = 1
+	}
 
-	p, err := s.Store.CreateProject(r.Context(), req.Name, req.Slug, req.Description)
+	p, err := s.Store.CreateProject(r.Context(), workspaceID, req.Name, req.Slug, req.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

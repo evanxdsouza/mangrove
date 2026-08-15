@@ -55,12 +55,12 @@ func (o *Orchestrator) DeleteDeployment(ctx context.Context, deploymentID int64)
 // already removed out-of-band. logPrefix distinguishes callers in logs.
 func (o *Orchestrator) teardownServices(ctx context.Context, logPrefix string, services []models.Service) {
 	for _, svc := range services {
-		if svc.ContainerIDCurrent != "" {
-			if err := o.Exec.Stop(ctx, svc.ContainerIDCurrent, 10*time.Second); err != nil {
-				o.Log.Warn(logPrefix+": stop container failed", "service_id", svc.ID, "error", err)
+		for _, id := range serviceContainerIDs(svc) {
+			if err := o.Exec.Stop(ctx, id, 10*time.Second); err != nil {
+				o.Log.Warn(logPrefix+": stop container failed", "service_id", svc.ID, "container_id", id, "error", err)
 			}
-			if err := o.Exec.Remove(ctx, svc.ContainerIDCurrent); err != nil {
-				o.Log.Warn(logPrefix+": remove container failed", "service_id", svc.ID, "error", err)
+			if err := o.Exec.Remove(ctx, id); err != nil {
+				o.Log.Warn(logPrefix+": remove container failed", "service_id", svc.ID, "container_id", id, "error", err)
 			}
 		}
 		if o.Proxy != nil && svc.HostPort != nil {

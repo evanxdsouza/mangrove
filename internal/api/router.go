@@ -76,12 +76,21 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/templates", s.listTemplates)
 
+			r.Route("/workspaces", func(r chi.Router) {
+				r.Get("/", s.listWorkspaces)
+				r.Post("/", s.createWorkspace)
+				r.Route("/{workspaceID}", func(r chi.Router) {
+					r.Delete("/", s.deleteWorkspace)
+				})
+			})
+
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", s.listProjects)
 				r.Post("/", s.createProject)
 				r.Route("/{projectID}", func(r chi.Router) {
 					r.Get("/", s.getProject)
 					r.With(auth.RequireOwner).Delete("/", s.deleteProject)
+					r.Post("/workspace", s.setProjectWorkspace)
 					r.Get("/deployments", s.listDeployments)
 					r.Post("/deployments", s.createDeployment)
 					r.Get("/repo", s.getProjectRepo)
@@ -97,6 +106,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/history", s.listDeployHistory)
 				r.Post("/deploy", s.triggerDeploy)
 				r.Post("/redeploy", s.redeployDeployment)
+				r.Post("/scale", s.scaleDeployment)
+				r.Post("/cancel", s.cancelDeployment)
 				r.Post("/stop", s.stopDeployment)
 				r.Post("/restart", s.restartDeployment)
 				r.Post("/repo", s.setDeploymentRepo)

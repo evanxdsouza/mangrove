@@ -19,6 +19,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [deploying, setDeploying] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [redeploying, setRedeploying] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -53,6 +54,19 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       setError(errMsg(e));
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const cancel = async () => {
+    setCanceling(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/cancel`, {});
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -124,9 +138,15 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           )}
         </div>
         <div className="flex gap-8">
-          <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
-            {deploying ? "Deploying..." : "Deploy"}
-          </button>
+          {deployment?.status === "building" || deployment?.status === "pending" ? (
+            <button className="btn btn-danger" onClick={cancel} disabled={canceling}>
+              {canceling ? "Cancelling..." : "Cancel deploy"}
+            </button>
+          ) : (
+            <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
+              {deploying ? "Deploying..." : "Deploy"}
+            </button>
+          )}
           <button
             className="btn"
             onClick={redeploy}
@@ -176,12 +196,11 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
 
       {tab === "overview" && (
         <>
-          <OverviewTab services={services} isStatic={deployment?.build_strategy === "static"} />
+          <OverviewTab services={services} deployment={deployment} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
         </>
       )}
-
       {tab === "history" && (
         <div className="card">
           <DeployTimeline history={history} onRollback={rollback} busyId={rollbackBusyId} />
@@ -423,7 +442,8 @@ function AutoDeployCard({
   );
 }
 
-function OverviewTab({ services, isStatic }: { services: Service[]; isStatic: boolean }) {
+function OverviewTab({ services, deployment }: { services: Service[]; deployment: Deployment | null }) {
+  const isStatic = deployment?.build_strategy === "static";
   if (services.length === 0) {
     return <div className="card empty-state">No services yet.</div>;
   }
@@ -434,11 +454,64 @@ function OverviewTab({ services, isStatic }: { services: Service[]; isStatic: bo
           <ServiceCard key={s.id} service={s} isStatic={isStatic} />
         ))}
       </div>
+      {deployment && <ScaleCard deploymentId={deployment.id} deployment={deployment} />}
       {!isStatic &&
         services.map((s) => (
           <RunCommandCard key={s.id} serviceId={s.id} serviceName={s.name} showServiceName={services.length > 1} />
         ))}
     </>
+  );
+}
+
+function ScaleCard({ deploymentId, deployment }: { deploymentId: number; deployment: Deployment }) {
+  if (deployment.build_strategy === "compose" || deployment.build_strategy === "static") {
+    return null;
+  }
+  const [value, setValue] = useState(deployment.replicas);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const apply = async () => {
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/scale`, { replicas: value });
+      setSaved(true);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Replicas</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Number of containers of this image running behind one load-balanced route. Changing this triggers a redeploy.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      <div className="form-row" style={{ alignItems: "flex-end" }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="scale-replicas">Replicas</label>
+          <input
+            id="scale-replicas"
+            className="input"
+            type="number"
+            min={1}
+            max={32}
+            value={value}
+            onChange={(e) => setValue(Math.max(1, Number(e.target.value) || 1))}
+          />
+        </div>
+        <button className="btn btn-sm" onClick={apply} disabled={busy || value === deployment.replicas}>
+          {busy ? "Scaling..." : "Scale"}
+        </button>
+      </div>
+      {saved && <div className="field-hint">Scaling. Watch the deployment status while it redeploys.</div>}
+    </div>
   );
 }
 
@@ -484,6 +557,10 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
               <span className="kv-value">
                 {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
               </span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Replicas</span>
+              <span className="kv-value">{(service.replica_container_ids?.length ?? 1) || 1}</span>
             </div>
           </>
         )}

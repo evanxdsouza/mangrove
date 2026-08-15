@@ -22,7 +22,7 @@ func TestListDeploymentsReturnsFullFields(t *testing.T) {
 	st := New(db)
 	ctx := context.Background()
 
-	proj, err := st.CreateProject(ctx, "Widgets", "widgets", "")
+	proj, err := st.CreateProject(ctx, 1, "Widgets", "widgets", "")
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}

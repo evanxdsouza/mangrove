@@ -128,10 +128,24 @@ func authHandlers(opts RouteOptions) []map[string]any {
 // port, reverse-proxying to upstreamAddr (a "host:port" reachable from the
 // Mangrove host, typically a container's address on mangrove-net).
 func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, opts RouteOptions) error {
+	return c.PutRouteMulti(ctx, port, []string{upstreamAddr}, opts)
+}
+
+// PutRouteMulti is PutRoute for a replicated deployment: it configures the
+// server block for a public port with several upstreams, which Caddy load
+// balances across by default. When len(upstreams) == 1 it is exactly
+// PutRoute. The swap is atomic either way -- a single PATCH/PUT replaces
+// the whole route, so traffic never splits between old and new replicas.
+func (c *Client) PutRouteMulti(ctx context.Context, port int, upstreams []string, opts RouteOptions) error {
+	dials := make([]map[string]any, 0, len(upstreams))
+	for _, u := range upstreams {
+		dials = append(dials, map[string]any{"dial": u})
+	}
+
 	handlers := authHandlers(opts)
 	handlers = append(handlers, map[string]any{
 		"handler":   "reverse_proxy",
-		"upstreams": []map[string]any{{"dial": upstreamAddr}},
+		"upstreams": dials,
 		// Nest's edge terminates HTTPS for visitors but forwards plain HTTP
 		// to this box with no indication of the original scheme. Without
 		// this, backend apps (Ghost, WordPress, etc.) assume HTTP and can

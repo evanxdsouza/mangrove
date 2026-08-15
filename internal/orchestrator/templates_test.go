@@ -115,7 +115,7 @@ func newTestOrchestrator(t *testing.T) (*Orchestrator, *store.Store, int64) {
 		t.Fatalf("new box: %v", err)
 	}
 
-	proj, err := st.CreateProject(context.Background(), "Template Test", "template-test", "")
+	proj, err := st.CreateProject(context.Background(), 1, "Template Test", "template-test", "")
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}

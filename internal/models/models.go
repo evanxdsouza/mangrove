@@ -4,6 +4,20 @@ package models
 
 import "time"
 
+// Workspace groups projects within the (single) organization -- the
+// organizational layer between projects and the org itself, used to
+// separate environments (e.g. production vs staging) or teams. The
+// workspace_members table already exists in the schema as the hook for a
+// future per-workspace permission model; for now a workspace is a purely
+// organizational grouping every user can see.
+type Workspace struct {
+	ID        int64     `json:"id"`
+	OrgID     int64     `json:"org_id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Project struct {
 	ID          int64     `json:"id"`
 	WorkspaceID int64     `json:"workspace_id"`
@@ -32,7 +46,13 @@ type Deployment struct {
 	IsPublic            bool       `json:"is_public"`
 	PasswordProtected   bool       `json:"password_protected"`
 	ImageRetentionCount int        `json:"image_retention_count"`
-	Status              string     `json:"status"`
+	// Replicas is how many containers of the same image run for this
+	// deployment, load-balanced behind a single Caddy route. Only
+	// meaningful for single-service deployments (dockerfile/nixpacks/image/
+	// static-with-container); 1 is the default and the only supported value
+	// for compose stacks.
+	Replicas int         `json:"replicas"`
+	Status   string      `json:"status"`
 	NodeID              int64      `json:"node_id"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
@@ -46,7 +66,13 @@ type Service struct {
 	IsPrimary            bool    `json:"is_primary"`
 	ImageTagCurrent      string  `json:"image_tag_current,omitempty"`
 	ContainerIDCurrent   string  `json:"container_id_current,omitempty"`
-	ContainerName        string  `json:"container_name"`
+	// ReplicaContainerIDs is the full set of running container IDs for this
+	// service when its deployment has replicas > 1 (primary first; the
+	// single-element case keeps it empty and uses ContainerIDCurrent).
+	// Used by stop/restart/teardown so every replica is acted on, not just
+	// the primary that logs/stats/exec target.
+	ReplicaContainerIDs []string `json:"replica_container_ids,omitempty"`
+	ContainerName       string   `json:"container_name"`
 	InternalPort         int     `json:"internal_port"`
 	HostPort             *int    `json:"host_port,omitempty"`
 	IsInternalOnly       bool    `json:"is_internal_only"`

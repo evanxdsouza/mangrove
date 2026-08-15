@@ -85,7 +85,7 @@ func seedRepoAndDeployment(t *testing.T, env *testEnv, branch string, autoDeploy
 	t.Helper()
 	ctx := context.Background()
 
-	proj, err := env.store.CreateProject(ctx, "Webhook Test", "webhook-test", "")
+	proj, err := env.store.CreateProject(ctx, 1, "Webhook Test", "webhook-test", "")
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}

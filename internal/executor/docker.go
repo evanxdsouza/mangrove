@@ -225,6 +225,11 @@ func (e *DockerExecutor) inspectImageID(ctx context.Context, ref string) (string
 }
 
 func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
+	replicas := spec.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
+
 	// Pull explicitly, before `docker run`, and only if the image isn't
 	// already local: when `docker run` has to pull an image itself, it
 	// interleaves multi-line pull-progress output with the single
@@ -243,7 +248,43 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 		}
 	}
 
-	args := []string{"run", "-d", "--name", spec.ContainerName, "--network", e.effectiveNetwork(spec)}
+	// File mounts are materialized once and shared across every replica --
+	// the same host files are bind-mounted into each container.
+	fileMounts, err := e.materializeFiles(ctx, spec)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("materialize file mounts: %w", err)
+	}
+
+	result := RunResult{}
+	var started []string // container IDs started so far, for cleanup on a mid-set failure
+	for i := 0; i < replicas; i++ {
+		containerName := spec.ContainerName
+		if i > 0 {
+			containerName = fmt.Sprintf("%s-%d", spec.ContainerName, i)
+		}
+		id, addr, err := e.runOne(ctx, spec, containerName, fileMounts)
+		if err != nil {
+			for _, cid := range started {
+				_, _ = exec.CommandContext(ctx, "docker", "rm", "-f", cid).CombinedOutput()
+			}
+			return RunResult{}, err
+		}
+		started = append(started, id)
+		rr := ReplicaResult{ContainerID: id, ContainerAddr: addr}
+		if i == 0 {
+			result.ContainerID = id
+			result.ContainerAddr = addr
+		} else {
+			result.Replicas = append(result.Replicas, rr)
+		}
+	}
+	return result, nil
+}
+
+// runOne starts a single container from spec with the given name and
+// returns its ID and (if InternalPort > 0) its internal network address.
+func (e *DockerExecutor) runOne(ctx context.Context, spec RunSpec, containerName string, fileMounts []materializedFile) (string, string, error) {
+	args := []string{"run", "-d", "--name", containerName, "--network", e.effectiveNetwork(spec)}
 	if spec.NetworkAlias != "" {
 		args = append(args, "--network-alias", spec.NetworkAlias)
 	}
@@ -272,10 +313,6 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 	for _, vol := range spec.Volumes {
 		args = append(args, "-v", fmt.Sprintf("%s:%s", vol.Name, vol.MountPath))
 	}
-	fileMounts, err := e.materializeFiles(ctx, spec)
-	if err != nil {
-		return RunResult{}, fmt.Errorf("materialize file mounts: %w", err)
-	}
 	for _, fm := range fileMounts {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", fm.hostPath, fm.mountPath))
 	}
@@ -284,7 +321,7 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
-		return RunResult{}, fmt.Errorf("docker run: %w: %s", err, out)
+		return "", "", fmt.Errorf("docker run: %w: %s", err, out)
 	}
 	// `docker run -d` prints the container ID as its own last line; take
 	// only that (not the whole trimmed output) as a safety net in case
@@ -304,12 +341,12 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 			// never the containerID, so it has no way to clean this up
 			// itself.
 			_, _ = exec.CommandContext(ctx, "docker", "rm", "-f", containerID).CombinedOutput()
-			return RunResult{}, err
+			return "", "", err
 		}
 		addr = net.JoinHostPort(ip, strconv.Itoa(spec.InternalPort))
 	}
 
-	return RunResult{ContainerID: containerID, ContainerAddr: addr}, nil
+	return containerID, addr, nil
 }
 
 type materializedFile struct {

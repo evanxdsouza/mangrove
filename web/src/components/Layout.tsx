@@ -19,6 +19,11 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         <Link to="/" className={`nav-link ${!onAdmin ? "active" : ""}`}>
           {simple ? "Your apps" : "Projects"}
         </Link>
+        {!simple && (
+          <Link to="/workspaces" className={`nav-link ${path === "/workspaces" ? "active" : ""}`}>
+            Workspaces
+          </Link>
+        )}
         {/* Admin (users, ports, tokens, pruning, server health) stays
             technical-only -- it's out of scope for a non-technical user by
             definition, so simple mode just doesn't offer an entry point. */}

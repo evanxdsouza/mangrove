@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
@@ -47,7 +50,11 @@ type createDeploymentRequest struct {
 	StaticBuildCommand  string      `json:"static_build_command"` // strategy == static; optional, omit if the repo is already pre-built
 	StaticOutputDir     string      `json:"static_output_dir"`    // strategy == static; e.g. "dist"
 	ImageRetentionCount int         `json:"image_retention_count"`
-	Service             serviceSpec `json:"service"` // required unless build_strategy == compose
+	// Replicas is how many containers of the same image run for this
+	// deployment (single-service strategies only). 0/omitted means 1.
+	// Compose stacks are always 1.
+	Replicas int         `json:"replicas"`
+	Service  serviceSpec `json:"service"` // required unless build_strategy == compose
 }
 
 func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +73,11 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	replicas := req.Replicas
+	if replicas < 1 || req.BuildStrategy == "compose" || req.BuildStrategy == "static" {
+		replicas = 1
+	}
+
 	dep, err := s.Store.CreateDeployment(r.Context(), store.CreateDeploymentParams{
 		ProjectID:           projectID,
 		Name:                req.Name,
@@ -79,6 +91,7 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 		StaticBuildCommand:  req.StaticBuildCommand,
 		StaticOutputDir:     req.StaticOutputDir,
 		ImageRetentionCount: req.ImageRetentionCount,
+		Replicas:            replicas,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -219,13 +232,21 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var historyID int64
-	switch dep.BuildStrategy {
-	case "compose":
-		historyID, err = s.Orchestrator.DeployCompose(r.Context(), deployReq)
-	case "static":
-		historyID, err = s.Orchestrator.DeployStatic(r.Context(), deployReq)
-	default:
-		historyID, err = s.Orchestrator.Deploy(r.Context(), deployReq)
+	err = s.Orchestrator.WithInflightDeploy(deploymentID, func(ctx context.Context) error {
+		var e error
+		switch dep.BuildStrategy {
+		case "compose":
+			historyID, e = s.Orchestrator.DeployCompose(ctx, deployReq)
+		case "static":
+			historyID, e = s.Orchestrator.DeployStatic(ctx, deployReq)
+		default:
+			historyID, e = s.Orchestrator.Deploy(ctx, deployReq)
+		}
+		return e
+	})
+	if errors.Is(err, orchestrator.ErrDeployInProgress) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
 	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
@@ -235,6 +256,22 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "status": "success"})
+}
+
+// cancelDeployment aborts an in-flight deploy for a deployment. The running
+// deploy marks its deploy_history failed with the cancellation; this just
+// fires the cancellation and returns. No-op (409) if nothing is deploying.
+func (s *Server) cancelDeployment(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	if err := s.Orchestrator.CancelDeploy(deploymentID); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) triggerRollback(w http.ResponseWriter, r *http.Request) {
@@ -265,10 +302,18 @@ func (s *Server) triggerRollback(w http.ResponseWriter, r *http.Request) {
 		RollbackToDeployHistoryID: &historyID,
 	}
 	var newHistoryID int64
-	if targetDep.BuildStrategy == "static" {
-		newHistoryID, err = s.Orchestrator.DeployStatic(r.Context(), rollbackReq)
-	} else {
-		newHistoryID, err = s.Orchestrator.Deploy(r.Context(), rollbackReq)
+	err = s.Orchestrator.WithInflightDeploy(target.DeploymentID, func(ctx context.Context) error {
+		var e error
+		if targetDep.BuildStrategy == "static" {
+			newHistoryID, e = s.Orchestrator.DeployStatic(ctx, rollbackReq)
+		} else {
+			newHistoryID, e = s.Orchestrator.Deploy(ctx, rollbackReq)
+		}
+		return e
+	})
+	if errors.Is(err, orchestrator.ErrDeployInProgress) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
 	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
@@ -330,44 +375,29 @@ func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
 
 	deployReq := orchestrator.DeployRequest{DeploymentID: deploymentID, TriggeredBy: "redeploy"}
 
-	if dep.ProjectRepoID != nil {
-		repo, err := s.Store.GetProjectRepoByID(r.Context(), *dep.ProjectRepoID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "load linked repo: "+err.Error())
-			return
-		}
-		ciphertext, nonce, err := s.Store.GetGithubPATEncrypted(r.Context(), repo.GithubPATID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "load repo credentials: "+err.Error())
-			return
-		}
-		token, err := s.Secrets.Open(patAAD(repo.GithubPATID), ciphertext, nonce)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "decrypt repo credentials: "+err.Error())
-			return
-		}
-		s.Store.TouchGithubPATUsed(r.Context(), repo.GithubPATID)
-
-		branch := dep.GitBranch
-		if branch == "" {
-			branch = repo.DefaultBranch
-		}
-		deployReq.GitURL = fmt.Sprintf("https://github.com/%s/%s.git", repo.RepoOwner, repo.RepoName)
-		deployReq.GitRef = branch
-		deployReq.AuthToken = string(token)
-	} else if dep.BuildStrategy != "image" {
-		writeError(w, http.StatusUnprocessableEntity, "deployment has no linked repository to redeploy from; link a repo first, or use POST .../deploy with explicit git parameters")
+	buildReq, err := s.buildRedeployRequest(r.Context(), dep)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	deployReq = buildReq
 
 	var historyID int64
-	switch dep.BuildStrategy {
-	case "compose":
-		historyID, err = s.Orchestrator.DeployCompose(r.Context(), deployReq)
-	case "static":
-		historyID, err = s.Orchestrator.DeployStatic(r.Context(), deployReq)
-	default:
-		historyID, err = s.Orchestrator.Deploy(r.Context(), deployReq)
+	err = s.Orchestrator.WithInflightDeploy(deploymentID, func(ctx context.Context) error {
+		var e error
+		switch dep.BuildStrategy {
+		case "compose":
+			historyID, e = s.Orchestrator.DeployCompose(ctx, deployReq)
+		case "static":
+			historyID, e = s.Orchestrator.DeployStatic(ctx, deployReq)
+		default:
+			historyID, e = s.Orchestrator.Deploy(ctx, deployReq)
+		}
+		return e
+	})
+	if errors.Is(err, orchestrator.ErrDeployInProgress) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
 	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
@@ -377,6 +407,112 @@ func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "status": "success"})
+}
+
+// buildRedeployRequest resolves the source a deployment is configured with
+// into a DeployRequest ready to feed the deploy pipeline: for a git-backed
+// deployment, the linked repo's URL/branch and decrypted PAT; for the
+// image strategy, no source (a redeploy just reuses the image ref). Shared
+// by redeployDeployment and scaleDeployment.
+func (s *Server) buildRedeployRequest(ctx context.Context, dep models.Deployment) (orchestrator.DeployRequest, error) {
+	deployReq := orchestrator.DeployRequest{DeploymentID: dep.ID, TriggeredBy: "redeploy"}
+
+	if dep.ProjectRepoID != nil {
+		repo, err := s.Store.GetProjectRepoByID(ctx, *dep.ProjectRepoID)
+		if err != nil {
+			return deployReq, fmt.Errorf("load linked repo: %w", err)
+		}
+		ciphertext, nonce, err := s.Store.GetGithubPATEncrypted(ctx, repo.GithubPATID)
+		if err != nil {
+			return deployReq, fmt.Errorf("load repo credentials: %w", err)
+		}
+		token, err := s.Secrets.Open(patAAD(repo.GithubPATID), ciphertext, nonce)
+		if err != nil {
+			return deployReq, fmt.Errorf("decrypt repo credentials: %w", err)
+		}
+		s.Store.TouchGithubPATUsed(ctx, repo.GithubPATID)
+
+		branch := dep.GitBranch
+		if branch == "" {
+			branch = repo.DefaultBranch
+		}
+		deployReq.GitURL = fmt.Sprintf("https://github.com/%s/%s.git", repo.RepoOwner, repo.RepoName)
+		deployReq.GitRef = branch
+		deployReq.AuthToken = string(token)
+		return deployReq, nil
+	}
+	if dep.BuildStrategy != "image" {
+		return deployReq, fmt.Errorf("deployment has no linked repository to redeploy from; link a repo first, or use POST .../deploy with explicit git parameters")
+	}
+	return deployReq, nil
+}
+
+type scaleDeploymentRequest struct {
+	Replicas int `json:"replicas"`
+}
+
+// scaleDeployment changes a deployment's replica count and triggers a
+// redeploy so the new count takes effect -- scaling up/down is implemented
+// as a blue/green swap that starts (or tears down) the requested number of
+// containers. Only single-service strategies (dockerfile/nixpacks/image)
+// are scalable; compose stacks and static sites stay at 1.
+func (s *Server) scaleDeployment(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	var req scaleDeploymentRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if req.Replicas < 1 || req.Replicas > 32 {
+		writeError(w, http.StatusBadRequest, "replicas must be between 1 and 32")
+		return
+	}
+
+	dep, err := s.Store.GetDeployment(r.Context(), deploymentID)
+	if err == store.ErrNotFound {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if dep.BuildStrategy == "compose" || dep.BuildStrategy == "static" {
+		writeError(w, http.StatusUnprocessableEntity, "scaling is only supported for single-container build strategies (dockerfile/nixpacks/image)")
+		return
+	}
+
+	if err := s.Store.UpdateDeploymentReplicas(r.Context(), deploymentID, req.Replicas); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	buildReq, err := s.buildRedeployRequest(r.Context(), dep)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	var historyID int64
+	err = s.Orchestrator.WithInflightDeploy(deploymentID, func(ctx context.Context) error {
+		historyID, err = s.Orchestrator.Deploy(ctx, buildReq)
+		return err
+	})
+	if errors.Is(err, orchestrator.ErrDeployInProgress) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"deploy_history_id": historyID,
+			"error":             err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "replicas": req.Replicas, "status": "success"})
 }
 
 func (s *Server) getService(w http.ResponseWriter, r *http.Request) {

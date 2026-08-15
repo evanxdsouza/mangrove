@@ -22,12 +22,132 @@ func New(db *sql.DB) *Store { return &Store{DB: db} }
 
 var ErrNotFound = fmt.Errorf("not found")
 
+// ---- Workspaces ----
+
+// There is exactly one organization (id 1, seeded in 0001_init.sql) -- the
+// multi-org layer is intentionally out of scope. Every workspace belongs to
+// it, so these methods hardcode org_id = 1 rather than threading an org
+// through callers that have no concept of one.
+
+func (s *Store) CreateWorkspace(ctx context.Context, name, slug string) (models.Workspace, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO workspaces (org_id, name, slug) VALUES (1, ?, ?)`,
+		name, slug,
+	)
+	if err != nil {
+		return models.Workspace{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetWorkspace(ctx, id)
+}
+
+func (s *Store) GetWorkspace(ctx context.Context, id int64) (models.Workspace, error) {
+	var w models.Workspace
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, org_id, name, slug, created_at FROM workspaces WHERE id = ?`, id,
+	).Scan(&w.ID, &w.OrgID, &w.Name, &w.Slug, &w.CreatedAt)
+	if err == sql.ErrNoRows {
+		return models.Workspace{}, ErrNotFound
+	}
+	return w, err
+}
+
+func (s *Store) ListWorkspaces(ctx context.Context) ([]models.Workspace, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, org_id, name, slug, created_at FROM workspaces ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Workspace
+	for rows.Next() {
+		var w models.Workspace
+		if err := rows.Scan(&w.ID, &w.OrgID, &w.Name, &w.Slug, &w.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// WorkspaceProjectCount pairs a workspace with the number of projects in it
+// -- what the workspaces dashboard shows alongside each workspace.
+type WorkspaceProjectCount struct {
+	Workspace    models.Workspace
+	ProjectCount int
+}
+
+func (s *Store) ListWorkspaceProjectCounts(ctx context.Context) ([]WorkspaceProjectCount, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT w.id, w.org_id, w.name, w.slug, w.created_at,
+		       (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = w.id)
+		FROM workspaces w ORDER BY w.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []WorkspaceProjectCount
+	for rows.Next() {
+		var w models.Workspace
+		var n int
+		if err := rows.Scan(&w.ID, &w.OrgID, &w.Name, &w.Slug, &w.CreatedAt, &n); err != nil {
+			return nil, err
+		}
+		out = append(out, WorkspaceProjectCount{Workspace: w, ProjectCount: n})
+	}
+	return out, rows.Err()
+}
+
+// DeleteWorkspace removes a workspace, moving any projects still in it back
+// to the default workspace (id 1) so they're never orphaned. Deleting the
+// default workspace itself is refused -- it's the guaranteed-to-exist bucket
+// every project falls back to.
+func (s *Store) DeleteWorkspace(ctx context.Context, id int64) error {
+	if id == 1 {
+		return fmt.Errorf("cannot delete the default workspace")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `UPDATE projects SET workspace_id = 1 WHERE workspace_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_members WHERE workspace_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspaces WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SetProjectWorkspace moves a project to a different workspace.
+func (s *Store) SetProjectWorkspace(ctx context.Context, projectID, workspaceID int64) error {
+	res, err := s.DB.ExecContext(ctx,
+		`UPDATE projects SET workspace_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		workspaceID, projectID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ---- Projects ----
 
-func (s *Store) CreateProject(ctx context.Context, name, slug, description string) (models.Project, error) {
+func (s *Store) CreateProject(ctx context.Context, workspaceID int64, name, slug, description string) (models.Project, error) {
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO projects (workspace_id, name, slug, description) VALUES (1, ?, ?, ?)`,
-		name, slug, description,
+		`INSERT INTO projects (workspace_id, name, slug, description) VALUES (?, ?, ?, ?)`,
+		workspaceID, name, slug, description,
 	)
 	if err != nil {
 		return models.Project{}, err
@@ -47,21 +167,59 @@ func (s *Store) GetProject(ctx context.Context, id int64) (models.Project, error
 	return p, err
 }
 
-func (s *Store) ListProjects(ctx context.Context) ([]models.Project, error) {
-	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, workspace_id, name, slug, COALESCE(description,''), created_at, updated_at FROM projects ORDER BY created_at DESC`)
+// ProjectWithWorkspace is a project joined with the name/slug of the
+// workspace it belongs to -- what project-listing endpoints return so the
+// UI can group/filter without a second round trip per project.
+type ProjectWithWorkspace struct {
+	models.Project
+	WorkspaceName string `json:"workspace_name"`
+	WorkspaceSlug string `json:"workspace_slug"`
+}
+
+func (s *Store) ListProjects(ctx context.Context) ([]ProjectWithWorkspace, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT p.id, p.workspace_id, p.name, p.slug, COALESCE(p.description,''), p.created_at, p.updated_at,
+		       w.name, w.slug
+		FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+		ORDER BY p.created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []models.Project
+	var out []ProjectWithWorkspace
 	for rows.Next() {
-		var p models.Project
-		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Slug, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var pw ProjectWithWorkspace
+		if err := rows.Scan(&pw.ID, &pw.WorkspaceID, &pw.Name, &pw.Slug, &pw.Description, &pw.CreatedAt, &pw.UpdatedAt,
+			&pw.WorkspaceName, &pw.WorkspaceSlug); err != nil {
 			return nil, err
 		}
-		out = append(out, p)
+		out = append(out, pw)
+	}
+	return out, rows.Err()
+}
+
+// ListProjectsByWorkspace is ListProjects scoped to one workspace.
+func (s *Store) ListProjectsByWorkspace(ctx context.Context, workspaceID int64) ([]ProjectWithWorkspace, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT p.id, p.workspace_id, p.name, p.slug, COALESCE(p.description,''), p.created_at, p.updated_at,
+		       w.name, w.slug
+		FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+		WHERE p.workspace_id = ?
+		ORDER BY p.created_at DESC`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ProjectWithWorkspace
+	for rows.Next() {
+		var pw ProjectWithWorkspace
+		if err := rows.Scan(&pw.ID, &pw.WorkspaceID, &pw.Name, &pw.Slug, &pw.Description, &pw.CreatedAt, &pw.UpdatedAt,
+			&pw.WorkspaceName, &pw.WorkspaceSlug); err != nil {
+			return nil, err
+		}
+		out = append(out, pw)
 	}
 	return out, rows.Err()
 }
@@ -154,6 +312,9 @@ type CreateDeploymentParams struct {
 	StaticBuildCommand  string
 	StaticOutputDir     string
 	ImageRetentionCount int
+	// Replicas is how many containers run for this single-service
+	// deployment; 0/omitted means 1. Compose deployments must stay at 1.
+	Replicas int
 }
 
 func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) (models.Deployment, error) {
@@ -163,10 +324,13 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 	if p.ImageRetentionCount == 0 {
 		p.ImageRetentionCount = 5
 	}
+	if p.Replicas < 1 {
+		p.Replicas = 1
+	}
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas,
 	)
 	if err != nil {
 		return models.Deployment{}, err
@@ -182,7 +346,7 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
 	       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
-	       auto_deploy_on_push, is_public, password_protected, image_retention_count, status, node_id,
+	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, status, node_id,
 	       created_at, updated_at, last_deployed_at`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
@@ -198,7 +362,7 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var lastDeployedAtT sql.NullTime
 	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
-		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Status, &d.NodeID,
+		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Status, &d.NodeID,
 		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
 	if err != nil {
 		return models.Deployment{}, err
@@ -437,16 +601,17 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 	var svc models.Service
 	var hostPort sql.NullInt64
 	var commandJSON sql.NullString
+	var replicaIDsJSON sql.NullString
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT id, deployment_id, name, is_primary, COALESCE(image_tag_current,''), COALESCE(container_id_current,''),
 		       container_name, internal_port, host_port, is_internal_only, cpu_limit_cores, memory_limit_mb,
 		       restart_policy, COALESCE(health_check_path,''), health_check_interval_s, health_check_timeout_s,
-		       command, status, created_at, updated_at
+		       command, COALESCE(replica_container_ids,''), status, created_at, updated_at
 		FROM services WHERE id = ?`, id,
 	).Scan(&svc.ID, &svc.DeploymentID, &svc.Name, &svc.IsPrimary, &svc.ImageTagCurrent, &svc.ContainerIDCurrent,
 		&svc.ContainerName, &svc.InternalPort, &hostPort, &svc.IsInternalOnly, &svc.CPULimitCores, &svc.MemoryLimitMB,
 		&svc.RestartPolicy, &svc.HealthCheckPath, &svc.HealthCheckIntervalS, &svc.HealthCheckTimeoutS,
-		&commandJSON, &svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
+		&commandJSON, &replicaIDsJSON, &svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return models.Service{}, ErrNotFound
 	}
@@ -460,6 +625,11 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 	if commandJSON.Valid && commandJSON.String != "" {
 		if err := json.Unmarshal([]byte(commandJSON.String), &svc.Command); err != nil {
 			return models.Service{}, fmt.Errorf("decode command: %w", err)
+		}
+	}
+	if replicaIDsJSON.Valid && replicaIDsJSON.String != "" {
+		if err := json.Unmarshal([]byte(replicaIDsJSON.String), &svc.ReplicaContainerIDs); err != nil {
+			return models.Service{}, fmt.Errorf("decode replica container ids: %w", err)
 		}
 	}
 	return svc, nil
@@ -497,6 +667,44 @@ func (s *Store) UpdateServiceRuntime(ctx context.Context, id int64, imageTag, co
 		`UPDATE services SET image_tag_current = ?, container_id_current = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		imageTag, containerID, status, id,
 	)
+	return err
+}
+
+// UpdateServiceReplicas records the full set of running replica container
+// IDs for a service (primary first). It also refreshes container_id_current
+// to the primary, keeping the two in lockstep for the single-container
+// operations (logs/stats/exec/health) that read only the primary. A nil or
+// single-element set clears replica_container_ids to NULL.
+func (s *Store) UpdateServiceReplicas(ctx context.Context, id int64, containerIDs []string) error {
+	var primary string
+	if len(containerIDs) > 0 {
+		primary = containerIDs[0]
+	}
+	var replicasJSON any
+	if len(containerIDs) > 1 {
+		b, err := json.Marshal(containerIDs)
+		if err != nil {
+			return fmt.Errorf("encode replica container ids: %w", err)
+		}
+		replicasJSON = string(b)
+	}
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE services SET container_id_current = ?, replica_container_ids = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		nullIfEmpty(primary), replicasJSON, id,
+	)
+	return err
+}
+
+// UpdateDeploymentReplicas sets a deployment's replica count, used when
+// scaling an already-created deployment up or down. The caller is
+// responsible for actually creating/removing the containers and re-pointing
+// the load balancer.
+func (s *Store) UpdateDeploymentReplicas(ctx context.Context, id int64, replicas int) error {
+	if replicas < 1 {
+		replicas = 1
+	}
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE deployments SET replicas = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, replicas, id)
 	return err
 }
 
@@ -579,7 +787,7 @@ func (s *Store) ListVolumesForService(ctx context.Context, serviceID int64) ([]m
 func (s *Store) SumConfiguredMemoryMB(ctx context.Context, excludeDeploymentID int64) (int, error) {
 	var total int
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(s.memory_limit_mb), 0)
+		SELECT COALESCE(SUM(s.memory_limit_mb * d.replicas), 0)
 		FROM services s
 		JOIN deployments d ON d.id = s.deployment_id
 		WHERE d.status != 'stopped' AND d.id != ?`, excludeDeploymentID,
@@ -1149,7 +1357,7 @@ func (s *Store) ListNodes(ctx context.Context) ([]Node, error) {
 func (s *Store) SumConfiguredMemoryMBAll(ctx context.Context) (int, error) {
 	var total int
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(s.memory_limit_mb), 0)
+		SELECT COALESCE(SUM(s.memory_limit_mb * d.replicas), 0)
 		FROM services s JOIN deployments d ON d.id = s.deployment_id
 		WHERE d.status != 'stopped'`,
 	).Scan(&total)

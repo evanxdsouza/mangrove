@@ -4,6 +4,7 @@ import { Router, useRouter, matchPath } from "./router";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { WorkspacesPage } from "./pages/WorkspacesPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -73,6 +74,10 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
     // the apps list rather than rendering a page simple mode has no
     // equivalent for.
     body = mode === "simple" ? <SimpleAppsPage /> : <ProjectDetailPage projectId={Number(projectParams.projectId)} />;
+  } else if (path === "/workspaces") {
+    // Workspaces are a technical grouping concept; simple mode has no
+    // equivalent page, so a direct navigation bounces to the apps list.
+    body = mode === "simple" ? <SimpleAppsPage /> : <WorkspacesPage />;
   } else if (path === "/admin") {
     // Admin stays technical-only regardless of mode (see Layout, which
     // already hides its nav entry point in simple mode) -- someone who

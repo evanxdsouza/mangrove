@@ -147,14 +147,19 @@ type RunSpec struct {
 	// name that stays stable across the blue/green swap's per-deploy
 	// ContainerName (which embeds the deploy_history id and so changes
 	// every deploy). Used for template-linked dependencies (e.g. WordPress
-	// resolving its MySQL sibling deployment's address).
+	// resolving its MySQL sibling deployment's address). When Replicas > 1
+	// every replica shares the alias; Docker DNS round-robins among them.
 	NetworkAlias  string
 	InternalPort  int
 	HostPort      *int // nil unless the service opts out of proxy-only routing
 	CPULimitCores float64
 	MemoryLimitMB int
 	RestartPolicy string
-	Volumes       []VolumeMount
+	// Replicas is how many containers of ImageRef to start. The primary
+	// (index 0) uses exactly ContainerName; replicas i>=1 are named
+	// ContainerName-<i>. 0 or 1 means a single container (the default).
+	Replicas int
+	Volumes  []VolumeMount
 	// Files, when set, are written to host temp files and bind-mounted into
 	// the container read-only before it starts. Used by template installs to
 	// seed a container with content it needs before first boot (e.g. a
@@ -168,9 +173,19 @@ type RunSpec struct {
 	CgroupParent string
 }
 
+// ReplicaResult is one running container of a replicated deployment.
+type ReplicaResult struct {
+	ContainerID   string
+	ContainerAddr string // internal network address:port, for load-balancer upstreams
+}
+
 type RunResult struct {
 	ContainerID   string
-	ContainerAddr string // internal network address:port, for pre-swap health checks
+	ContainerAddr string // internal network address:port for the primary replica, for pre-swap health checks
+	// Replicas carries the full set of started containers when
+	// RunSpec.Replicas > 1 (primary first). ContainerID/ContainerAddr above
+	// are always the primary replica. Nil when Replicas == 1.
+	Replicas []ReplicaResult
 }
 
 type HealthCheckSpec struct {

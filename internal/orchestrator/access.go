@@ -85,12 +85,17 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 		o.notifyAccessChanged(ctx, dep, *hostPort)
 	}
 
-	addr, err := o.Exec.ContainerAddr(ctx, svc.ContainerIDCurrent, svc.InternalPort)
-	if err != nil {
-		return fmt.Errorf("resolve running container address: %w", err)
+	ids := serviceContainerIDs(svc)
+	upstreams := make([]string, 0, len(ids))
+	for _, id := range ids {
+		addr, err := o.Exec.ContainerAddr(ctx, id, svc.InternalPort)
+		if err != nil {
+			return fmt.Errorf("resolve running container address: %w", err)
+		}
+		upstreams = append(upstreams, addr)
 	}
 	opts := proxy.RouteOptions{PasswordProtected: passwordProtected, Username: basicAuthUsername, BcryptHash: passwordHash}
-	if err := o.Proxy.PutRoute(ctx, *hostPort, addr, opts); err != nil {
+	if err := o.Proxy.PutRouteMulti(ctx, *hostPort, upstreams, opts); err != nil {
 		return fmt.Errorf("update proxy route: %w", err)
 	}
 	return nil

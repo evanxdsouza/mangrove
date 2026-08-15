@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/config"
@@ -44,6 +45,13 @@ type Orchestrator struct {
 	GHStatus *github.StatusClient // nil is valid: commit-status posting is skipped, not an error
 	Config   config.Config
 	Log      *slog.Logger
+
+	// inflight tracks deploys currently running, keyed by deployment ID, so
+	// a concurrent deploy is refused and an in-flight one can be cancelled
+	// (see BeginDeploy/CancelDeploy). Guards against double-deploying the
+	// same deployment and backs the POST .../cancel endpoint.
+	inflightMu sync.Mutex
+	inflight   map[int64]context.CancelFunc
 }
 
 // postCommitStatus sets a GitHub commit status for a deploy, best-effort.
@@ -208,9 +216,9 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	if err != nil {
 		return fail(fmt.Errorf("check memory budget: %w", err))
 	}
-	if alreadyAllocated+svc.MemoryLimitMB > o.Config.DeploymentMemoryCeilingMB {
+	if alreadyAllocated+svc.MemoryLimitMB*dep.Replicas > o.Config.DeploymentMemoryCeilingMB {
 		return fail(&ErrMemoryCeilingExceeded{
-			RequestedMB:        svc.MemoryLimitMB,
+			RequestedMB:        svc.MemoryLimitMB * dep.Replicas,
 			AlreadyAllocatedMB: alreadyAllocated,
 			CeilingMB:          o.Config.DeploymentMemoryCeilingMB,
 		})
@@ -307,25 +315,37 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		Volumes:       volumeMounts,
 		Command:       svc.Command,
 		Files:         req.Files,
+		Replicas:      dep.Replicas,
 		CgroupParent:  o.Config.CgroupParent,
 	}
 
 	runResult, err := o.Exec.Run(ctx, runSpec)
 	if err != nil {
-		return fail(fmt.Errorf("run new container: %w", err))
+		return fail(fmt.Errorf("run new containers: %w", err))
 	}
 
-	oldContainerID := svc.ContainerIDCurrent
+	// The full set of freshly-started containers (primary first) -- the
+	// unit of swap. With replicas == 1 this is a single element.
+	newContainerIDs := []string{runResult.ContainerID}
+	for _, r := range runResult.Replicas {
+		newContainerIDs = append(newContainerIDs, r.ContainerID)
+	}
+
 	healthy := o.waitHealthy(ctx, newContainerName, svc)
 	if !healthy {
-		o.Exec.Stop(ctx, newContainerName, 5*time.Second)
-		o.Exec.Remove(ctx, newContainerName)
-		return fail(fmt.Errorf("new container failed health check within %s; old container (if any) left running", healthCheckSwapTimeout))
+		o.teardownContainers(ctx, newContainerIDs)
+		return fail(fmt.Errorf("new containers failed health check within %s; old set (if any) left running", healthCheckSwapTimeout))
 	}
 
-	// Repoint Caddy at the new container BEFORE tearing down the old one --
-	// this is the atomic part of the swap (see internal/proxy). Only after
-	// traffic is flowing to the new container is it safe to remove the old.
+	// Repoint Caddy at the new container(s) BEFORE tearing down the old
+	// ones -- this is the atomic part of the swap (see internal/proxy).
+	// For a replicated deployment every new replica is a load-balanced
+	// upstream. Only after traffic is flowing to the new set is it safe to
+	// remove the old.
+	upstreams := []string{runResult.ContainerAddr}
+	for _, r := range runResult.Replicas {
+		upstreams = append(upstreams, r.ContainerAddr)
+	}
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil && runResult.ContainerAddr != "" {
 		routeOpts := proxy.RouteOptions{}
 		if dep.PasswordProtected {
@@ -336,23 +356,28 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 				routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
 			}
 		}
-		if err := o.Proxy.PutRoute(ctx, *registeredPort, runResult.ContainerAddr, routeOpts); err != nil {
-			o.Exec.Stop(ctx, newContainerName, 5*time.Second)
-			o.Exec.Remove(ctx, newContainerName)
+		if err := o.Proxy.PutRouteMulti(ctx, *registeredPort, upstreams, routeOpts); err != nil {
+			o.teardownContainers(ctx, newContainerIDs)
 			return fail(fmt.Errorf("update proxy route: %w", err))
 		}
 	}
 
-	if oldContainerID != "" {
-		o.Exec.Stop(ctx, oldContainerID, 10*time.Second)
-		o.Exec.Remove(ctx, oldContainerID)
+	// Tear down the previous deploy's replica set (primary + any replicas
+	// recorded from the last successful deploy).
+	oldIDs := append([]string{}, svc.ReplicaContainerIDs...)
+	if svc.ContainerIDCurrent != "" {
+		oldIDs = append(oldIDs, svc.ContainerIDCurrent)
 	}
+	o.teardownContainers(ctx, oldIDs)
 
 	if err := o.Store.CreateDeployArtifact(ctx, historyID, svc.ID, imageTag, imageID, "", ""); err != nil {
 		o.Log.Warn("failed to record deploy artifact", "error", err)
 	}
 	if err := o.Store.UpdateServiceRuntime(ctx, svc.ID, imageTag, runResult.ContainerID, "running"); err != nil {
 		o.Log.Warn("failed to update service runtime state", "error", err)
+	}
+	if err := o.Store.UpdateServiceReplicas(ctx, svc.ID, newContainerIDs); err != nil {
+		o.Log.Warn("failed to record replica state", "service_id", svc.ID, "error", err)
 	}
 
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "success", "")
@@ -370,6 +395,24 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	o.postCommitStatus(ctx, dep, req, github.StateSuccess, "Deployed successfully")
 
 	return historyID, nil
+}
+
+// teardownContainers stops and removes a set of running containers
+// best-effort, logging rather than failing. Used to clean up a freshly-run
+// replica set when a deploy fails mid-swap, and to tear down a previous
+// deploy's replica set once the new one is healthy.
+func (o *Orchestrator) teardownContainers(ctx context.Context, containerIDs []string) {
+	for _, id := range containerIDs {
+		if id == "" {
+			continue
+		}
+		if err := o.Exec.Stop(ctx, id, 10*time.Second); err != nil {
+			o.Log.Warn("teardown: stop container failed", "container_id", id, "error", err)
+		}
+		if err := o.Exec.Remove(ctx, id); err != nil {
+			o.Log.Warn("teardown: remove container failed", "container_id", id, "error", err)
+		}
+	}
 }
 
 func (o *Orchestrator) waitHealthy(ctx context.Context, containerName string, svc models.Service) bool {

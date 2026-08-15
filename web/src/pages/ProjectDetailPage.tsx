@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Deployment, type Project } from "../api";
+import { api, ApiError, type Deployment, type Project, type Workspace } from "../api";
 import { Link } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -28,6 +28,8 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showGithubWizard, setShowGithubWizard] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<number>(1);
 
   const load = () => {
     api.get<Project>(`/api/projects/${projectId}`).then(setProject).catch((e) => setError(errMsg(e)));
@@ -39,6 +41,27 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       .get<ProjectRepoInfo>(`/api/projects/${projectId}/repo`)
       .then(setRepo)
       .catch(() => setRepo(null));
+  };
+
+  useEffect(() => {
+    api
+      .get<Workspace[]>("/api/workspaces")
+      .then((ws) => {
+        const list = (ws ?? []).map((x: any) => x.workspace ?? x);
+        setWorkspaces(list);
+        api.get<Project>(`/api/projects/${projectId}`).then((p) => setWorkspaceId(p.workspace_id)).catch(() => {});
+      })
+      .catch(() => {});
+  }, [projectId]);
+
+  const moveWorkspace = async () => {
+    setError(null);
+    try {
+      await api.post(`/api/projects/${projectId}/workspace`, { workspace_id: workspaceId });
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    }
   };
 
   useEffect(load, [projectId]);
@@ -149,6 +172,30 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Workspace</div>
+        <div className="form-row" style={{ alignItems: "flex-end" }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="project-workspace">Move to workspace</label>
+            <select
+              id="project-workspace"
+              className="input"
+              value={workspaceId}
+              onChange={(e) => setWorkspaceId(Number(e.target.value))}
+            >
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-sm" onClick={moveWorkspace}>
+            Move
+          </button>
+        </div>
       </div>
 
       {showCreate && (
@@ -352,6 +399,7 @@ function CreateDeploymentModal({
   const [internalOnly, setInternalOnly] = useState(true);
   const [memoryMB, setMemoryMB] = useState(256);
   const [cpuCores, setCpuCores] = useState(0.5);
+  const [replicas, setReplicas] = useState(1);
   const [healthPath, setHealthPath] = useState("/");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -373,6 +421,7 @@ function CreateDeploymentModal({
         static_build_command: staticBuildCommand,
         static_output_dir: staticOutputDir,
         image_retention_count: 5,
+        replicas: strategy === "compose" || strategy === "static" ? 1 : replicas,
       };
       if (strategy === "static") {
         // No container ever runs for a static site -- just the service
@@ -568,6 +617,19 @@ function CreateDeploymentModal({
                 <div className="field">
                   <label htmlFor="dep-health-path">Health check path (optional)</label>
                   <input id="dep-health-path" className="input mono" value={healthPath} onChange={(e) => setHealthPath(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="dep-replicas">Replicas</label>
+                  <input
+                    id="dep-replicas"
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={replicas}
+                    onChange={(e) => setReplicas(Math.max(1, Number(e.target.value) || 1))}
+                  />
+                  <div className="field-hint">How many containers of this image to run behind one load-balanced route.</div>
                 </div>
               </>
             )}

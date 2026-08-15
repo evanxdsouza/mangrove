@@ -43,8 +43,23 @@ export interface Project {
   name: string;
   slug: string;
   description?: string;
+  workspace_name?: string;
+  workspace_slug?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Workspace {
+  id: number;
+  org_id: number;
+  name: string;
+  slug: string;
+  created_at: string;
+}
+
+export interface WorkspaceProjectCount {
+  workspace: Workspace;
+  project_count: number;
 }
 
 export interface Deployment {
@@ -64,6 +79,7 @@ export interface Deployment {
   is_public: boolean;
   password_protected: boolean;
   image_retention_count: number;
+  replicas: number;
   status: "pending" | "building" | "running" | "stopped" | "failed";
   node_id: number;
   created_at: string;
@@ -78,6 +94,7 @@ export interface Service {
   is_primary: boolean;
   image_tag_current?: string;
   container_id_current?: string;
+  replica_container_ids?: string[];
   container_name: string;
   internal_port: number;
   host_port?: number;
