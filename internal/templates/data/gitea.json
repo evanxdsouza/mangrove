@@ -1,0 +1,33 @@
+{
+  "key": "gitea",
+  "name": "Gitea",
+  "description": "A lightweight self-hosted Git service that works like GitHub: repositories, issues, pull requests, wikis, and more. Self-registration is disabled from the start, so only you (the admin) can create users and set their passwords -- the one-time setup screen you'll see on first visit creates your admin account. Starts internal-only -- flip it public from the deployment's Access control tab once it's up, then open it to finish setup.",
+  "category": "dev",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "gitea/gitea:latest",
+      "internal_port": 3000,
+      "memory_limit_mb": 512,
+      "cpu_limit_cores": 0.5,
+      "health_check_path": "/",
+      "volumes": [
+        { "name": "data", "mount_path": "/data" }
+      ],
+      "env": [
+        { "key": "GITEA__server__ROOT_URL", "value": "https://{{base_slug}}.{{base_domain}}/" },
+        { "key": "GITEA__server__DOMAIN", "value": "{{base_slug}}.{{base_domain}}" },
+        { "key": "GITEA__server__SSH_DOMAIN", "value": "{{base_slug}}.{{base_domain}}" },
+        { "key": "GITEA__server__SSH_PORT", "value": "2222" },
+        { "key": "GITEA__server__START_SSH_SERVER", "value": "false" },
+        { "key": "GITEA__server__DISABLE_SSH", "value": "true" },
+        { "key": "GITEA__server__LFS_START_SERVER", "value": "true" },
+        { "key": "GITEA__database__DB_TYPE", "value": "sqlite3" },
+        { "key": "GITEA__database__PATH", "value": "/data/gitea/gitea.db" },
+        { "key": "GITEA__database__LOG_SQL", "value": "false" },
+        { "key": "GITEA__service__DISABLE_REGISTRATION", "value": "true" }
+      ]
+    }
+  ]
+}

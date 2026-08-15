@@ -124,6 +124,19 @@ type VolumeMount struct {
 	MountPath string
 }
 
+// FileMount is a small inline file the executor writes to a host path at
+// container-start time and bind-mounts into the container read-only (e.g. a
+// template deployment's post-baked-init SQL file, or a config file the
+// image expects to be present). Unlike a named VolumeMount there's no store
+// row for it: it exists only for the lifetime of the container it was
+// created for, and only for deployments that carried it in their RunSpec.
+// The executor materializes Content into its own temporary storage; callers
+// never hand it a host path (see ContextSource for why).
+type FileMount struct {
+	Path    string // absolute path inside the container
+	Content []byte
+}
+
 type RunSpec struct {
 	ImageRef      string
 	ContainerName string
@@ -142,6 +155,11 @@ type RunSpec struct {
 	MemoryLimitMB int
 	RestartPolicy string
 	Volumes       []VolumeMount
+	// Files, when set, are written to host temp files and bind-mounted into
+	// the container read-only before it starts. Used by template installs to
+	// seed a container with content it needs before first boot (e.g. a
+	// Postgres entrypoint-initdb.d script) without going through the store.
+	Files []FileMount
 	// Command, when set, overrides the image's default CMD (e.g. Redis's
 	// `--requirepass`). Passed as exec-form args after the image ref, not
 	// through a shell, unless an entry itself invokes one (e.g. "sh", "-c").

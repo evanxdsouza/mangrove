@@ -63,6 +63,21 @@ type Volume struct {
 	MountPath string `json:"mount_path"`
 }
 
+// File is one inline file a template deployment mounts into its container
+// (read-only) before it first starts -- e.g. a Postgres
+// entrypoint-initdb.d script Supabase's image needs but that a template
+// can't express any other way. Content may use the same placeholders as an
+// env var's value ({{slug}}, {{base_slug}}, {{base_domain}},
+// {{alias:<slug_suffix>}}, {{generated:<generate_key>}}), resolved at
+// install time. Files are only materialized during the template install
+// itself (see executor.FileMount); a later plain redeploy of the resulting
+// deployment carries no files, which is fine because they exist to seed
+// first boot (e.g. role-password setup that only runs on an empty database).
+type File struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
 // Deployment describes one deployment a template creates. Most built-in
 // templates use BuildStrategy "image" (they deploy a pre-built image, no
 // build step). BuildStrategy "dockerfile" instead builds from GitURL (and
@@ -104,6 +119,7 @@ type Deployment struct {
 	Command           []string `json:"command,omitempty"`
 	Volumes           []Volume `json:"volumes,omitempty"`
 	Env               []EnvVar `json:"env,omitempty"`
+	Files             []File   `json:"files,omitempty"`
 }
 
 // Template is one entry in the gallery.
@@ -221,6 +237,14 @@ func validate(t Template) error {
 			if ev.Prompt {
 				continue // resolved from caller-supplied overrides at install time, not from the template
 			}
+			// A generate kind can carry its own {{generated:...}} reference
+			// (e.g. a Supabase "jwt:anon:{{generated:jwt_secret}}" key signing
+			// with an earlier-generated secret), so check those too.
+			for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(ev.Generate, -1) {
+				if !seenGenerateKeys[m[1]] {
+					return fmt.Errorf("template %q deployment %d: env %q generate references undefined generate_key %q", t.Key, i, ev.Key, m[1])
+				}
+			}
 			for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(ev.Value, -1) {
 				if !seenGenerateKeys[m[1]] {
 					return fmt.Errorf("template %q deployment %d: env %q references undefined generate_key %q", t.Key, i, ev.Key, m[1])
@@ -228,6 +252,16 @@ func validate(t Template) error {
 			}
 			if ev.GenerateKey != "" {
 				seenGenerateKeys[ev.GenerateKey] = true
+			}
+		}
+		for _, f := range d.Files {
+			if f.Path == "" || f.Content == "" {
+				return fmt.Errorf("template %q deployment %d: file must have both a path and content", t.Key, i)
+			}
+			for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(f.Content, -1) {
+				if !seenGenerateKeys[m[1]] {
+					return fmt.Errorf("template %q deployment %d: file %q references undefined generate_key %q", t.Key, i, f.Path, m[1])
+				}
 			}
 		}
 	}

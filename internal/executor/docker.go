@@ -272,6 +272,13 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 	for _, vol := range spec.Volumes {
 		args = append(args, "-v", fmt.Sprintf("%s:%s", vol.Name, vol.MountPath))
 	}
+	fileMounts, err := e.materializeFiles(ctx, spec)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("materialize file mounts: %w", err)
+	}
+	for _, fm := range fileMounts {
+		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", fm.hostPath, fm.mountPath))
+	}
 	args = append(args, spec.ImageRef)
 	args = append(args, spec.Command...)
 
@@ -303,6 +310,46 @@ func (e *DockerExecutor) Run(ctx context.Context, spec RunSpec) (RunResult, erro
 	}
 
 	return RunResult{ContainerID: containerID, ContainerAddr: addr}, nil
+}
+
+type materializedFile struct {
+	hostPath  string
+	mountPath string
+}
+
+// materializeFiles writes every FileMount's content to a fresh host temp
+// file so Run() can bind-mount it into the container read-only. The temp
+// files stay on disk for the container's lifetime -- Docker keeps the
+// bind-mount open for as long as the container exists, so deleting them at
+// start would break the running container. They're tiny and swept by the OS
+// temp cleaner; the cost of correctness here is a few stray files under
+// /tmp rather than a container that starts missing its init SQL.
+func (e *DockerExecutor) materializeFiles(ctx context.Context, spec RunSpec) ([]materializedFile, error) {
+	if len(spec.Files) == 0 {
+		return nil, nil
+	}
+	dir, err := os.MkdirTemp("", "mangrove-files-*")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]materializedFile, 0, len(spec.Files))
+	for _, f := range spec.Files {
+		if f.Path == "" || len(f.Content) == 0 {
+			continue
+		}
+		// Flatten the container path into a filesystem-safe unique name so
+		// two mounts targeting different paths can't collide in one temp dir.
+		name := strings.Trim(strings.ReplaceAll(strings.TrimPrefix(f.Path, "/"), "/", "_"), "_.")
+		if name == "" {
+			name = "file"
+		}
+		hostPath := filepath.Join(dir, name)
+		if err := os.WriteFile(hostPath, f.Content, 0o644); err != nil {
+			return nil, err
+		}
+		out = append(out, materializedFile{hostPath: hostPath, mountPath: f.Path})
+	}
+	return out, nil
 }
 
 func (e *DockerExecutor) effectiveNetwork(spec RunSpec) string {

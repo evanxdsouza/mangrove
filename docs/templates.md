@@ -40,6 +40,7 @@ Each entry in `deployments` describes one deployment to create:
 | `health_check_path` | no | Skip for anything with no meaningful HTTP health endpoint. |
 | `command` | no | Overrides the image's default command (array of args). |
 | `volumes` | no | `[{ "name": "data", "mount_path": "/data" }]` -- named Docker volumes. |
+| `files` | no | `[{ "path": "/docker-entrypoint-initdb.d/99-setup.sql", "content": "..." }]` -- small inline files bind-mounted read-only into the container before it first starts. See "Files" below. |
 | `env` | no | See below. |
 
 ### Env vars: literals, generated secrets, prompted values, and cross-deployment references
@@ -57,11 +58,28 @@ Each entry is `{ "key": ..., "value" | "generate" | "prompt", "generate_key", "s
   - `{{generated:<generate_key>}}` -- a value produced by an earlier
     deployment's `generate` (see below).
   - `{{slug}}` -- this deployment's own final slug.
+  - `{{base_slug}}` -- the user's chosen base slug, i.e. the primary
+    deployment's slug, regardless of which deployment the placeholder
+    appears on. A deployment with a suffix (e.g. `-studio`) uses this to
+    reference the primary deployment's public URL.
   - `{{base_domain}}` -- `Config.BaseDomain`.
-- `"generate": "password"` or `"generate": "hex32"`: produces a random
-  value at install time, stored under `"generate_key"` so a *later*
-  deployment in the same template can reference it via
-  `{{generated:<generate_key>}}`.
+- `"generate": "password"`, `"generate": "hex32"`, or `"generate": "hex64"`:
+  produces a random value at install time, stored under `"generate_key"` so
+  a *later* deployment in the same template can reference it via
+  `{{generated:<generate_key>}}`:
+  - `"password"` -- 24 alnum characters, safe to embed directly in a
+    connection-string URL or shell command without escaping.
+  - `"hex32"` -- 32 lowercase hex characters (16 random bytes), for things
+    that want exactly 32 characters (e.g. Postgres-meta's `CRYPTO_KEY`).
+  - `"hex64"` -- 64 lowercase hex characters (32 random bytes), for HS256
+    JWT secrets / Elixir secret-key-bases that want at least 32 bytes.
+  - `"jwt:<role>:{{generated:<secret_key>}}"` -- an HS256-signed Supabase
+    API key (role `anon` or `service_role`), signed with the value stored
+    under `<secret_key>` by an *earlier* generate (the shared JWT secret).
+    PostgREST/GoTrue verify the signature and use the `role` claim, so the
+    key must be minted with the exact secret every service shares. It's
+    stored (secretly) like any other generated value and shown once at
+    install.
 - `"prompt": true`: asks the installing user for this value in the install
   form, instead of deriving it from the template -- for things a template
   can't sensibly default (API tokens, webhook secrets). `"label"` is
@@ -76,6 +94,28 @@ Each entry is `{ "key": ..., "value" | "generate" | "prompt", "generate_key", "s
   var (see the multi-user doc for who can view/set these) -- independent of
   whether the value came from `value`, `generate`, or `prompt`.
 
+### Files: seeding a container before first boot
+
+Some images expect SQL/config present *before* the entrypoint's init
+machinery runs (Postgres's `/docker-entrypoint-initdb.d`, the nginx config
+dir). A template can't express that as an env var, so deployments can carry
+`files`:
+
+- `"path"` -- absolute path inside the container, mounted read-only.
+- `"content"` -- inline text, resolved for the same placeholders an env
+  var's `value` supports (`{{slug}}`, `{{base_slug}}`, `{{base_domain}}`,
+  `{{alias:...}}`, `{{generated:...}}`) at install time.
+
+The executor writes each file to a host temp file and bind-mounts it in
+`docker run` (`-v <hostfile>:<path>:ro`). Files are **only** materialized
+during the template install itself -- a later plain redeploy of the
+resulting deployment carries no files, which is fine because they exist to
+seed first boot (e.g. Supabase's role-password SQL that only runs on an
+empty database). See `executor.FileMount` and the `supabase.json` template
+for a real example (role-password, JWT-setting, and `_realtime`-schema init
+scripts mounted into the Postgres container, mirroring the official
+compose's `init-scripts/99-*.sql` / `migrations/99-*.sql`).
+
 ### Ordering
 
 Validation (`internal/templates/templates.go`'s `validate`, run once at
@@ -85,11 +125,13 @@ install time) enforces:
 1. Exactly one deployment has `slug_suffix == ""` (the primary), and it's
    the **last** entry in the array.
 2. Every `{{generated:key}}` placeholder references a `generate_key` set
-   by an *earlier* deployment in the same array.
+   by an *earlier* deployment in the same array -- including references
+   inside a `jwt:` generate kind and inside a `files` entry's content.
 3. Every deployment has a positive `memory_limit_mb`, and a build source:
    `image_ref` for `build_strategy: "image"` (the default), `git_url` for
    `build_strategy: "dockerfile"`.
 4. Every env var sets at most one of `value`, `generate`, `prompt`.
+5. Every `files` entry has a non-empty `path` and `content`.
 
 The ordering rule exists because deployments install in array order, and
 a later deployment's env (like WordPress's `WORDPRESS_DB_HOST` referencing

@@ -17,6 +17,9 @@ export const SIMPLE_TEMPLATES: Record<string, PlainTemplateCopy> = {
   n8n: { label: "Automation", blurb: "Connect your apps together and automate busywork." },
   umami: { label: "Visitor stats", blurb: "See how many people visit your sites, without tracking them." },
   nocodb: { label: "Spreadsheet database", blurb: "Turn a spreadsheet into a shareable database, no code needed." },
+  pocketbase: { label: "App backend", blurb: "A ready-made backend with a database and sign-up built in." },
+  gitea: { label: "Git hosting", blurb: "Host your code on your own site, like a private GitHub." },
+  supabase: { label: "App platform", blurb: "An open-source Firebase: database, login, and a dashboard for your app." },
 };
 
 export function plainStatus(status: string): string {

@@ -2,13 +2,18 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/store"
 	"github.com/evanxdsouza/mangrove/internal/templates"
 )
@@ -153,7 +158,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 				// optional prompt var with no override installs as empty.
 				value = envOverrides[d.SlugSuffix][ev.Key]
 			case ev.Generate != "":
-				value, err = generateValue(ev.Generate)
+				value, err = generateValue(ev.Generate, generatedValues)
 				if err != nil {
 					return result, fmt.Errorf("generate value for %s on %q: %w", ev.Key, slug, err)
 				}
@@ -162,7 +167,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 				}
 				result.Credentials[fmt.Sprintf("%s: %s", name, ev.Key)] = value
 			default:
-				value, err = resolvePlaceholders(ev.Value, slug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
+				value, err = resolvePlaceholders(ev.Value, slug, baseSlug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
 				if err != nil {
 					return result, fmt.Errorf("resolve value for %s on %q: %w", ev.Key, slug, err)
 				}
@@ -186,7 +191,16 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 
 		aliasBySuffix[d.SlugSuffix] = containerName
 
-		deployReq := DeployRequest{DeploymentID: dep.ID, TriggeredBy: "api"}
+		var fileMounts []executor.FileMount
+		for _, f := range d.Files {
+			content, err := resolvePlaceholders(f.Content, slug, baseSlug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
+			if err != nil {
+				return result, fmt.Errorf("resolve file %q for %q: %w", f.Path, slug, err)
+			}
+			fileMounts = append(fileMounts, executor.FileMount{Path: f.Path, Content: []byte(content)})
+		}
+
+		deployReq := DeployRequest{DeploymentID: dep.ID, TriggeredBy: "api", Files: fileMounts}
 		if buildStrategy != "image" {
 			// No AuthToken: template repos are built as unauthenticated
 			// public clones (see Deployment's doc comment).
@@ -206,10 +220,18 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 	return result, nil
 }
 
-// resolvePlaceholders expands {{slug}}, {{base_domain}}, {{alias:suffix}},
-// and {{generated:key}} inside an env var's literal value template.
-func resolvePlaceholders(value, ownSlug string, aliasBySuffix, generatedValues map[string]string, baseDomain string) (string, error) {
+// resolvePlaceholders expands {{slug}}, {{base_slug}}, {{base_domain}},
+// {{alias:suffix}}, and {{generated:key}} inside an env var's literal value
+// template or a template deployment's inline file content.
+//
+// {{base_slug}} is the user's chosen base slug (the template's primary
+// deployment slug) regardless of which deployment the placeholder appears
+// on -- it's how a dependency whose slug includes a suffix (e.g. a Supabase
+// Studio deployment at "<base>-studio") can still reference the primary
+// deployment's public URL.
+func resolvePlaceholders(value, ownSlug, baseSlug string, aliasBySuffix, generatedValues map[string]string, baseDomain string) (string, error) {
 	value = strings.ReplaceAll(value, "{{slug}}", ownSlug)
+	value = strings.ReplaceAll(value, "{{base_slug}}", baseSlug)
 	value = strings.ReplaceAll(value, "{{base_domain}}", baseDomain)
 
 	for _, m := range aliasPlaceholderRe.FindAllStringSubmatch(value, -1) {
@@ -231,20 +253,70 @@ func resolvePlaceholders(value, ownSlug string, aliasBySuffix, generatedValues m
 
 const alnumCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-// generateValue produces a random credential. "password" is alnum-only
-// (24 chars) so it's always safe to embed directly in a connection-string
-// URL or a shell command without escaping; "hex32" is 32 lowercase hex
-// characters (16 random bytes), the format n8n/Vaultwarden-style encryption
-// keys/tokens expect.
-func generateValue(kind string) (string, error) {
-	switch kind {
-	case "password":
+// generateValue produces a random credential. Kinds:
+//
+//   - "password": alnum-only 24 chars, so it's always safe to embed directly
+//     in a connection-string URL or a shell command without escaping.
+//   - "hex32": 32 lowercase hex chars (16 random bytes), for things that
+//     require exactly 32 characters (e.g. a Postgres-meta/Studio crypto key).
+//   - "hex64": 64 lowercase hex chars (32 random bytes), for HS256 JWT
+//     secrets / Elixir secret-key-bases that want at least 32 bytes.
+//   - "jwt:<role>:{{generated:<secret_key>}}": an HS256-signed Supabase API
+//     key (anon or service_role) whose signature uses the referenced,
+//     earlier-generated secret -- see generateSupabaseJWT.
+//
+// generatedValues lets a jwt generate resolve its {{generated:...}} secret
+// reference the same way a literal value would.
+func generateValue(kind string, generatedValues map[string]string) (string, error) {
+	switch {
+	case kind == "password":
 		return randomAlnum(24)
-	case "hex32":
+	case kind == "hex32":
 		return randomHex(16)
+	case kind == "hex64":
+		return randomHex(32)
+	case strings.HasPrefix(kind, "jwt:"):
+		return generateSupabaseJWT(kind, generatedValues)
 	default:
 		return "", fmt.Errorf("unknown generate kind %q", kind)
 	}
+}
+
+// generateSupabaseJWT mints a Supabase API key as an HS256 JWT signed with
+// the shared JWT_SECRET: header.role is what PostgREST/GoTrue use to `SET
+// ROLE`, and the signature proves the key was created with the same secret
+// every service in the template verifies against. The expiry is ~1000 years
+// out on purpose -- these are long-lived static keys the user pastes into a
+// client SDK, not user session tokens, so a short exp would silently break
+// every anonymous request after the first hour.
+func generateSupabaseJWT(kind string, generatedValues map[string]string) (string, error) {
+	rest := strings.TrimPrefix(kind, "jwt:")
+	parts := strings.SplitN(rest, ":", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid jwt generate kind %q (want jwt:<role>:{{generated:<key>}})", kind)
+	}
+	role, ref := parts[0], parts[1]
+	if role != "anon" && role != "service_role" {
+		return "", fmt.Errorf("invalid jwt role %q (want anon or service_role)", role)
+	}
+	m := generatedPlaceholderRe.FindStringSubmatch(ref)
+	if len(m) != 2 {
+		return "", fmt.Errorf("jwt generate kind %q must reference a secret via {{generated:<key>}}", kind)
+	}
+	secret, ok := generatedValues[m[1]]
+	if !ok {
+		return "", fmt.Errorf("jwt generate kind %q references unknown generated secret %q", kind, m[1])
+	}
+
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	now := time.Now().Unix()
+	payloadJSON := fmt.Sprintf(`{"role":%q,"iss":"supabase","iat":%d,"exp":%d}`, role, now, now+31557600000)
+	payload := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
+	signingInput := header + "." + payload
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signingInput))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + sig, nil
 }
 
 func randomAlnum(n int) (string, error) {

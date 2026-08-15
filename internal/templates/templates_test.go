@@ -4,18 +4,18 @@ import "testing"
 
 func TestAllBuiltInTemplatesLoad(t *testing.T) {
 	all := List()
-	if len(all) != 12 {
+	if len(all) != 15 {
 		names := make([]string, len(all))
 		for i, tpl := range all {
 			names[i] = tpl.Key
 		}
-		t.Fatalf("expected 12 built-in templates, got %d: %v", len(all), names)
+		t.Fatalf("expected 15 built-in templates, got %d: %v", len(all), names)
 	}
 
 	wantKeys := []string{
 		"postgres", "redis", "mysql", "mongodb", "n8n", "ghost",
 		"wordpress", "uptime-kuma", "vaultwarden", "umami", "nephthys",
-		"nocodb",
+		"nocodb", "pocketbase", "supabase", "gitea",
 	}
 	for _, k := range wantKeys {
 		if _, ok := Get(k); !ok {
@@ -208,5 +208,79 @@ func TestValidateAcceptsPromptEnvVar(t *testing.T) {
 	}
 	if err := validate(ok); err != nil {
 		t.Errorf("expected a bare prompt env var to validate, got: %v", err)
+	}
+}
+
+func TestValidateAcceptsTemplateWithFiles(t *testing.T) {
+	ok := Template{
+		Key: "ok",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "PW", Generate: "password", GenerateKey: "pw"},
+			}, Files: []File{
+				{Path: "/docker-entrypoint-initdb.d/99-setup.sql", Content: "ALTER ROLE x PASSWORD '{{generated:pw}}';\n"},
+			}},
+		},
+	}
+	if err := validate(ok); err != nil {
+		t.Errorf("expected a template with a placeholder-bearing file to validate, got: %v", err)
+	}
+}
+
+func TestValidateRejectsFileReferencingUnknownGeneratedKey(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Files: []File{
+				{Path: "/init.sql", Content: "{{generated:nope}}"},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject a file referencing an undefined generate_key")
+	}
+}
+
+func TestValidateRejectsEmptyFile(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Files: []File{
+				{Path: "", Content: "content"},
+				{Path: "/ok.sql", Content: ""},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject a file with an empty path or content")
+	}
+}
+
+func TestValidateAcceptsJWTGenerateReferencingEarlierSecret(t *testing.T) {
+	ok := Template{
+		Key: "ok",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "JWT_SECRET", Generate: "hex64", GenerateKey: "jwt_secret"},
+				{Key: "ANON_KEY", Generate: "jwt:anon:{{generated:jwt_secret}}", GenerateKey: "anon"},
+			}},
+		},
+	}
+	if err := validate(ok); err != nil {
+		t.Errorf("expected a jwt generate referencing an earlier-generated secret to validate, got: %v", err)
+	}
+}
+
+func TestValidateRejectsJWTGenerateReferencingUnknownSecret(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "ANON_KEY", Generate: "jwt:anon:{{generated:missing}}"},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject a jwt generate referencing an undefined secret")
 	}
 }

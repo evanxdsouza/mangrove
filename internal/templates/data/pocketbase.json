@@ -1,0 +1,24 @@
+{
+  "key": "pocketbase",
+  "name": "PocketBase",
+  "description": "PocketBase is a single-file open-source backend: an embedded SQLite database, realtime subscriptions, file storage, and a user/admin auth system, all served from one binary with a built-in Admin UI. It uses the muchobien community image (the maintainer-maintained Docker packaging). Starts internal-only -- flip the PocketBase deployment public from its Access control tab once it's up, then open /_/ to finish admin setup.",
+  "category": "backend",
+  "deployments": [
+    {
+      "slug_suffix": "",
+      "build_strategy": "image",
+      "image_ref": "ghcr.io/muchobien/pocketbase:latest",
+      "internal_port": 8090,
+      "memory_limit_mb": 256,
+      "cpu_limit_cores": 0.25,
+      "health_check_path": "/api/health",
+      "volumes": [
+        { "name": "data", "mount_path": "/pb_data" }
+      ],
+      "env": [
+        { "key": "PB_ADMIN_EMAIL", "prompt": true, "label": "Admin email", "required": true },
+        { "key": "PB_ADMIN_PASSWORD", "prompt": true, "label": "Admin password (min 10 chars, must contain digits)", "required": true, "secret": true }
+      ]
+    }
+  ]
+}

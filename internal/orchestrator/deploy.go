@@ -153,6 +153,14 @@ type DeployRequest struct {
 	// RollbackToDeployHistoryID, when set, skips the build step entirely
 	// and reuses the image tag already recorded for that prior deploy.
 	RollbackToDeployHistoryID *int64
+
+	// Files are inline files to bind-mount into the container read-only at
+	// start (see executor.FileMount). Only meaningful for image-strategy
+	// deploys and only passed by InstallTemplate -- ordinary redeploys of a
+	// template-created deployment carry no files (the store has no rows for
+	// them), which is fine because they're only needed at first boot (e.g.
+	// a Postgres initdb.d script).
+	Files []executor.FileMount
 }
 
 const healthCheckPollInterval = 2 * time.Second
@@ -298,6 +306,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		RestartPolicy: svc.RestartPolicy,
 		Volumes:       volumeMounts,
 		Command:       svc.Command,
+		Files:         req.Files,
 		CgroupParent:  o.Config.CgroupParent,
 	}
 
