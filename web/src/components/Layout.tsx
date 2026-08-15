@@ -6,7 +6,7 @@ import { useUiMode } from "../uiMode";
 export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogout: () => void; children: ReactNode }) {
   const { path } = useRouter();
   const { mode, setMode } = useUiMode();
-  const onAdmin = path === "/admin";
+  const onAdmin = path === "/admin" || path === "/server-health";
   const simple = mode === "simple";
 
   return (
@@ -19,12 +19,17 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         <Link to="/" className={`nav-link ${!onAdmin ? "active" : ""}`}>
           {simple ? "Your apps" : "Projects"}
         </Link>
-        {/* Admin (users, ports, tokens, pruning) stays technical-only --
-            it's out of scope for a non-technical user by definition, so
-            simple mode just doesn't offer an entry point to it. */}
+        {/* Admin (users, ports, tokens, pruning, server health) stays
+            technical-only -- it's out of scope for a non-technical user by
+            definition, so simple mode just doesn't offer an entry point. */}
         {!simple && (
           <Link to="/admin" className={`nav-link ${onAdmin ? "active" : ""}`}>
             Admin
+          </Link>
+        )}
+        {!simple && (
+          <Link to="/server-health" className={`nav-link ${path === "/server-health" ? "active" : ""}`}>
+            Server health
           </Link>
         )}
         <div className="sidebar-footer">

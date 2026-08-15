@@ -135,6 +135,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Route("/admin", func(r chi.Router) {
 				r.Get("/resource-budget", s.getResourceBudget)
+				r.Get("/system-health", s.getSystemHealth)
 				r.Get("/ports", s.listPorts)
 				r.Post("/ports", s.reservePort)
 				r.Delete("/ports/{port}", s.releasePort)

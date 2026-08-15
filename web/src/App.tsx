@@ -7,6 +7,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
+import { ServerHealthPage } from "./pages/ServerHealthPage";
 import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
 import { UserProvider } from "./userContext";
@@ -78,6 +79,10 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
     // navigates here directly still gets the real admin page rather than
     // a dead end.
     body = <AdminPage />;
+  } else if (path === "/server-health") {
+    // Whole-host status: CPU/RAM/disk/load of the machine, not just
+    // Mangrove containers. Technical-only for the same reason as /admin.
+    body = <ServerHealthPage />;
   } else {
     body = mode === "simple" ? <SimpleAppsPage /> : <ProjectsPage />;
   }

@@ -3,12 +3,14 @@ package api
 import (
 	"net/http"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
+	"github.com/evanxdsouza/mangrove/internal/sysinfo"
 )
 
 type resourceBudgetResponse struct {
@@ -166,4 +168,13 @@ func (s *Server) getSecretsStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"master_key_configured": s.Secrets != nil,
 	})
+}
+
+// getSystemHealth returns a snapshot of the host the whole server runs on --
+// CPU, memory, swap, disk, load, uptime -- as distinct from the admin
+// resource budget, which only covers Mangrove's own containers. The CPU
+// figure is a short live sample (deltas across ~1s of wall time), so this
+// endpoint is naturally polled rather than cached.
+func (s *Server) getSystemHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, sysinfo.HostHealthSample(time.Second))
 }
