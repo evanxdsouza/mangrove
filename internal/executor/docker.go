@@ -174,13 +174,36 @@ func (e *DockerExecutor) buildDockerfile(ctx context.Context, buildDir string, s
 	return BuildResult{ImageTag: spec.ImageTag, ImageID: imageID}, nil
 }
 
+// defaultNixpacksNodeVersion is the Node.js version nixpacks builds default
+// to when the repo pins no version of its own. nixpacks 1.41.0 (the last
+// release; the project is in maintenance mode) defaults to Node 18, which
+// has reached End-Of-Life and been removed from the nixpkgs snapshot that
+// CLI version pins -- so a "no Dockerfile" deploy of an unpinned Node repo
+// fails at the nix-env step. A deployment can still pin its own version by
+// setting NIXPACKS_NODE_VERSION in BuildArgs, which wins over this default.
+const defaultNixpacksNodeVersion = "22"
+
 // buildNixpacks shells out to the `nixpacks` CLI (a documented host
 // dependency, installed alongside Docker) rather than reimplementing its
 // language-detection/build-plan logic.
 func (e *DockerExecutor) buildNixpacks(ctx context.Context, buildDir string, spec BuildSpec, logs io.Writer) (BuildResult, error) {
 	args := []string{"build", buildDir, "--name", spec.ImageTag}
+	// nixpacks reads NIXPACKS_NODE_VERSION from --env flags (build-time
+	// vars), not the invoking process's environment -- see the plan-detection
+	// verification. Pin a supported LTS unless the deployment overrides it.
+	nodeVersion, explicit := spec.BuildArgs["NIXPACKS_NODE_VERSION"]
+	if !explicit {
+		nodeVersion = defaultNixpacksNodeVersion
+	}
+	args = append(args, "--env", "NIXPACKS_NODE_VERSION="+nodeVersion)
 	for k, v := range spec.BuildArgs {
-		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
+		if k == "NIXPACKS_NODE_VERSION" {
+			continue
+		}
+		// BuildArgs reach the nixpacks build as --env (the CLI's flag for
+		// build-time variables), not Docker's --build-arg, which nixpacks
+		// doesn't accept.
+		args = append(args, "--env", fmt.Sprintf("%s=%s", k, v))
 	}
 
 	if err := runStreaming(ctx, "nixpacks", args, logs); err != nil {
@@ -492,9 +515,86 @@ func (e *DockerExecutor) Stats(ctx context.Context, containerRef string) (Resour
 	}
 
 	cpuPct, _ := strconv.ParseFloat(strings.TrimSuffix(raw.CPUPerc, "%"), 64)
-	usedMB, limitMB := parseMemUsage(raw.MemUsage)
+	_, limitMB := parseMemUsage(raw.MemUsage)
+
+	// `docker stats` MemUsage is the cgroup's memory.usage_in_bytes, which
+	// counts reclaimable page cache -- a freshly-written DB image can show
+	// 20 MiB when only ~5 MiB is real process memory. The admin budget
+	// reports actual usage, so use the cgroup's anonymous (RSS-equivalent)
+	// counter instead; fall back to the stats value if we can't read it.
+	usedMB, err := e.anonMemoryMB(ctx, containerRef)
+	if err != nil {
+		usedMB, _ = parseMemUsage(raw.MemUsage)
+	}
 
 	return ResourceStats{CPUPercent: cpuPct, MemUsageMB: usedMB, MemLimitMB: limitMB}, nil
+}
+
+// anonMemoryMB returns a container's anonymous memory usage in MB, read
+// from its cgroup's memory.stat `anon` counter. On a cgroup v2 host the
+// container's cgroup is derived from the process's own cgroup (read via
+// /proc/<pid>/cgroup), then memory.stat is read from the mounted hierarchy.
+// A container that exited between the docker inspect and the read yields an
+// error, which the caller treats as "use the docker stats value instead".
+func (e *DockerExecutor) anonMemoryMB(ctx context.Context, containerRef string) (float64, error) {
+	pidOut, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.Pid}}", containerRef).Output()
+	if err != nil {
+		return 0, fmt.Errorf("inspect pid: %w", err)
+	}
+	pid := strings.TrimSpace(string(pidOut))
+	if pid == "" || pid == "0" {
+		return 0, fmt.Errorf("container has no pid")
+	}
+
+	cgroupData, err := os.ReadFile(fmt.Sprintf("/proc/%s/cgroup", pid))
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/%s/cgroup: %w", pid, err)
+	}
+	// cgroup v2 line looks like: 0::/system.slice/docker-<id>.scope
+	// cgroup v1 line looks like: 3:memory:/docker/<id> (controllers vary).
+	var statPath string
+	for _, line := range strings.Split(string(cgroupData), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		controllers, rel := parts[1], parts[2]
+		switch {
+		case controllers == "": // v2: hierarchy 0 lists no controllers
+			// The v2 hierarchy is mounted directly at /sys/fs/cgroup and the
+			// path is already rooted at it (e.g. /system.slice/...).
+			statPath = "/sys/fs/cgroup" + rel
+		case strings.Contains(controllers, "memory"):
+			// v1: the memory controller has its own hierarchy mounted at
+			// /sys/fs/cgroup/memory.
+			statPath = "/sys/fs/cgroup/memory" + rel
+		default:
+			continue
+		}
+		break
+	}
+	if statPath == "" {
+		return 0, fmt.Errorf("no memory cgroup found")
+	}
+
+	data, err := os.ReadFile(statPath + "/memory.stat")
+	if err != nil {
+		return 0, fmt.Errorf("read %s/memory.stat: %w", statPath, err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "anon ") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 {
+				if b, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+					return float64(b) / (1024 * 1024), nil
+				}
+			}
+		}
+	}
+	return 0, fmt.Errorf("no anon counter in memory.stat")
 }
 
 // parseMemUsage parses Docker's "12.3MiB / 256MiB" stats format into MB.
