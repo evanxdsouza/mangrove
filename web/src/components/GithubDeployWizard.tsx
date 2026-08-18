@@ -272,6 +272,7 @@ function ConfigureStep({
         setStrategy(r.build_strategy as Strategy);
         if (r.dockerfile_path) setDockerfilePath(r.dockerfile_path);
         if (r.compose_path) setComposePath(r.compose_path);
+        if (r.suggested_port) setInternalPort(r.suggested_port);
         setEnvVars(r.env_vars ?? []);
       })
       .catch((e) => setDetectError(errMsg(e)))

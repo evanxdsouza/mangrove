@@ -286,6 +286,18 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	if err != nil {
 		return fail(fmt.Errorf("resolve env vars: %w", err))
 	}
+	// Tell the container what port to bind to via $PORT -- the de facto
+	// buildpack/nixpacks convention (and one plenty of hand-written
+	// Dockerfiles follow too). Without this, a service's InternalPort is
+	// pure guesswork on the caller's part (e.g. "Deploy from GitHub"'s
+	// wizard always suggests 3000) that has no effect on which port the
+	// app actually listens on, so the health check times out against a
+	// port nothing is bound to. An explicit user-set PORT wins.
+	if svc.InternalPort > 0 {
+		if _, ok := env["PORT"]; !ok {
+			env["PORT"] = strconv.Itoa(svc.InternalPort)
+		}
+	}
 
 	vols, err := o.Store.ListVolumesForService(ctx, svc.ID)
 	if err != nil {

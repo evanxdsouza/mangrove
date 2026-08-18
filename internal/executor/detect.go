@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +22,11 @@ type DetectionResult struct {
 	DockerfilePath string           `json:"dockerfile_path,omitempty"`
 	ComposePath    string           `json:"compose_path,omitempty"`
 	EnvVars        []DetectedEnvVar `json:"env_vars,omitempty"`
+	// SuggestedPort, when > 0, is the port the app looks like it listens
+	// on (currently: a Dockerfile's last EXPOSE instruction) -- the
+	// wizard's blind default of 3000 is wrong for most repos otherwise,
+	// since it has no relationship to the port the app actually binds.
+	SuggestedPort int `json:"suggested_port,omitempty"`
 }
 
 // DetectBuildStrategy shallow-clones src (the same materialize() step a
@@ -54,8 +61,8 @@ func detectStrategy(dir string) DetectionResult {
 			return DetectionResult{Strategy: StrategyCompose, ComposePath: name}
 		}
 	}
-	if isFile(filepath.Join(dir, "Dockerfile")) {
-		return DetectionResult{Strategy: StrategyDockerfile, DockerfilePath: "Dockerfile"}
+	if path := filepath.Join(dir, "Dockerfile"); isFile(path) {
+		return DetectionResult{Strategy: StrategyDockerfile, DockerfilePath: "Dockerfile", SuggestedPort: detectExposedPort(path)}
 	}
 	// A plain HTML site with no package.json (i.e. no build step, nothing
 	// server-side) -- anything with a package.json is left to nixpacks
@@ -73,6 +80,31 @@ func detectStrategy(dir string) DetectionResult {
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+var exposeRe = regexp.MustCompile(`(?im)^\s*EXPOSE\s+(\d+)`)
+
+// detectExposedPort returns a Dockerfile's last EXPOSE port (the last one
+// wins, matching how multi-stage Dockerfiles are read top to bottom;
+// EXPOSE's optional "/tcp"/"/udp" suffix and any additional ports on the
+// same line are ignored -- picking the first port on the line is enough
+// for the common single-port case this is meant to cover). 0 means no
+// EXPOSE instruction was found, and the caller falls back to its own
+// default.
+func detectExposedPort(dockerfilePath string) int {
+	data, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return 0
+	}
+	matches := exposeRe.FindAllStringSubmatch(string(data), -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	port, err := strconv.Atoi(matches[len(matches)-1][1])
+	if err != nil {
+		return 0
+	}
+	return port
 }
 
 // detectEnvVars parses .env.example-style files at the repo root -- the
