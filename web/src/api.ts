@@ -204,6 +204,7 @@ export interface DetectionResult {
   dockerfile_path?: string;
   compose_path?: string;
   env_vars?: DetectedEnvVar[];
+  suggested_port?: number;
 }
 
 export interface TemplateInstallResult {
