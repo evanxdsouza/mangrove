@@ -129,6 +129,20 @@ func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec 
 		// (e.g. plain static HTML with no package.json).
 		"--env", "NIXPACKS_START_CMD=true",
 	}
+	// Same EOL-Node-18 pin buildNixpacks applies below -- this is a
+	// separate nixpacks invocation (the static build's own builder image),
+	// so it needs its own copy of the fix, not just the same constant.
+	nodeVersion, explicit := spec.BuildArgs["NIXPACKS_NODE_VERSION"]
+	if !explicit {
+		nodeVersion = defaultNixpacksNodeVersion
+	}
+	nixArgs = append(nixArgs, "--env", "NIXPACKS_NODE_VERSION="+nodeVersion)
+	for k, v := range spec.BuildArgs {
+		if k == "NIXPACKS_NODE_VERSION" {
+			continue
+		}
+		nixArgs = append(nixArgs, "--env", fmt.Sprintf("%s=%s", k, v))
+	}
 	if err := runStreaming(ctx, "nixpacks", nixArgs, logs); err != nil {
 		return BuildResult{}, fmt.Errorf("nixpacks build: %w", err)
 	}

@@ -205,6 +205,8 @@ export interface DetectionResult {
   compose_path?: string;
   env_vars?: DetectedEnvVar[];
   suggested_port?: number;
+  static_build_command?: string;
+  static_output_dir?: string;
 }
 
 export interface TemplateInstallResult {

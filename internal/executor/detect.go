@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,14 @@ type DetectionResult struct {
 	// wizard's blind default of 3000 is wrong for most repos otherwise,
 	// since it has no relationship to the port the app actually binds.
 	SuggestedPort int `json:"suggested_port,omitempty"`
+	// StaticBuildCommand/StaticOutputDir are set alongside Strategy ==
+	// static when detection recognized a package.json-driven static
+	// frontend (see detectStaticFrontend) -- the wizard prefills the
+	// static-strategy build command/output dir fields with these instead
+	// of leaving StaticBuildCommand blank, which would skip the build
+	// step entirely and ship raw, unbundled source.
+	StaticBuildCommand string `json:"static_build_command,omitempty"`
+	StaticOutputDir    string `json:"static_output_dir,omitempty"`
 }
 
 // DetectBuildStrategy shallow-clones src (the same materialize() step a
@@ -65,16 +74,103 @@ func detectStrategy(dir string) DetectionResult {
 		return DetectionResult{Strategy: StrategyDockerfile, DockerfilePath: "Dockerfile", SuggestedPort: detectExposedPort(path)}
 	}
 	// A plain HTML site with no package.json (i.e. no build step, nothing
-	// server-side) -- anything with a package.json is left to nixpacks
-	// below, since "static frontend" vs. "Node server" can't be told apart
-	// from file presence alone.
+	// server-side) needs no further guessing.
 	if isFile(filepath.Join(dir, "index.html")) && !isFile(filepath.Join(dir, "package.json")) {
 		return DetectionResult{Strategy: StrategyStatic}
+	}
+	// A package.json alone doesn't say "Node server" -- a build-tool
+	// frontend (Vite, CRA, Vue CLI, ...) has one too, but produces static
+	// files and has no start script for nixpacks to run: see
+	// detectStaticFrontend.
+	if result, ok := detectStaticFrontend(dir); ok {
+		return result
 	}
 	// Generic fallback: nixpacks is Mangrove's "no Dockerfile needed"
 	// buildpack strategy, and handles most common stacks (Node, Python, Go,
 	// Ruby, ...) without further guessing.
 	return DetectionResult{Strategy: StrategyNixpacks}
+}
+
+// packageJSON is the subset of package.json fields detectStaticFrontend
+// needs -- scripts to tell "has a server to start" from "just builds", and
+// dependencies to name which bundler produced the build.
+type packageJSON struct {
+	Scripts         map[string]string `json:"scripts"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+}
+
+// staticBundlerOutputDirs maps a handful of common frontend build tools
+// (identified by their package.json dependency name) to the output
+// directory they write to by default. Deliberately excludes anything that
+// can plausibly run as a Node *server* too (webpack alone, SvelteKit's
+// adapter-node, Next.js) -- false-negative (falls through to nixpacks,
+// same as before this existed) is the safe failure mode here, not
+// false-positive (misclassifying a real server as static, which would
+// silently ship a static site with no backend at all).
+var staticBundlerOutputDirs = map[string]string{
+	"vite":             "dist",
+	"react-scripts":    "build",
+	"@vue/cli-service": "dist",
+	"@angular/cli":     "dist",
+	"gatsby":           "public",
+	"parcel":           "dist",
+	"astro":            "dist",
+	"@11ty/eleventy":   "_site",
+}
+
+// detectStaticFrontend recognizes a package.json-driven static frontend --
+// a build script that runs one of staticBundlerOutputDirs' bundlers, and no
+// start script (nixpacks would otherwise have nothing to run: "Error: No
+// start command could be found"). ok is false when package.json is
+// missing, unparseable, or doesn't match this pattern, leaving the caller's
+// nixpacks fallback in place.
+func detectStaticFrontend(dir string) (DetectionResult, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return DetectionResult{}, false
+	}
+	var pkg packageJSON
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return DetectionResult{}, false
+	}
+	if pkg.Scripts["start"] != "" || pkg.Scripts["build"] == "" {
+		return DetectionResult{}, false
+	}
+	outputDir := ""
+	for dep, out := range staticBundlerOutputDirs {
+		if _, ok := pkg.Dependencies[dep]; ok {
+			outputDir = out
+			break
+		}
+		if _, ok := pkg.DevDependencies[dep]; ok {
+			outputDir = out
+			break
+		}
+	}
+	if outputDir == "" {
+		return DetectionResult{}, false
+	}
+	return DetectionResult{
+		Strategy:           StrategyStatic,
+		StaticBuildCommand: buildCommand(dir),
+		StaticOutputDir:    outputDir,
+	}, true
+}
+
+// buildCommand picks "npm run build" vs. the equivalent yarn/pnpm
+// invocation based on which lockfile is present -- nixpacks (which
+// actually runs the static build, see docker.go's StaticBuildCommand
+// handling) needs the right package manager to install with too.
+func buildCommand(dir string) string {
+	switch {
+	case isFile(filepath.Join(dir, "pnpm-lock.yaml")):
+		return "pnpm run build"
+	case isFile(filepath.Join(dir, "yarn.lock")):
+		return "yarn build"
+	default:
+		return "npm run build"
+	}
 }
 
 func isFile(path string) bool {
