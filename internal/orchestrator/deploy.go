@@ -241,6 +241,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 			DockerfilePath: dep.DockerfilePath,
 			ImageTag:       imageTag,
 			ImageRef:       dep.ImageRef,
+			CacheKey:       fmt.Sprintf("%s-%s", dep.Slug, svc.Name),
 		}
 		if strategy != executor.StrategyImage {
 			buildSpec.Context = executor.ContextSource{

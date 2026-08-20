@@ -95,6 +95,7 @@ func (o *Orchestrator) DeployStatic(ctx context.Context, req DeployRequest) (dep
 			StaticBuildCommand: dep.StaticBuildCommand,
 			StaticOutputDir:    dep.StaticOutputDir,
 			StaticOutputName:   fmt.Sprintf("%s-%d", dep.Slug, historyID),
+			CacheKey:           fmt.Sprintf("%s-%s", dep.Slug, svc.Name),
 		}
 
 		var buildLog bytes.Buffer

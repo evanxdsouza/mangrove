@@ -122,6 +122,7 @@ func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec 
 	builderImage := "mangrove-static-build-" + spec.StaticOutputName
 	nixArgs := []string{
 		"build", buildDir, "--name", builderImage,
+		"--cache-key", nixpacksCacheKey(spec),
 		"--env", "NIXPACKS_BUILD_CMD=" + spec.StaticBuildCommand,
 		// The static build never runs the image's start phase -- only its
 		// build output is extracted -- but nixpacks still wants a start
@@ -187,7 +188,7 @@ const defaultNixpacksNodeVersion = "22"
 // dependency, installed alongside Docker) rather than reimplementing its
 // language-detection/build-plan logic.
 func (e *DockerExecutor) buildNixpacks(ctx context.Context, buildDir string, spec BuildSpec, logs io.Writer) (BuildResult, error) {
-	args := []string{"build", buildDir, "--name", spec.ImageTag}
+	args := []string{"build", buildDir, "--name", spec.ImageTag, "--cache-key", nixpacksCacheKey(spec)}
 	// nixpacks reads NIXPACKS_NODE_VERSION from --env flags (build-time
 	// vars), not the invoking process's environment -- see the plan-detection
 	// verification. Pin a supported LTS unless the deployment overrides it.
@@ -214,6 +215,20 @@ func (e *DockerExecutor) buildNixpacks(ctx context.Context, buildDir string, spe
 		return BuildResult{}, err
 	}
 	return BuildResult{ImageTag: spec.ImageTag, ImageID: imageID}, nil
+}
+
+// nixpacksCacheKey returns the BuildKit cache-mount key for a nixpacks
+// build. spec.CacheKey is expected to be set by every caller (the orchestrator
+// derives it from the deployment's slug and service name, stable across
+// redeploys of the same service); ImageTag is a last-resort fallback so a
+// build still gets *some* per-service isolation -- rather than falling back
+// to nixpacks' own default, the invoking process's cwd, which is fixed and
+// shared across every build the executor ever runs (see BuildSpec.CacheKey).
+func nixpacksCacheKey(spec BuildSpec) string {
+	if spec.CacheKey != "" {
+		return spec.CacheKey
+	}
+	return spec.ImageTag
 }
 
 func (e *DockerExecutor) inspectImageID(ctx context.Context, ref string) (string, error) {

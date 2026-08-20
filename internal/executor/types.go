@@ -93,6 +93,21 @@ type BuildSpec struct {
 	ImageTag       string
 	ImageRef       string // strategy == image: use this ref directly, no build
 	BuildArgs      map[string]string
+	// CacheKey scopes nixpacks' BuildKit cache mounts (npm/pip/etc install
+	// caches) to this deployment's service. nixpacks defaults --cache-key to
+	// the invoking process's current directory, which -- since the executor
+	// never chdirs into the per-build temp checkout -- would otherwise be
+	// the mangrove daemon's own fixed working directory for every build, of
+	// every app, forever. That collapses every deployment onto one shared
+	// cache: a stale/incompatible cache entry left by one app's build (e.g.
+	// a different framework's transform cache under node_modules/.cache)
+	// gets mounted straight into an unrelated app's build and can break it
+	// in ways that look like a broken dependency in the app itself. Strategy
+	// == static and == nixpacks both build via nixpacks and need this set;
+	// callers should keep it stable across redeploys of the same service
+	// (so repeat deploys still benefit from the cache) but unique per
+	// service otherwise.
+	CacheKey string
 
 	// StaticBuildCommand, when set, is run in a nixpacks-provisioned builder
 	// container (e.g. "npm run build"); strategy == static only. Left empty
