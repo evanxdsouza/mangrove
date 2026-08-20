@@ -14,6 +14,22 @@ func requireNixpacks(t *testing.T) {
 	}
 }
 
+func TestNixpacksCacheKey(t *testing.T) {
+	// spec.CacheKey wins when set -- this is how the orchestrator scopes
+	// the BuildKit cache to a stable per-service key across redeploys.
+	if got := nixpacksCacheKey(BuildSpec{CacheKey: "myapp-web", ImageTag: "mangrove/myapp-web:7"}); got != "myapp-web" {
+		t.Errorf("CacheKey set: got %q, want %q", got, "myapp-web")
+	}
+	// A caller that forgets to set CacheKey still gets a per-build key
+	// instead of silently falling through to nixpacks' own default (the
+	// invoking process's cwd), which -- since the executor never chdirs
+	// into the per-build checkout -- is identical for every deployment of
+	// every app the daemon ever builds.
+	if got := nixpacksCacheKey(BuildSpec{ImageTag: "mangrove/myapp-web:7"}); got != "mangrove/myapp-web:7" {
+		t.Errorf("CacheKey unset: got %q, want ImageTag fallback %q", got, "mangrove/myapp-web:7")
+	}
+}
+
 func TestDockerExecutorBuildNixpacks(t *testing.T) {
 	requireDocker(t)
 	requireNixpacks(t)
