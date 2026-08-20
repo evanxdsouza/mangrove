@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,13 @@ type DetectionResult struct {
 	// wizard's blind default of 3000 is wrong for most repos otherwise,
 	// since it has no relationship to the port the app actually binds.
 	SuggestedPort int `json:"suggested_port,omitempty"`
+	// StaticBuildCommand and StaticOutputDir are only set alongside
+	// Strategy == static when detectStaticFrontendBuild recognized a known
+	// static-only bundler (e.g. Vite, Create React App) -- the wizard
+	// pre-fills its build-command/output-dir fields from these but still
+	// lets the user review and change them before deploying.
+	StaticBuildCommand string `json:"static_build_command,omitempty"`
+	StaticOutputDir    string `json:"static_output_dir,omitempty"`
 }
 
 // DetectBuildStrategy shallow-clones src (the same materialize() step a
@@ -65,16 +73,91 @@ func detectStrategy(dir string) DetectionResult {
 		return DetectionResult{Strategy: StrategyDockerfile, DockerfilePath: "Dockerfile", SuggestedPort: detectExposedPort(path)}
 	}
 	// A plain HTML site with no package.json (i.e. no build step, nothing
-	// server-side) -- anything with a package.json is left to nixpacks
-	// below, since "static frontend" vs. "Node server" can't be told apart
-	// from file presence alone.
+	// server-side).
 	if isFile(filepath.Join(dir, "index.html")) && !isFile(filepath.Join(dir, "package.json")) {
 		return DetectionResult{Strategy: StrategyStatic}
+	}
+	// A package.json alone can't tell "static frontend" apart from "Node
+	// server" by presence alone -- but a handful of well-known build tools
+	// (Vite, Create React App, Parcel, ...) never run a production server of
+	// their own, so a repo built by one of them is static regardless of
+	// having a package.json. Handing these to nixpacks instead reliably
+	// fails the first deploy: nixpacks' plan detection finds no start
+	// command (there was never going to be one) and errors out only after
+	// the build has already run.
+	if buildCmd, outputDir, ok := detectStaticFrontendBuild(dir); ok {
+		return DetectionResult{Strategy: StrategyStatic, StaticBuildCommand: buildCmd, StaticOutputDir: outputDir}
 	}
 	// Generic fallback: nixpacks is Mangrove's "no Dockerfile needed"
 	// buildpack strategy, and handles most common stacks (Node, Python, Go,
 	// Ruby, ...) without further guessing.
 	return DetectionResult{Strategy: StrategyNixpacks}
+}
+
+// staticBundlerOutputDir maps a small set of well-known frontend build tools
+// that never run a production server of their own to their default build
+// output directory. Deliberately narrow and allowlist-based: tools with an
+// SSR/server mode of their own (Next, Nuxt, SvelteKit, Astro, ...) are
+// excluded via ssrFrameworkHints below even when one of these also appears
+// as a transitive dependency (e.g. SvelteKit apps depend on vite directly),
+// since guessing wrong there means a working server-rendered app silently
+// gets deployed as a static file dump instead of falling through to the
+// nixpacks path the user can review and correct.
+var staticBundlerOutputDir = map[string]string{
+	"vite":          "dist",
+	"react-scripts": "build", // create-react-app
+	"parcel":        "dist",
+	"@parcel/core":  "dist",
+}
+
+var ssrFrameworkHints = []string{
+	"next", "nuxt", "nuxt3", "@remix-run/dev", "@remix-run/react",
+	"@sveltejs/kit", "astro", "@builder.io/qwik-city", "solid-start",
+	"express", "fastify", "koa", "@nestjs/core", "@hapi/hapi",
+}
+
+type packageJSONForDetect struct {
+	Scripts         map[string]string `json:"scripts"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+}
+
+// detectStaticFrontendBuild reports whether dir's package.json belongs to a
+// static-only frontend build (a "build" script, one of staticBundlerOutputDir's
+// tools as a dependency, and none of ssrFrameworkHints present), returning
+// the install+build command to run and the tool's default output directory.
+func detectStaticFrontendBuild(dir string) (buildCmd, outputDir string, ok bool) {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return "", "", false
+	}
+	var pkg packageJSONForDetect
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return "", "", false
+	}
+	if pkg.Scripts["build"] == "" {
+		return "", "", false
+	}
+
+	deps := make(map[string]bool, len(pkg.Dependencies)+len(pkg.DevDependencies))
+	for name := range pkg.Dependencies {
+		deps[name] = true
+	}
+	for name := range pkg.DevDependencies {
+		deps[name] = true
+	}
+
+	for _, hint := range ssrFrameworkHints {
+		if deps[hint] {
+			return "", "", false
+		}
+	}
+	for tool, outDir := range staticBundlerOutputDir {
+		if deps[tool] {
+			return "npm run build", outDir, true
+		}
+	}
+	return "", "", false
 }
 
 func isFile(path string) bool {
