@@ -1,7 +1,7 @@
 {
   "key": "pocketbase",
   "name": "PocketBase",
-  "description": "PocketBase is a single-file open-source backend: an embedded SQLite database, realtime subscriptions, file storage, and a user/admin auth system, all served from one binary with a built-in Admin UI. It uses the muchobien community image (the maintainer-maintained Docker packaging). Starts internal-only -- flip the PocketBase deployment public from its Access control tab once it's up, then open /_/ to finish admin setup.",
+  "description": "PocketBase is a single-file open-source backend: an embedded SQLite database, realtime subscriptions, file storage, and a user/admin auth system, all served from one binary with a built-in Admin UI. It uses the muchobien community image (the maintainer-maintained Docker packaging). Starts internal-only -- flip the PocketBase deployment public from its Access control tab once it's up, then open /_/ to finish admin setup. Supports up to two extra superusers at install time (leave their fields blank to skip) -- handy for running one shared instance as a community service rather than a separate deployment per person; more can always be added later from /_/'s own Admins settings once logged in.",
   "category": "backend",
   "deployments": [
     {
@@ -17,7 +17,23 @@
       ],
       "env": [
         { "key": "PB_ADMIN_EMAIL", "prompt": true, "label": "Admin email", "required": true },
-        { "key": "PB_ADMIN_PASSWORD", "prompt": true, "label": "Admin password (min 10 chars, must contain digits)", "required": true, "secret": true }
+        { "key": "PB_ADMIN_PASSWORD", "prompt": true, "label": "Admin password (min 10 chars, must contain digits)", "required": true, "secret": true },
+        { "key": "PB_ADMIN_EMAIL_2", "prompt": true, "label": "Second admin email (optional)" },
+        { "key": "PB_ADMIN_PASSWORD_2", "prompt": true, "label": "Second admin password (optional, min 10 chars, must contain digits)", "secret": true },
+        { "key": "PB_ADMIN_EMAIL_3", "prompt": true, "label": "Third admin email (optional)" },
+        { "key": "PB_ADMIN_PASSWORD_3", "prompt": true, "label": "Third admin password (optional, min 10 chars, must contain digits)", "secret": true }
+      ],
+      "post_deploy_commands": [
+        [
+          "sh", "-c",
+          "if [ -n \"$1\" ] && [ -n \"$2\" ]; then /usr/local/bin/pocketbase superuser upsert \"$1\" \"$2\" --dir=/pb_data; fi",
+          "--", "{{env:PB_ADMIN_EMAIL_2}}", "{{env:PB_ADMIN_PASSWORD_2}}"
+        ],
+        [
+          "sh", "-c",
+          "if [ -n \"$1\" ] && [ -n \"$2\" ]; then /usr/local/bin/pocketbase superuser upsert \"$1\" \"$2\" --dir=/pb_data; fi",
+          "--", "{{env:PB_ADMIN_EMAIL_3}}", "{{env:PB_ADMIN_PASSWORD_3}}"
+        ]
       ]
     }
   ]

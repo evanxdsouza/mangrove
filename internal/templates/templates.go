@@ -120,6 +120,20 @@ type Deployment struct {
 	Volumes           []Volume `json:"volumes,omitempty"`
 	Env               []EnvVar `json:"env,omitempty"`
 	Files             []File   `json:"files,omitempty"`
+	// PostDeployCommands are exec-form commands (like Command, but run via
+	// `docker exec` rather than as the container's CMD) executed against
+	// this deployment's own container immediately after it deploys
+	// successfully -- e.g. seeding extra admin accounts an image's startup
+	// script has no way to create on its own (see pocketbase.json). Each
+	// token is resolved for the same placeholders a Files entry supports,
+	// plus "{{env:<key>}}" -- this deployment's own resolved value for that
+	// env key (literal, generated, or prompted), so an optional prompted
+	// value can be threaded into a seed command. Not persisted anywhere;
+	// exists only during InstallTemplate, same as Files. A nonzero exit
+	// fails the install the same way a bad Deploy() does, so write each
+	// command defensively (e.g. skip cleanly when an optional prompted
+	// value was left empty).
+	PostDeployCommands [][]string `json:"post_deploy_commands,omitempty"`
 }
 
 // Template is one entry in the gallery.
@@ -178,6 +192,7 @@ func init() {
 }
 
 var generatedPlaceholderRe = regexp.MustCompile(`\{\{generated:([^}]+)\}\}`)
+var envPlaceholderRe = regexp.MustCompile(`\{\{env:([^}]+)\}\}`)
 
 // validate enforces the invariants InstallTemplate relies on: exactly one
 // deployment is the template's primary (SlugSuffix == ""), it's last (so
@@ -261,6 +276,27 @@ func validate(t Template) error {
 			for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(f.Content, -1) {
 				if !seenGenerateKeys[m[1]] {
 					return fmt.Errorf("template %q deployment %d: file %q references undefined generate_key %q", t.Key, i, f.Path, m[1])
+				}
+			}
+		}
+		envKeys := map[string]bool{}
+		for _, ev := range d.Env {
+			envKeys[ev.Key] = true
+		}
+		for _, cmd := range d.PostDeployCommands {
+			if len(cmd) == 0 {
+				return fmt.Errorf("template %q deployment %d: post_deploy_commands entry must not be empty", t.Key, i)
+			}
+			for _, tok := range cmd {
+				for _, m := range envPlaceholderRe.FindAllStringSubmatch(tok, -1) {
+					if !envKeys[m[1]] {
+						return fmt.Errorf("template %q deployment %d: post_deploy_commands references undefined env key %q", t.Key, i, m[1])
+					}
+				}
+				for _, m := range generatedPlaceholderRe.FindAllStringSubmatch(tok, -1) {
+					if !seenGenerateKeys[m[1]] {
+						return fmt.Errorf("template %q deployment %d: post_deploy_commands references undefined generate_key %q", t.Key, i, m[1])
+					}
 				}
 			}
 		}

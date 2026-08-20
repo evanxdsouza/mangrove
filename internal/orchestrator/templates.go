@@ -45,6 +45,7 @@ type TemplateInstallResult struct {
 var (
 	aliasPlaceholderRe     = regexp.MustCompile(`\{\{alias:([^}]+)\}\}`)
 	generatedPlaceholderRe = regexp.MustCompile(`\{\{generated:([^}]+)\}\}`)
+	envPlaceholderRe       = regexp.MustCompile(`\{\{env:([^}]+)\}\}`)
 )
 
 // InstallTemplate expands a built-in template into real deployment/
@@ -150,6 +151,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 			}
 		}
 
+		svcEnvValues := map[string]string{} // this deployment's own env key -> resolved value, for {{env:key}} in Files/PostDeployCommands
 		for _, ev := range d.Env {
 			var value string
 			switch {
@@ -167,11 +169,12 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 				}
 				result.Credentials[fmt.Sprintf("%s: %s", name, ev.Key)] = value
 			default:
-				value, err = resolvePlaceholders(ev.Value, slug, baseSlug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
+				value, err = resolvePlaceholders(ev.Value, slug, baseSlug, aliasBySuffix, generatedValues, svcEnvValues, o.Config.BaseDomain)
 				if err != nil {
 					return result, fmt.Errorf("resolve value for %s on %q: %w", ev.Key, slug, err)
 				}
 			}
+			svcEnvValues[ev.Key] = value
 
 			if ev.Secret {
 				aad := []byte(fmt.Sprintf("env_vars:%d:%s", svc.ID, ev.Key))
@@ -193,7 +196,7 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 
 		var fileMounts []executor.FileMount
 		for _, f := range d.Files {
-			content, err := resolvePlaceholders(f.Content, slug, baseSlug, aliasBySuffix, generatedValues, o.Config.BaseDomain)
+			content, err := resolvePlaceholders(f.Content, slug, baseSlug, aliasBySuffix, generatedValues, svcEnvValues, o.Config.BaseDomain)
 			if err != nil {
 				return result, fmt.Errorf("resolve file %q for %q: %w", f.Path, slug, err)
 			}
@@ -215,21 +218,46 @@ func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, tem
 			return result, fmt.Errorf("deploy %q: %w", slug, deployErr)
 		}
 		result.Deployments = append(result.Deployments, installed)
+
+		for _, cmd := range d.PostDeployCommands {
+			resolvedCmd := make([]string, len(cmd))
+			for i, tok := range cmd {
+				rt, err := resolvePlaceholders(tok, slug, baseSlug, aliasBySuffix, generatedValues, svcEnvValues, o.Config.BaseDomain)
+				if err != nil {
+					return result, fmt.Errorf("resolve post-deploy command for %q: %w", slug, err)
+				}
+				resolvedCmd[i] = rt
+			}
+			execResult, err := o.RunServiceCommand(ctx, svc.ID, resolvedCmd)
+			if err != nil {
+				return result, fmt.Errorf("post-deploy command for %q: %w", slug, err)
+			}
+			if execResult.ExitCode != 0 {
+				return result, fmt.Errorf("post-deploy command for %q exited %d: %s", slug, execResult.ExitCode, execResult.Output)
+			}
+		}
 	}
 
 	return result, nil
 }
 
 // resolvePlaceholders expands {{slug}}, {{base_slug}}, {{base_domain}},
-// {{alias:suffix}}, and {{generated:key}} inside an env var's literal value
-// template or a template deployment's inline file content.
+// {{alias:suffix}}, {{generated:key}}, and {{env:key}} inside an env var's
+// literal value template, a template deployment's inline file content, or a
+// post-deploy command token.
 //
 // {{base_slug}} is the user's chosen base slug (the template's primary
 // deployment slug) regardless of which deployment the placeholder appears
 // on -- it's how a dependency whose slug includes a suffix (e.g. a Supabase
 // Studio deployment at "<base>-studio") can still reference the primary
 // deployment's public URL.
-func resolvePlaceholders(value, ownSlug, baseSlug string, aliasBySuffix, generatedValues map[string]string, baseDomain string) (string, error) {
+//
+// envValues is this deployment's own env key -> resolved value map (see
+// InstallTemplate), covering literal, generated, and prompted values alike
+// -- {{env:key}} is how a post-deploy command threads an optional prompted
+// value (e.g. a second admin's email/password) into an exec'd command
+// without the template itself ever spelling it out.
+func resolvePlaceholders(value, ownSlug, baseSlug string, aliasBySuffix, generatedValues, envValues map[string]string, baseDomain string) (string, error) {
 	value = strings.ReplaceAll(value, "{{slug}}", ownSlug)
 	value = strings.ReplaceAll(value, "{{base_slug}}", baseSlug)
 	value = strings.ReplaceAll(value, "{{base_domain}}", baseDomain)
@@ -247,6 +275,13 @@ func resolvePlaceholders(value, ownSlug, baseSlug string, aliasBySuffix, generat
 			return "", fmt.Errorf("no generated value for key %q yet", m[1])
 		}
 		value = strings.ReplaceAll(value, m[0], gv)
+	}
+	for _, m := range envPlaceholderRe.FindAllStringSubmatch(value, -1) {
+		ev, ok := envValues[m[1]]
+		if !ok {
+			return "", fmt.Errorf("no env value for key %q yet", m[1])
+		}
+		value = strings.ReplaceAll(value, m[0], ev)
 	}
 	return value, nil
 }

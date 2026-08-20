@@ -146,7 +146,7 @@ function InstallTemplateForm({
         {promptedVars.length > 0 && (
           <>
             <div className="card-title" style={{ marginTop: 18 }}>
-              Required configuration
+              Configuration
             </div>
             {promptedVars.map((ev) => {
               const fieldKey = envFieldKey(ev.slugSuffix, ev.key);

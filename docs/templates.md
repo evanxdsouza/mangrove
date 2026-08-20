@@ -42,6 +42,7 @@ Each entry in `deployments` describes one deployment to create:
 | `volumes` | no | `[{ "name": "data", "mount_path": "/data" }]` -- named Docker volumes. |
 | `files` | no | `[{ "path": "/docker-entrypoint-initdb.d/99-setup.sql", "content": "..." }]` -- small inline files bind-mounted read-only into the container before it first starts. See "Files" below. |
 | `env` | no | See below. |
+| `post_deploy_commands` | no | `[["sh", "-c", "...", "--", "{{env:KEY}}"], ...]` -- exec-form commands run via `docker exec` against this deployment's own container right after it deploys successfully. See "Post-deploy commands" below. |
 
 ### Env vars: literals, generated secrets, prompted values, and cross-deployment references
 
@@ -116,6 +117,57 @@ for a real example (role-password, JWT-setting, and `_realtime`-schema init
 scripts mounted into the Postgres container, mirroring the official
 compose's `init-scripts/99-*.sql` / `migrations/99-*.sql`).
 
+### Post-deploy commands: seeding state a startup script can't
+
+Some images only read env vars for a single instance of a thing -- e.g. the
+`muchobien/pocketbase` image's entrypoint auto-creates exactly **one**
+superuser from `PB_ADMIN_EMAIL`/`PB_ADMIN_PASSWORD` and has no way to seed a
+second or third from env vars alone. `post_deploy_commands` covers this: a
+list of exec-form commands (like `command`, but run via `docker exec`
+against the running container instead of becoming the container's `CMD`),
+executed in order immediately after this deployment's own `Deploy()`
+succeeds.
+
+Each token is resolved for the same placeholders a `files` entry's content
+supports (`{{slug}}`, `{{base_slug}}`, `{{base_domain}}`, `{{alias:...}}`,
+`{{generated:...}}`), plus one more: `{{env:<key>}}` -- this deployment's
+own resolved value for that env key (literal, generated, *or* prompted).
+That last one is what makes optional prompted admins possible: a template
+can declare `PB_ADMIN_EMAIL_2`/`PB_ADMIN_PASSWORD_2` as ordinary optional
+(non-`required`) prompt env vars, then reference them in a command via
+`{{env:PB_ADMIN_EMAIL_2}}`/`{{env:PB_ADMIN_PASSWORD_2}}` -- installing as
+empty strings when the installer leaves them blank.
+
+Because each command is exec-form (an argv array, not a shell string),
+`docker exec` never re-interprets a resolved value -- an email or password
+containing shell metacharacters can't break out of the command. If the
+command itself needs a shell (e.g. to guard against an empty optional
+value), invoke one explicitly and pass the resolved values as trailing argv
+after `--` rather than interpolating them into the script text, so they
+reach the shell as `$1`, `$2`, ... instead of being re-parsed:
+
+```json
+"post_deploy_commands": [
+  [
+    "sh", "-c",
+    "if [ -n \"$1\" ] && [ -n \"$2\" ]; then /usr/local/bin/pocketbase superuser upsert \"$1\" \"$2\" --dir=/pb_data; fi",
+    "--", "{{env:PB_ADMIN_EMAIL_2}}", "{{env:PB_ADMIN_PASSWORD_2}}"
+  ]
+]
+```
+
+See `pocketbase.json` for the real thing: it seeds up to two extra optional
+superusers this way, on top of the one the image's own entrypoint creates
+-- useful for standing up a single shared PocketBase instance with a few
+trusted admins rather than a separate deployment per person.
+
+A command is not retried, and a nonzero exit fails the whole install the
+same way a failed `Deploy()` does -- write commands defensively (as above)
+if a blank optional value should be a no-op rather than a failure. Like
+`files`, these are **not** persisted anywhere; they only run once, during
+`InstallTemplate` itself -- a later plain redeploy of the resulting
+deployment does not re-run them.
+
 ### Ordering
 
 Validation (`internal/templates/templates.go`'s `validate`, run once at
@@ -126,12 +178,16 @@ install time) enforces:
    the **last** entry in the array.
 2. Every `{{generated:key}}` placeholder references a `generate_key` set
    by an *earlier* deployment in the same array -- including references
-   inside a `jwt:` generate kind and inside a `files` entry's content.
+   inside a `jwt:` generate kind, inside a `files` entry's content, and
+   inside a `post_deploy_commands` token.
 3. Every deployment has a positive `memory_limit_mb`, and a build source:
    `image_ref` for `build_strategy: "image"` (the default), `git_url` for
    `build_strategy: "dockerfile"`.
 4. Every env var sets at most one of `value`, `generate`, `prompt`.
 5. Every `files` entry has a non-empty `path` and `content`.
+6. Every `post_deploy_commands` entry is non-empty, and every `{{env:key}}`
+   placeholder inside one references an env key that actually exists on
+   the *same* deployment.
 
 The ordering rule exists because deployments install in array order, and
 a later deployment's env (like WordPress's `WORDPRESS_DB_HOST` referencing

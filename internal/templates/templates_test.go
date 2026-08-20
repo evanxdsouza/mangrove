@@ -284,3 +284,47 @@ func TestValidateRejectsJWTGenerateReferencingUnknownSecret(t *testing.T) {
 		t.Error("expected validate to reject a jwt generate referencing an undefined secret")
 	}
 }
+
+func TestValidateAcceptsPostDeployCommandReferencingOwnEnvKey(t *testing.T) {
+	ok := Template{
+		Key: "ok",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, Env: []EnvVar{
+				{Key: "EXTRA_EMAIL", Prompt: true},
+			}, PostDeployCommands: [][]string{
+				{"sh", "-c", "echo \"$1\"", "--", "{{env:EXTRA_EMAIL}}"},
+			}},
+		},
+	}
+	if err := validate(ok); err != nil {
+		t.Errorf("expected a post_deploy_commands entry referencing its own deployment's env key to validate, got: %v", err)
+	}
+}
+
+func TestValidateRejectsPostDeployCommandReferencingUnknownEnvKey(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, PostDeployCommands: [][]string{
+				{"sh", "-c", "echo \"$1\"", "--", "{{env:NOPE}}"},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject a post_deploy_commands entry referencing an undefined env key")
+	}
+}
+
+func TestValidateRejectsEmptyPostDeployCommand(t *testing.T) {
+	bad := Template{
+		Key: "bad",
+		Deployments: []Deployment{
+			{SlugSuffix: "", ImageRef: "x", MemoryLimitMB: 1, PostDeployCommands: [][]string{
+				{},
+			}},
+		},
+	}
+	if err := validate(bad); err == nil {
+		t.Error("expected validate to reject an empty post_deploy_commands entry")
+	}
+}
