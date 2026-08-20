@@ -199,6 +199,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           <OverviewTab services={services} deployment={deployment} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
+          <BuildConfigCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
         </>
       )}
       {tab === "history" && (
@@ -438,6 +439,187 @@ function AutoDeployCard({
         </button>
       </div>
       {saved && <div className="field-hint">Saved.</div>}
+    </div>
+  );
+}
+
+const BUILD_STRATEGIES = ["dockerfile", "nixpacks", "compose", "image", "static"] as const;
+
+// BuildConfigCard is the only edit path for a deployment's build_strategy
+// and related fields (dockerfile/compose path, static build command +
+// output dir, image ref) after creation -- the "Deploy from GitHub" wizard
+// only sets these once, at creation time, from its own best-guess
+// auto-detect. A common miss: a Vite/CRA frontend (which always has a
+// package.json for its build tooling, even though it ships no server)
+// gets auto-detected as a generic nixpacks app, and every build then fails
+// with "no start command could be found" since there was never going to be
+// one. This card is how that gets corrected without deleting and
+// recreating the deployment. git_branch is deliberately not editable here
+// -- that's AutoDeployCard's field -- so saving this card can't clobber it.
+function BuildConfigCard({
+  deploymentId,
+  deployment,
+  onSaved,
+}: {
+  deploymentId: number;
+  deployment: Deployment | null;
+  onSaved: () => void;
+}) {
+  const isOwner = useIsOwner();
+  const [strategy, setStrategy] = useState<Deployment["build_strategy"]>("nixpacks");
+  const [rootPath, setRootPath] = useState(".");
+  const [dockerfilePath, setDockerfilePath] = useState("");
+  const [composePath, setComposePath] = useState("");
+  const [imageRef, setImageRef] = useState("");
+  const [staticBuildCommand, setStaticBuildCommand] = useState("");
+  const [staticOutputDir, setStaticOutputDir] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (deployment) {
+      setStrategy(deployment.build_strategy);
+      setRootPath(deployment.root_path || ".");
+      setDockerfilePath(deployment.dockerfile_path ?? "");
+      setComposePath(deployment.compose_path ?? "");
+      setImageRef(deployment.image_ref ?? "");
+      setStaticBuildCommand(deployment.static_build_command ?? "");
+      setStaticOutputDir(deployment.static_output_dir ?? "");
+    }
+  }, [deployment]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/build-config`, {
+        build_strategy: strategy,
+        git_branch: deployment?.git_branch ?? "",
+        root_path: rootPath,
+        dockerfile_path: dockerfilePath,
+        compose_path: composePath,
+        image_ref: imageRef,
+        static_build_command: staticBuildCommand,
+        static_output_dir: staticOutputDir,
+      });
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Build configuration</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Only takes effect on the next deploy or redeploy -- changing this never touches what's currently running.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      {!isOwner && <div className="field-hint">Only an owner can change build configuration.</div>}
+      <div className="form-row">
+        <div className="field">
+          <label htmlFor="build-strategy">Strategy</label>
+          <select
+            id="build-strategy"
+            className="input"
+            disabled={!isOwner}
+            value={strategy}
+            onChange={(e) => setStrategy(e.target.value as Deployment["build_strategy"])}
+          >
+            {BUILD_STRATEGIES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="build-root-path">Root path</label>
+          <input
+            id="build-root-path"
+            className="input mono"
+            disabled={!isOwner}
+            value={rootPath}
+            onChange={(e) => setRootPath(e.target.value)}
+          />
+        </div>
+      </div>
+      {strategy === "dockerfile" && (
+        <div className="field">
+          <label htmlFor="build-dockerfile-path">Dockerfile path</label>
+          <input
+            id="build-dockerfile-path"
+            className="input mono"
+            disabled={!isOwner}
+            value={dockerfilePath}
+            onChange={(e) => setDockerfilePath(e.target.value)}
+            placeholder="Dockerfile"
+          />
+        </div>
+      )}
+      {strategy === "compose" && (
+        <div className="field">
+          <label htmlFor="build-compose-path">Compose file path</label>
+          <input
+            id="build-compose-path"
+            className="input mono"
+            disabled={!isOwner}
+            value={composePath}
+            onChange={(e) => setComposePath(e.target.value)}
+            placeholder="docker-compose.yml"
+          />
+        </div>
+      )}
+      {strategy === "image" && (
+        <div className="field">
+          <label htmlFor="build-image-ref">Image ref</label>
+          <input
+            id="build-image-ref"
+            className="input mono"
+            disabled={!isOwner}
+            value={imageRef}
+            onChange={(e) => setImageRef(e.target.value)}
+            placeholder="registry.example.com/app:latest"
+          />
+        </div>
+      )}
+      {strategy === "static" && (
+        <div className="form-row">
+          <div className="field">
+            <label htmlFor="build-static-command">Build command</label>
+            <input
+              id="build-static-command"
+              className="input mono"
+              disabled={!isOwner}
+              value={staticBuildCommand}
+              onChange={(e) => setStaticBuildCommand(e.target.value)}
+              placeholder="npm run build"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="build-static-output">Output directory</label>
+            <input
+              id="build-static-output"
+              className="input mono"
+              disabled={!isOwner}
+              value={staticOutputDir}
+              onChange={(e) => setStaticOutputDir(e.target.value)}
+              placeholder="dist"
+            />
+          </div>
+        </div>
+      )}
+      {isOwner && (
+        <button className="btn btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+      )}
+      {saved && <div className="field-hint">Saved. Deploy or redeploy to build with the new configuration.</div>}
     </div>
   );
 }

@@ -493,6 +493,40 @@ func (s *Store) ListAllDeployments(ctx context.Context) ([]models.Deployment, er
 	return out, rows.Err()
 }
 
+// UpdateBuildConfigParams mirrors CreateDeploymentParams' build-related
+// fields -- everything about *how* a deployment builds and starts, as
+// opposed to its name/slug/access-control/replicas, which have their own
+// dedicated update paths.
+type UpdateBuildConfigParams struct {
+	BuildStrategy      string
+	GitBranch          string
+	ImageRef           string
+	RootPath           string
+	DockerfilePath     string
+	ComposePath        string
+	StaticBuildCommand string
+	StaticOutputDir    string
+}
+
+// UpdateDeploymentBuildConfig changes what a deployment builds/starts from
+// without touching its identity (name/slug), access control, or replica
+// count. This is the only way to fix a deployment whose strategy was
+// mis-detected at creation time (e.g. a Vite/CRA frontend that "Deploy from
+// GitHub" originally guessed as nixpacks, which then fails every build with
+// "no start command could be found") short of deleting and recreating it --
+// the change only takes effect on the next deploy/redeploy; it never
+// touches whatever is currently running.
+func (s *Store) UpdateDeploymentBuildConfig(ctx context.Context, id int64, p UpdateBuildConfigParams) error {
+	if p.RootPath == "" {
+		p.RootPath = "."
+	}
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE deployments SET build_strategy = ?, git_branch = ?, image_ref = ?, root_path = ?, dockerfile_path = ?, compose_path = ?, static_build_command = ?, static_output_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, id,
+	)
+	return err
+}
+
 func (s *Store) UpdateDeploymentStatus(ctx context.Context, id int64, status string) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
 	return err

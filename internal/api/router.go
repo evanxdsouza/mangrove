@@ -112,6 +112,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/restart", s.restartDeployment)
 				r.Post("/repo", s.setDeploymentRepo)
 				r.With(auth.RequireOwner).Post("/access", s.setDeploymentAccess)
+				r.With(auth.RequireOwner).Post("/build-config", s.updateDeploymentBuildConfig)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {

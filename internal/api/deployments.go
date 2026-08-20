@@ -148,6 +148,60 @@ func (s *Server) getDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dep)
 }
 
+var validBuildStrategies = map[string]bool{
+	"dockerfile": true, "nixpacks": true, "compose": true, "image": true, "static": true,
+}
+
+type updateBuildConfigRequest struct {
+	BuildStrategy      string `json:"build_strategy"`
+	GitBranch          string `json:"git_branch"`
+	ImageRef           string `json:"image_ref"`
+	RootPath           string `json:"root_path"`
+	DockerfilePath     string `json:"dockerfile_path"`
+	ComposePath        string `json:"compose_path"`
+	StaticBuildCommand string `json:"static_build_command"`
+	StaticOutputDir    string `json:"static_output_dir"`
+}
+
+// updateDeploymentBuildConfig changes what a deployment builds/starts from
+// -- the fields set once at "Deploy from GitHub" time with no edit path
+// since (build_strategy and friends). It exists specifically for repos the
+// wizard's auto-detect got wrong on first deploy (most commonly: a Vite/CRA
+// frontend guessed as nixpacks, which fails every build with "no start
+// command could be found" since there was never going to be one) --
+// changing strategy here doesn't touch anything currently running; it only
+// takes effect on the next deploy/redeploy.
+func (s *Server) updateDeploymentBuildConfig(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	var req updateBuildConfigRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if !validBuildStrategies[req.BuildStrategy] {
+		writeError(w, http.StatusBadRequest, "build_strategy must be one of: dockerfile, nixpacks, compose, image, static")
+		return
+	}
+	if err := s.Store.UpdateDeploymentBuildConfig(r.Context(), deploymentID, store.UpdateBuildConfigParams{
+		BuildStrategy:      req.BuildStrategy,
+		GitBranch:          req.GitBranch,
+		ImageRef:           req.ImageRef,
+		RootPath:           req.RootPath,
+		DockerfilePath:     req.DockerfilePath,
+		ComposePath:        req.ComposePath,
+		StaticBuildCommand: req.StaticBuildCommand,
+		StaticOutputDir:    req.StaticOutputDir,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) deleteDeployment(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(chi.URLParam(r, "deploymentID"))
 	if err != nil {

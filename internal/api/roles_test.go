@@ -90,6 +90,7 @@ func TestMemberForbiddenFromOwnerOnlyRoutes(t *testing.T) {
 		{"delete project", http.MethodDelete, "/api/projects/1", nil},
 		{"delete deployment", http.MethodDelete, "/api/deployments/1", nil},
 		{"set access control", http.MethodPost, "/api/deployments/1/access", map[string]any{"is_public": true}},
+		{"update build config", http.MethodPost, "/api/deployments/1/build-config", map[string]any{"build_strategy": "static"}},
 		{"list users", http.MethodGet, "/api/admin/users", nil},
 		{"create user", http.MethodPost, "/api/admin/users", map[string]any{"email": "x@example.com", "password": "password123", "role": "member"}},
 		{"delete user", http.MethodDelete, "/api/admin/users/999", nil},
