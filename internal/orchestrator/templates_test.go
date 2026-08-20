@@ -707,3 +707,64 @@ func TestGenerateHex64(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallTemplateRunsPostDeployCommandsForOptionalExtraAdmins exercises
+// pocketbase.json's real post_deploy_commands: a supplied second-admin
+// email/password pair should reach the exec'd command as literal argv
+// (never re-interpreted by a shell), and a blank third-admin slot should
+// still run its guarded command harmlessly (empty args, exit 0) rather than
+// being skipped or failing the install.
+func TestInstallTemplateRunsPostDeployCommandsForOptionalExtraAdmins(t *testing.T) {
+	o, _, projectID := newTestOrchestrator(t)
+	ctx := context.Background()
+	fake := o.Exec.(*fakeTemplateExecutor)
+	fake.execResult = executor.ExecResult{ExitCode: 0}
+
+	overrides := map[string]map[string]string{
+		"": {
+			"PB_ADMIN_EMAIL":      "owner@example.com",
+			"PB_ADMIN_PASSWORD":   "ownerpassword1",
+			"PB_ADMIN_EMAIL_2":    "second@example.com",
+			"PB_ADMIN_PASSWORD_2": "secondpassword2",
+			// PB_ADMIN_EMAIL_3 / PB_ADMIN_PASSWORD_3 left unset on purpose.
+		},
+	}
+
+	if _, err := o.InstallTemplate(ctx, projectID, "pocketbase", "mypb", nil, overrides); err != nil {
+		t.Fatalf("InstallTemplate: %v", err)
+	}
+
+	if len(fake.execCalls) != 2 {
+		t.Fatalf("expected 2 post-deploy exec calls (admin 2 and admin 3 slots), got %d: %+v", len(fake.execCalls), fake.execCalls)
+	}
+	got2 := fake.execCalls[0].cmd
+	if got2[len(got2)-2] != "second@example.com" || got2[len(got2)-1] != "secondpassword2" {
+		t.Errorf("expected admin 2's exec command to carry the resolved email/password, got %+v", got2)
+	}
+	got3 := fake.execCalls[1].cmd
+	if got3[len(got3)-2] != "" || got3[len(got3)-1] != "" {
+		t.Errorf("expected admin 3's exec command to carry empty email/password (unset, skipped by its own guard), got %+v", got3)
+	}
+}
+
+// TestInstallTemplateFailsOnNonzeroPostDeployCommandExit verifies a failed
+// seed command (e.g. pocketbase superuser upsert rejecting a bad password)
+// fails the whole install, the same way a bad Deploy() call does.
+func TestInstallTemplateFailsOnNonzeroPostDeployCommandExit(t *testing.T) {
+	o, _, projectID := newTestOrchestrator(t)
+	ctx := context.Background()
+	fake := o.Exec.(*fakeTemplateExecutor)
+	fake.execResult = executor.ExecResult{ExitCode: 1, Output: "boom"}
+
+	overrides := map[string]map[string]string{
+		"": {
+			"PB_ADMIN_EMAIL":      "owner@example.com",
+			"PB_ADMIN_PASSWORD":   "ownerpassword1",
+			"PB_ADMIN_EMAIL_2":    "second@example.com",
+			"PB_ADMIN_PASSWORD_2": "secondpassword2",
+		},
+	}
+	if _, err := o.InstallTemplate(ctx, projectID, "pocketbase", "mypb", nil, overrides); err == nil {
+		t.Error("expected InstallTemplate to fail when a post-deploy command exits nonzero")
+	}
+}
