@@ -8,6 +8,7 @@ import { WorkspacesPage } from "./pages/WorkspacesPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { ServerHealthPage } from "./pages/ServerHealthPage";
 import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
@@ -88,6 +89,10 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
     // Whole-host status: CPU/RAM/disk/load of the machine, not just
     // Mangrove containers. Technical-only for the same reason as /admin.
     body = <ServerHealthPage />;
+  } else if (path === "/settings") {
+    // Account settings (change password) are relevant regardless of mode
+    // or role -- every user has an account and a password to rotate.
+    body = <SettingsPage />;
   } else {
     body = mode === "simple" ? <SimpleAppsPage /> : <ProjectsPage />;
   }

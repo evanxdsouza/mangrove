@@ -57,6 +57,9 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
             </button>
           </div>
           <div style={{ margin: "10px 0 8px" }}>{user.email ?? `user #${user.id}`}</div>
+          <Link to="/settings" className={`nav-link ${path === "/settings" ? "active" : ""}`} style={{ marginBottom: 8 }}>
+            Settings
+          </Link>
           <button className="btn btn-sm" onClick={onLogout} style={{ width: "100%" }}>
             Log out
           </button>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 // A minimal client-side router -- deliberately hand-rolled instead of
 // pulling in react-router-dom. The dashboard only has a handful of views
@@ -38,12 +38,23 @@ export function useRouter(): RouterState {
   return ctx;
 }
 
-export function Link({ to, children, className }: { to: string; children: ReactNode; className?: string }) {
+export function Link({
+  to,
+  children,
+  className,
+  style,
+}: {
+  to: string;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const { navigate } = useRouter();
   return (
     <a
       href={to}
       className={className}
+      style={style}
       onClick={(e) => {
         e.preventDefault();
         navigate(to);
