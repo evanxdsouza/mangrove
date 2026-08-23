@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -171,14 +172,23 @@ func (s *Server) handlePushEvent(ctx context.Context, eventID int64, repo store.
 				AuthToken:     string(token),
 			}
 
+			// WithInflightDeploy is the same guard triggerDeploy/
+			// redeployDeployment use: without it, a rapid double-push (or a
+			// push landing while a manual redeploy is already running)
+			// could start two concurrent deploys of the same deployment,
+			// racing on the same service row and deploy_history.is_current.
+			// A push that loses the race isn't retried -- the deployment is
+			// already mid-deploy from the earlier trigger, so nothing was
+			// actually missed.
 			var historyID int64
-			var deployErr error
-			if dep.BuildStrategy == "compose" {
-				historyID, deployErr = s.Orchestrator.DeployCompose(bgCtx, req)
-			} else {
-				historyID, deployErr = s.Orchestrator.Deploy(bgCtx, req)
-			}
-			if deployErr != nil {
+			deployErr := s.Orchestrator.WithInflightDeploy(depID, func(ctx context.Context) error {
+				var e error
+				historyID, e = s.dispatchDeploy(ctx, dep, req)
+				return e
+			})
+			if errors.Is(deployErr, orchestrator.ErrDeployInProgress) {
+				s.Log.Info("webhook-triggered deploy skipped: already in progress", "deployment_id", depID)
+			} else if deployErr != nil {
 				s.Log.Warn("webhook-triggered deploy failed", "deployment_id", depID, "deploy_history_id", historyID, "error", deployErr)
 			} else {
 				s.Log.Info("webhook-triggered deploy succeeded", "deployment_id", depID, "deploy_history_id", historyID)

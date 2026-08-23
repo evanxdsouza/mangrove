@@ -133,6 +133,75 @@ migration) is `POST /api/services/{id}/exec`, executed via
 output in memory -- a fit for a short migration command, not a long-running
 or high-volume process.
 
+## GitHub auto-deploy and staging environments
+
+`internal/api/webhook.go`'s `githubWebhook` is Mangrove's one always-on
+public endpoint besides the dashboard itself: `POST /webhooks/github/{token}`,
+outside auth (GitHub can't log in), verifying `X-Hub-Signature-256` with a
+constant-time HMAC compare before any other side effect, and de-duplicating
+by `X-GitHub-Delivery` so a GitHub retry doesn't double-deploy
+(`webhook_events.delivery_id` is unique). A `push` event resolves the
+branch, looks up every `deployments` row matching
+`(project_repo_id, git_branch, auto_deploy_on_push=1)` -- a `project_repos`
+link can and does fan out to more than one deployment, which is exactly
+what a staging environment is (see below) -- decrypts the linked GitHub
+PAT once, and fires one deploy per matching deployment in the background.
+
+Every deploy trigger (manual `POST .../deploy`, `POST .../redeploy`, a
+webhook push, staging creation, and promote) ends by calling
+`Server.dispatchDeploy`, the single place that picks
+`Deploy`/`DeployCompose`/`DeployStatic` based on `build_strategy`. This
+used to be a switch duplicated at each call site, and the webhook path's
+copy drifted out of sync -- it only special-cased `compose`, so a
+static-strategy deployment fell into `Deploy()` (written for
+container-based strategies, which tries to run a container from an image a
+static build never produces) and failed every time GitHub pushed to it.
+Centralizing the switch is what makes that class of bug structurally
+harder to reintroduce. The webhook path also now wraps its dispatch in
+`Orchestrator.WithInflightDeploy`, the same guard the HTTP trigger
+endpoints already used, so a rapid double-push can't start two concurrent
+deploys of the same deployment.
+
+Webhook health is visible in the dashboard rather than silently failing:
+`project_repos.webhook_registered` records whether GitHub-side
+auto-registration actually succeeded (only possible for an OAuth-sourced
+credential -- a hand-pasted PAT's scopes aren't known), `GET
+.../repo/webhook-instructions` re-shows the callback URL and secret at any
+time (they're encrypted at rest, not just returned once), `POST
+.../repo/resync-webhook` re-attempts registration, and `GET
+.../repo/webhook-events` lists recent deliveries -- whether GitHub reached
+Mangrove at all, whether the signature checked out, and whether anything
+matched an auto-deploying deployment.
+
+### Staging environments
+
+A staging environment is deliberately *not* new infrastructure: it's just
+another `deployments` row. `environment` (`production`|`staging`) and
+`promotes_to_deployment_id` (migration `0007`) are the only additions.
+`POST /api/deployments/{id}/staging` clones a production deployment's
+build config, services, and env vars (a secret env var's ciphertext is
+re-sealed under the new service's ID, since its AAD binds to the service
+it belongs to -- see `resolveEnv`) onto a new deployment tracking a
+caller-chosen branch of the *same* linked repo, sets
+`auto_deploy_on_push=1` on it, and deploys it immediately. From there it
+behaves exactly like any other deployment -- its own slug/subdomain, its
+own history, and the webhook fan-out above auto-deploys it independently
+of production whenever that branch gets pushed to.
+
+`POST /api/deployments/{id}/promote` (only valid on a staging deployment)
+deploys production with the *exact commit* staging is currently running --
+not just production's branch tip, which could be a different commit than
+whatever was actually verified in staging. This needed one executor fix:
+`git clone --branch <ref>` only resolves a branch or tag name on the
+remote, never a raw commit SHA, even though GitHub's smart HTTP protocol
+happily serves any reachable commit by SHA. `internal/executor/gitfetch.go`
+detects a SHA-shaped `GitRef` and switches to `git init` + `git fetch
+<sha>` + `git checkout FETCH_HEAD` instead of `clone --branch` for that
+case only. If staging's current deploy has no recorded commit (e.g. it was
+last redeployed manually rather than by a push, which doesn't resolve or
+record a commit SHA today), promote falls back to whatever `git_ref` was
+last recorded.
+
 ## Access control at the proxy layer
 
 A public deployment's optional password protection

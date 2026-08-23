@@ -109,6 +109,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               <tr>
                 <th>Name</th>
                 <th>Strategy</th>
+                <th>Environment</th>
                 <th>Status</th>
                 <th>Visibility</th>
                 <th>Last deployed</th>
@@ -125,6 +126,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                     <Link to={`/projects/${projectId}/deployments/${d.id}`}>{d.name}</Link>
                   </td>
                   <td className="mono text-dim">{d.build_strategy}</td>
+                  <td>{d.environment === "staging" ? <span className="pill pill-yellow">staging</span> : "production"}</td>
                   <td>
                     <StatusPill status={d.status} />
                   </td>

@@ -95,6 +95,9 @@ func (s *Server) Router() http.Handler {
 					r.Post("/deployments", s.createDeployment)
 					r.Get("/repo", s.getProjectRepo)
 					r.Post("/repo", s.linkProjectRepo)
+					r.Get("/repo/webhook-instructions", s.getProjectRepoWebhookInstructions)
+					r.Post("/repo/resync-webhook", s.resyncProjectRepoWebhook)
+					r.Get("/repo/webhook-events", s.listProjectRepoWebhookEvents)
 					r.Post("/templates/{templateKey}/install", s.installTemplate)
 				})
 			})
@@ -112,6 +115,9 @@ func (s *Server) Router() http.Handler {
 				r.Post("/restart", s.restartDeployment)
 				r.Post("/repo", s.setDeploymentRepo)
 				r.With(auth.RequireOwner).Post("/access", s.setDeploymentAccess)
+				r.Get("/staging", s.listStagingDeployments)
+				r.Post("/staging", s.createStagingDeployment)
+				r.Post("/promote", s.promoteDeployment)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {

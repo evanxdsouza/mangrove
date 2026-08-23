@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEntry, type Service } from "../api";
+import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEntry, type Service, type WebhookEvent } from "../api";
 import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
 import { DeployTimeline } from "../components/DeployTimeline";
@@ -134,6 +134,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             <p className="flex gap-8" style={{ alignItems: "center" }}>
               <StatusPill status={deployment.status} />
               <span className="mono text-dim">{deployment.build_strategy}</span>
+              {deployment.environment === "staging" && <span className="pill pill-yellow">staging</span>}
             </p>
           )}
         </div>
@@ -199,6 +200,11 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           <OverviewTab services={services} deployment={deployment} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
+          {deployment?.promotes_to_deployment_id != null ? (
+            <PromoteCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} />
+          ) : (
+            deployment && <StagingCard projectId={projectId} productionDeployment={deployment} />
+          )}
         </>
       )}
       {tab === "history" && (
@@ -271,6 +277,7 @@ interface ProjectRepoInfo {
   id: number;
   repo_owner: string;
   repo_name: string;
+  webhook_registered: boolean;
 }
 
 function AccessControlCard({
@@ -438,6 +445,261 @@ function AutoDeployCard({
         </button>
       </div>
       {saved && <div className="field-hint">Saved.</div>}
+      <WebhookHealth projectId={projectId} repo={repo} />
+    </div>
+  );
+}
+
+// WebhookHealth surfaces what used to be invisible: whether GitHub's
+// webhook is actually registered, and whether recent deliveries got
+// through. Previously the only feedback a user had was "my push didn't
+// deploy" with no way to tell whether GitHub never reached Mangrove
+// (unregistered/misconfigured webhook), reached it but failed signature
+// verification (stale secret), or reached it and simply matched no
+// auto-deploying deployment.
+function WebhookHealth({ projectId, repo }: { projectId: number; repo: ProjectRepoInfo }) {
+  const [events, setEvents] = useState<WebhookEvent[] | null>(null);
+  const [resyncing, setResyncing] = useState(false);
+  const [resyncError, setResyncError] = useState<string | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [instructions, setInstructions] = useState<{ webhook_path: string; webhook_secret: string } | null>(null);
+
+  const loadEvents = () => {
+    api
+      .get<WebhookEvent[]>(`/api/projects/${projectId}/repo/webhook-events`)
+      .then((e) => setEvents(e ?? []))
+      .catch(() => setEvents([]));
+  };
+
+  useEffect(loadEvents, [projectId]);
+
+  const resync = async () => {
+    setResyncing(true);
+    setResyncError(null);
+    try {
+      const result = await api.post<{ webhook_registered: boolean; error?: string }>(
+        `/api/projects/${projectId}/repo/resync-webhook`,
+        {},
+      );
+      if (!result.webhook_registered) {
+        setResyncError(result.error || "Couldn't register the webhook automatically -- use the manual setup instructions below.");
+      }
+    } catch (e) {
+      setResyncError(errMsg(e));
+    } finally {
+      setResyncing(false);
+    }
+  };
+
+  const revealInstructions = async () => {
+    try {
+      const result = await api.get<{ webhook_path: string; webhook_secret: string }>(
+        `/api/projects/${projectId}/repo/webhook-instructions`,
+      );
+      setInstructions(result);
+      setShowInstructions(true);
+    } catch (e) {
+      setResyncError(errMsg(e));
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border, #2a2f3a)" }}>
+      <div className="flex-between" style={{ marginBottom: 8 }}>
+        <span className="text-dim" style={{ fontSize: 13 }}>
+          GitHub webhook:{" "}
+          {repo.webhook_registered ? (
+            <span className="pill pill-green" style={{ marginLeft: 4 }}>
+              registered
+            </span>
+          ) : (
+            <span className="pill pill-yellow" style={{ marginLeft: 4 }}>
+              not confirmed
+            </span>
+          )}
+        </span>
+        <div className="flex gap-8">
+          <button className="btn btn-sm" onClick={revealInstructions}>
+            Setup instructions
+          </button>
+          <button className="btn btn-sm" onClick={resync} disabled={resyncing}>
+            {resyncing ? "Resyncing..." : "Resync webhook"}
+          </button>
+        </div>
+      </div>
+      {resyncError && <div className="error-banner">{resyncError}</div>}
+
+      {showInstructions && instructions && (
+        <div className="kv-list" style={{ marginBottom: 8 }}>
+          <div className="kv-row">
+            <span className="kv-key">Webhook URL</span>
+            <span className="kv-value mono">{window.location.origin + instructions.webhook_path}</span>
+          </div>
+          <div className="kv-row">
+            <span className="kv-key">Secret</span>
+            <span className="kv-value mono">{instructions.webhook_secret}</span>
+          </div>
+          <div className="field-hint">
+            Paste these into {repo.repo_owner}/{repo.repo_name} &rarr; Settings &rarr; Webhooks (content type: application/json,
+            events: just the push event).
+          </div>
+        </div>
+      )}
+
+      {events && events.length > 0 && (
+        <div className="kv-list">
+          <div className="text-faint" style={{ fontSize: 12, marginBottom: 4 }}>
+            Recent deliveries
+          </div>
+          {events.slice(0, 8).map((e) => (
+            <div className="kv-row" key={e.id}>
+              <span className="kv-key mono" style={{ fontSize: 12 }}>
+                {new Date(e.received_at).toLocaleString()}
+              </span>
+              <span className="kv-value text-dim" style={{ fontSize: 12 }}>
+                {e.event_type} &middot; {e.signature_valid ? "signed" : "bad signature"} &middot; {e.status.replace(/_/g, " ")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {events && events.length === 0 && (
+        <div className="field-hint">No deliveries yet -- push to {repo.repo_owner}/{repo.repo_name} to see them here.</div>
+      )}
+    </div>
+  );
+}
+
+// PromoteCard appears on a staging deployment's own page: it deploys
+// production from the exact commit currently running in staging, not
+// production's branch tip -- see promoteDeployment in internal/api.
+function PromoteCard({
+  projectId,
+  deploymentId,
+  deployment,
+}: {
+  projectId: number;
+  deploymentId: number;
+  deployment: Deployment;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const promote = async () => {
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/promote`, {});
+      setDone(true);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Promote to production</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Deploys production with the exact commit currently running here -- not just production's branch tip -- so what
+        you've verified in staging is exactly what ships.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      {done && !error && <div className="field-hint">Promotion started -- check the production deployment's history.</div>}
+      <div className="modal-actions" style={{ justifyContent: "flex-start" }}>
+        <Link to={`/projects/${projectId}/deployments/${deployment.promotes_to_deployment_id}`}>
+          <button type="button" className="btn">
+            View production deployment
+          </button>
+        </Link>
+        <button type="button" className="btn btn-primary" onClick={promote} disabled={busy}>
+          {busy ? "Promoting..." : "Promote to production"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// StagingCard appears on a production deployment's page (one with a linked
+// repo, and not itself a staging deployment): it lists any staging
+// deployments already created from this one, and lets a user spin up a new
+// one tracking an arbitrary branch. See createStagingDeployment.
+function StagingCard({ projectId, productionDeployment }: { projectId: number; productionDeployment: Deployment }) {
+  const [repo, setRepo] = useState<{ id: number } | null>(null);
+  const [staging, setStaging] = useState<Deployment[] | null>(null);
+  const [branch, setBranch] = useState("staging");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadStaging = () => {
+    api
+      .get<Deployment[]>(`/api/deployments/${productionDeployment.id}/staging`)
+      .then((list) => setStaging(list ?? []))
+      .catch(() => setStaging([]));
+  };
+
+  useEffect(() => {
+    api
+      .get<{ id: number }>(`/api/projects/${projectId}/repo`)
+      .then(setRepo)
+      .catch(() => setRepo(null));
+    loadStaging();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, productionDeployment.id]);
+
+  if (!repo) {
+    return null; // no linked repo -- nothing to branch a staging environment from
+  }
+
+  const create = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${productionDeployment.id}/staging`, { branch });
+      loadStaging();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Staging environments</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        A staging environment tracks its own branch, auto-deploys independently, and can be promoted into this
+        deployment once verified.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+
+      {staging && staging.length > 0 && (
+        <div className="kv-list" style={{ marginBottom: 14 }}>
+          {staging.map((s) => (
+            <div className="kv-row row-link" key={s.id} onClick={() => (window.location.href = `/projects/${projectId}/deployments/${s.id}`)} style={{ cursor: "pointer" }}>
+              <span className="kv-key">
+                {s.name} <span className="text-faint mono">({s.git_branch})</span>
+              </span>
+              <span className="kv-value">
+                <StatusPill status={s.status} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="form-row" style={{ alignItems: "flex-end" }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="staging-branch">Branch to stage</label>
+          <input id="staging-branch" className="input mono" value={branch} onChange={(e) => setBranch(e.target.value)} />
+        </div>
+        <button className="btn btn-sm btn-primary" onClick={create} disabled={busy || !branch}>
+          {busy ? "Creating..." : "+ New staging environment"}
+        </button>
+      </div>
     </div>
   );
 }

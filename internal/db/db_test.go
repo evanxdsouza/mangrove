@@ -57,8 +57,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err := conn2.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if count != 6 {
-		t.Errorf("expected 6 applied migrations, got %d", count)
+	if count != 7 {
+		t.Errorf("expected 7 applied migrations, got %d", count)
 	}
 }
 
@@ -162,5 +162,61 @@ func TestRedeployTriggerMigrationPreservesExistingRows(t *testing.T) {
 	}
 	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (1, 'not-a-real-trigger', 'success')`); err == nil {
 		t.Error("expected CHECK constraint to still reject an invalid triggered_by after the rebuild")
+	}
+}
+
+// TestStagingMigration guards 0007: deployments.environment and
+// promotes_to_deployment_id must exist and default sanely,
+// project_repos.webhook_registered must exist, and deploy_history's
+// triggered_by CHECK must accept 'promote' after the rebuild.
+func TestStagingMigration(t *testing.T) {
+	dir := t.TempDir()
+	conn, err := Open(filepath.Join(dir, "mangrove.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Exec(`INSERT INTO projects (workspace_id, name, slug) VALUES (1, 'p', 'p')`); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO deployments (project_id, name, slug, build_strategy) VALUES (1, 'prod', 'prod', 'dockerfile')`); err != nil {
+		t.Fatalf("insert production deployment: %v", err)
+	}
+	var environment string
+	if err := conn.QueryRow(`SELECT environment FROM deployments WHERE id = 1`).Scan(&environment); err != nil {
+		t.Fatalf("query environment: %v", err)
+	}
+	if environment != "production" {
+		t.Errorf("expected environment to default to 'production', got %q", environment)
+	}
+
+	if _, err := conn.Exec(`INSERT INTO deployments (project_id, name, slug, build_strategy, environment, promotes_to_deployment_id) VALUES (1, 'staging', 'prod-staging', 'dockerfile', 'staging', 1)`); err != nil {
+		t.Fatalf("insert staging deployment: %v", err)
+	}
+	var promotesTo int64
+	if err := conn.QueryRow(`SELECT promotes_to_deployment_id FROM deployments WHERE id = 2`).Scan(&promotesTo); err != nil {
+		t.Fatalf("query promotes_to_deployment_id: %v", err)
+	}
+	if promotesTo != 1 {
+		t.Errorf("expected staging deployment to reference production deployment 1, got %d", promotesTo)
+	}
+
+	if _, err := conn.Exec(`INSERT INTO deploy_history (deployment_id, triggered_by, status) VALUES (1, 'promote', 'success')`); err != nil {
+		t.Errorf("insert deploy_history with triggered_by='promote': %v", err)
+	}
+
+	var webhookRegistered bool
+	if _, err := conn.Exec(`INSERT INTO github_pats (org_id, label, token_encrypted, token_nonce) VALUES (1, 'pat', X'00', X'00')`); err != nil {
+		t.Fatalf("insert github_pats: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO project_repos (project_id, github_pat_id, repo_owner, repo_name, webhook_token, webhook_secret_encrypted, webhook_secret_nonce) VALUES (1, 1, 'o', 'r', 'tok', X'00', X'00')`); err != nil {
+		t.Fatalf("insert project_repos: %v", err)
+	}
+	if err := conn.QueryRow(`SELECT webhook_registered FROM project_repos WHERE id = 1`).Scan(&webhookRegistered); err != nil {
+		t.Fatalf("query webhook_registered: %v", err)
+	}
+	if webhookRegistered {
+		t.Error("expected webhook_registered to default to false")
 	}
 }
