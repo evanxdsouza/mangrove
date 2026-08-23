@@ -315,6 +315,11 @@ type CreateDeploymentParams struct {
 	// Replicas is how many containers run for this single-service
 	// deployment; 0/omitted means 1. Compose deployments must stay at 1.
 	Replicas int
+	// Environment is "production" (default, when empty) or "staging".
+	Environment string
+	// PromotesToDeploymentID, for a staging deployment, names the
+	// production deployment that POST .../promote deploys onto.
+	PromotesToDeploymentID *int64
 }
 
 func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) (models.Deployment, error) {
@@ -327,10 +332,13 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 	if p.Replicas < 1 {
 		p.Replicas = 1
 	}
+	if p.Environment == "" {
+		p.Environment = "production"
+	}
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas, environment, promotes_to_deployment_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas, p.Environment, p.PromotesToDeploymentID,
 	)
 	if err != nil {
 		return models.Deployment{}, err
@@ -346,7 +354,8 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(git_branch,''), project_repo_id,
 	       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
-	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, status, node_id,
+	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, environment,
+	       promotes_to_deployment_id, status, node_id,
 	       created_at, updated_at, last_deployed_at`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
@@ -359,16 +368,21 @@ type rowScanner interface {
 func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var d models.Deployment
 	var projectRepoID sql.NullInt64
+	var promotesToID sql.NullInt64
 	var lastDeployedAtT sql.NullTime
 	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
-		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Status, &d.NodeID,
+		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Environment,
+		&promotesToID, &d.Status, &d.NodeID,
 		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
 	if err != nil {
 		return models.Deployment{}, err
 	}
 	if projectRepoID.Valid {
 		d.ProjectRepoID = &projectRepoID.Int64
+	}
+	if promotesToID.Valid {
+		d.PromotesToDeploymentID = &promotesToID.Int64
 	}
 	if lastDeployedAtT.Valid {
 		t := lastDeployedAtT.Time
@@ -391,6 +405,26 @@ func (s *Store) GetDeployment(ctx context.Context, id int64) (models.Deployment,
 
 func (s *Store) ListDeployments(ctx context.Context, projectID int64) ([]models.Deployment, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ListStagingDeployments returns every staging deployment that promotes
+// into the given production deployment.
+func (s *Store) ListStagingDeployments(ctx context.Context, promotesToDeploymentID int64) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE promotes_to_deployment_id = ? ORDER BY created_at DESC`, promotesToDeploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -893,6 +927,36 @@ func (s *Store) GetDeployHistory(ctx context.Context, id int64) (models.DeployHi
 		SELECT id, deployment_id, triggered_by, COALESCE(commit_sha,''), COALESCE(commit_message,''), COALESCE(git_ref,''),
 		       status, started_at, finished_at, is_current, rollback_of_deploy_history_id, COALESCE(error_message,'')
 		FROM deploy_history WHERE id = ?`, id,
+	).Scan(&h.ID, &h.DeploymentID, &h.TriggeredBy, &h.CommitSHA, &h.CommitMessage, &h.GitRef,
+		&h.Status, &h.StartedAt, &finishedAt, &h.IsCurrent, &rollbackOf, &h.ErrorMessage)
+	if err == sql.ErrNoRows {
+		return models.DeployHistory{}, ErrNotFound
+	}
+	if err != nil {
+		return models.DeployHistory{}, err
+	}
+	if finishedAt.Valid {
+		t := finishedAt.Time
+		h.FinishedAt = &t
+	}
+	if rollbackOf.Valid {
+		h.RollbackOfDeployHistoryID = &rollbackOf.Int64
+	}
+	return h, nil
+}
+
+// GetCurrentDeployHistory returns the deploy_history row currently marked
+// live for a deployment (see MarkDeployHistoryCurrent) -- used by promote
+// to find the exact commit a staging deployment is running so production
+// can be deployed onto that same commit rather than the branch's tip.
+func (s *Store) GetCurrentDeployHistory(ctx context.Context, deploymentID int64) (models.DeployHistory, error) {
+	var h models.DeployHistory
+	var finishedAt sql.NullTime
+	var rollbackOf sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `
+		SELECT id, deployment_id, triggered_by, COALESCE(commit_sha,''), COALESCE(commit_message,''), COALESCE(git_ref,''),
+		       status, started_at, finished_at, is_current, rollback_of_deploy_history_id, COALESCE(error_message,'')
+		FROM deploy_history WHERE deployment_id = ? AND is_current = 1`, deploymentID,
 	).Scan(&h.ID, &h.DeploymentID, &h.TriggeredBy, &h.CommitSHA, &h.CommitMessage, &h.GitRef,
 		&h.Status, &h.StartedAt, &finishedAt, &h.IsCurrent, &rollbackOf, &h.ErrorMessage)
 	if err == sql.ErrNoRows {

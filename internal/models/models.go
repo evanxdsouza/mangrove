@@ -29,59 +29,65 @@ type Project struct {
 }
 
 type Deployment struct {
-	ID                  int64      `json:"id"`
-	ProjectID           int64      `json:"project_id"`
-	Name                string     `json:"name"`
-	Slug                string     `json:"slug"`
-	BuildStrategy       string     `json:"build_strategy"`
-	GitBranch           string     `json:"git_branch,omitempty"`
-	ProjectRepoID       *int64     `json:"project_repo_id,omitempty"`
-	ImageRef            string     `json:"image_ref,omitempty"`
-	RootPath            string     `json:"root_path"`
-	DockerfilePath      string     `json:"dockerfile_path,omitempty"`
-	ComposePath         string     `json:"compose_path,omitempty"`
-	StaticBuildCommand  string     `json:"static_build_command,omitempty"`
-	StaticOutputDir     string     `json:"static_output_dir,omitempty"`
-	AutoDeployOnPush    bool       `json:"auto_deploy_on_push"`
-	IsPublic            bool       `json:"is_public"`
-	PasswordProtected   bool       `json:"password_protected"`
-	ImageRetentionCount int        `json:"image_retention_count"`
+	ID                  int64  `json:"id"`
+	ProjectID           int64  `json:"project_id"`
+	Name                string `json:"name"`
+	Slug                string `json:"slug"`
+	BuildStrategy       string `json:"build_strategy"`
+	GitBranch           string `json:"git_branch,omitempty"`
+	ProjectRepoID       *int64 `json:"project_repo_id,omitempty"`
+	ImageRef            string `json:"image_ref,omitempty"`
+	RootPath            string `json:"root_path"`
+	DockerfilePath      string `json:"dockerfile_path,omitempty"`
+	ComposePath         string `json:"compose_path,omitempty"`
+	StaticBuildCommand  string `json:"static_build_command,omitempty"`
+	StaticOutputDir     string `json:"static_output_dir,omitempty"`
+	AutoDeployOnPush    bool   `json:"auto_deploy_on_push"`
+	IsPublic            bool   `json:"is_public"`
+	PasswordProtected   bool   `json:"password_protected"`
+	ImageRetentionCount int    `json:"image_retention_count"`
 	// Replicas is how many containers of the same image run for this
 	// deployment, load-balanced behind a single Caddy route. Only
 	// meaningful for single-service deployments (dockerfile/nixpacks/image/
 	// static-with-container); 1 is the default and the only supported value
 	// for compose stacks.
-	Replicas int         `json:"replicas"`
-	Status   string      `json:"status"`
-	NodeID              int64      `json:"node_id"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	LastDeployedAt      *time.Time `json:"last_deployed_at,omitempty"`
+	Replicas int `json:"replicas"`
+	// Environment is "production" or "staging". A staging deployment tracks
+	// its own branch under the same linked repo as its production sibling
+	// and auto-deploys independently; PromotesToDeploymentID names that
+	// sibling. Production deployments (the default) leave it nil.
+	Environment            string     `json:"environment"`
+	PromotesToDeploymentID *int64     `json:"promotes_to_deployment_id,omitempty"`
+	Status                 string     `json:"status"`
+	NodeID                 int64      `json:"node_id"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+	LastDeployedAt         *time.Time `json:"last_deployed_at,omitempty"`
 }
 
 type Service struct {
-	ID                   int64   `json:"id"`
-	DeploymentID         int64   `json:"deployment_id"`
-	Name                 string  `json:"name"`
-	IsPrimary            bool    `json:"is_primary"`
-	ImageTagCurrent      string  `json:"image_tag_current,omitempty"`
-	ContainerIDCurrent   string  `json:"container_id_current,omitempty"`
+	ID                 int64  `json:"id"`
+	DeploymentID       int64  `json:"deployment_id"`
+	Name               string `json:"name"`
+	IsPrimary          bool   `json:"is_primary"`
+	ImageTagCurrent    string `json:"image_tag_current,omitempty"`
+	ContainerIDCurrent string `json:"container_id_current,omitempty"`
 	// ReplicaContainerIDs is the full set of running container IDs for this
 	// service when its deployment has replicas > 1 (primary first; the
 	// single-element case keeps it empty and uses ContainerIDCurrent).
 	// Used by stop/restart/teardown so every replica is acted on, not just
 	// the primary that logs/stats/exec target.
-	ReplicaContainerIDs []string `json:"replica_container_ids,omitempty"`
-	ContainerName       string   `json:"container_name"`
-	InternalPort         int     `json:"internal_port"`
-	HostPort             *int    `json:"host_port,omitempty"`
-	IsInternalOnly       bool    `json:"is_internal_only"`
-	CPULimitCores        float64 `json:"cpu_limit_cores"`
-	MemoryLimitMB        int     `json:"memory_limit_mb"`
-	RestartPolicy        string  `json:"restart_policy"`
-	HealthCheckPath      string  `json:"health_check_path,omitempty"`
-	HealthCheckIntervalS int     `json:"health_check_interval_s"`
-	HealthCheckTimeoutS  int     `json:"health_check_timeout_s"`
+	ReplicaContainerIDs  []string `json:"replica_container_ids,omitempty"`
+	ContainerName        string   `json:"container_name"`
+	InternalPort         int      `json:"internal_port"`
+	HostPort             *int     `json:"host_port,omitempty"`
+	IsInternalOnly       bool     `json:"is_internal_only"`
+	CPULimitCores        float64  `json:"cpu_limit_cores"`
+	MemoryLimitMB        int      `json:"memory_limit_mb"`
+	RestartPolicy        string   `json:"restart_policy"`
+	HealthCheckPath      string   `json:"health_check_path,omitempty"`
+	HealthCheckIntervalS int      `json:"health_check_interval_s"`
+	HealthCheckTimeoutS  int      `json:"health_check_timeout_s"`
 	// Command overrides the image's default CMD when non-empty (e.g.
 	// Redis's --requirepass) -- see executor.RunSpec.Command.
 	Command   []string  `json:"command,omitempty"`

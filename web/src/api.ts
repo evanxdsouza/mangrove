@@ -80,6 +80,8 @@ export interface Deployment {
   password_protected: boolean;
   image_retention_count: number;
   replicas: number;
+  environment: "production" | "staging";
+  promotes_to_deployment_id?: number;
   status: "pending" | "building" | "running" | "stopped" | "failed";
   node_id: number;
   created_at: string;
@@ -123,6 +125,15 @@ export interface DeployHistory {
   is_current: boolean;
   rollback_of_deploy_history_id?: number;
   error_message?: string;
+}
+
+export interface WebhookEvent {
+  id: number;
+  event_type: string;
+  signature_valid: boolean;
+  status: "received" | "verified" | "rejected" | "processed" | "ignored_no_match";
+  received_at: string;
+  deploy_history_id?: number;
 }
 
 export interface HealthCheckEntry {

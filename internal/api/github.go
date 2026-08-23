@@ -173,6 +173,7 @@ func (s *Server) linkProjectRepo(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.Store.UpdateProjectRepoWebhookRegistered(r.Context(), id, webhookRegistered)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":                 id,
@@ -180,6 +181,143 @@ func (s *Server) linkProjectRepo(w http.ResponseWriter, r *http.Request) {
 		"webhook_secret":     secret,
 		"webhook_registered": webhookRegistered,
 	})
+}
+
+// getProjectRepoWebhookInstructions re-shows what linkProjectRepo showed
+// once: the callback path and the (decrypted) HMAC secret to paste into
+// GitHub's webhook settings, plus whether Mangrove's own auto-registration
+// succeeded. Fixes a real fragility in the original flow -- since the
+// secret was never returned again after link time, a user who lost it (or
+// linked before reading the response carefully) had no way to reconfigure
+// GitHub's side short of unlinking and relinking the repo, which also
+// rotates the secret and requires updating everything else pointed at it.
+func (s *Server) getProjectRepoWebhookInstructions(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseID(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	repo, err := s.Store.GetProjectRepoByProject(r.Context(), projectID)
+	if err == store.ErrNotFound {
+		writeError(w, http.StatusNotFound, "no repo linked to this project")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ciphertext, nonce, err := s.Store.GetProjectRepoSecretByID(r.Context(), repo.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	secret, err := s.Secrets.Open([]byte("project_repos:webhook_secret:"+repo.WebhookToken), ciphertext, nonce)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "decrypt webhook secret: "+err.Error())
+		return
+	}
+	registered, err := s.Store.GetProjectRepoWebhookRegistered(r.Context(), repo.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"webhook_path":       "/webhooks/github/" + repo.WebhookToken,
+		"webhook_secret":     string(secret),
+		"webhook_registered": registered,
+	})
+}
+
+// resyncProjectRepoWebhook re-attempts GitHub-side auto-registration of an
+// already-linked repo's webhook, reusing the existing secret (so anything
+// already configured with it, including a manually pasted setup, keeps
+// working). Only possible for an OAuth-sourced credential -- a hand-pasted
+// PAT's scopes aren't known, same restriction linkProjectRepo applies.
+func (s *Server) resyncProjectRepoWebhook(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseID(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	repo, err := s.Store.GetProjectRepoByProject(r.Context(), projectID)
+	if err == store.ErrNotFound {
+		writeError(w, http.StatusNotFound, "no repo linked to this project")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	pat, err := s.Store.GetGithubPAT(r.Context(), repo.GithubPATID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if pat.Source != "oauth" {
+		writeError(w, http.StatusUnprocessableEntity, "this repo's credential wasn't obtained via GitHub OAuth, so Mangrove can't register the webhook automatically -- use GET .../repo/webhook-instructions and paste it into GitHub's UI instead")
+		return
+	}
+
+	secretCiphertext, secretNonce, err := s.Store.GetProjectRepoSecretByID(r.Context(), repo.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	secret, err := s.Secrets.Open([]byte("project_repos:webhook_secret:"+repo.WebhookToken), secretCiphertext, secretNonce)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "decrypt webhook secret: "+err.Error())
+		return
+	}
+	patCiphertext, patNonce, err := s.Store.GetGithubPATEncrypted(r.Context(), repo.GithubPATID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	tok, err := s.Secrets.Open(patAAD(repo.GithubPATID), patCiphertext, patNonce)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "decrypt token: "+err.Error())
+		return
+	}
+
+	callbackURL := s.requestBaseURL(r) + "/webhooks/github/" + repo.WebhookToken
+	registerErr := s.GithubRepos.CreateWebhook(r.Context(), string(tok), repo.RepoOwner, repo.RepoName, callbackURL, string(secret))
+	registered := registerErr == nil
+	s.Store.UpdateProjectRepoWebhookRegistered(r.Context(), repo.ID, registered)
+
+	if !registered {
+		writeJSON(w, http.StatusOK, map[string]any{"webhook_registered": false, "error": registerErr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"webhook_registered": true})
+}
+
+// listProjectRepoWebhookEvents returns the most recent GitHub webhook
+// deliveries for a project's linked repo -- what actually let GitHub
+// through, what got rejected (bad signature), and what was accepted but
+// matched no auto-deploying deployment. Without this, "auto-deploy doesn't
+// work" was undiagnosable from the dashboard: nothing showed whether
+// GitHub ever reached Mangrove at all.
+func (s *Server) listProjectRepoWebhookEvents(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseID(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	repo, err := s.Store.GetProjectRepoByProject(r.Context(), projectID)
+	if err == store.ErrNotFound {
+		writeError(w, http.StatusNotFound, "no repo linked to this project")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	events, err := s.Store.ListWebhookEventsForProjectRepo(r.Context(), repo.ID, 25)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
 }
 
 func (s *Server) getProjectRepo(w http.ResponseWriter, r *http.Request) {
@@ -197,13 +335,20 @@ func (s *Server) getProjectRepo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Never returns the secret again after creation.
+	registered, err := s.Store.GetProjectRepoWebhookRegistered(r.Context(), pr.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Never returns the secret again after creation -- use
+	// GET .../repo/webhook-instructions for that.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":             pr.ID,
-		"repo_owner":     pr.RepoOwner,
-		"repo_name":      pr.RepoName,
-		"default_branch": pr.DefaultBranch,
-		"webhook_path":   "/webhooks/github/" + pr.WebhookToken,
+		"id":                 pr.ID,
+		"repo_owner":         pr.RepoOwner,
+		"repo_name":          pr.RepoName,
+		"default_branch":     pr.DefaultBranch,
+		"webhook_path":       "/webhooks/github/" + pr.WebhookToken,
+		"webhook_registered": registered,
 	})
 }
 

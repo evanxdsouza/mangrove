@@ -182,6 +182,38 @@ func (s *Store) DeleteProjectRepo(ctx context.Context, id int64) error {
 	return err
 }
 
+// GetProjectRepoSecretByID returns a linked repo's encrypted webhook secret
+// by its own ID (as opposed to GetProjectRepoByWebhookToken, which is
+// keyed by the token GitHub calls back with) -- used by the
+// webhook-instructions/resync endpoints, which start from the project's
+// repo link rather than an inbound webhook request.
+func (s *Store) GetProjectRepoSecretByID(ctx context.Context, id int64) (ciphertext, nonce []byte, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT webhook_secret_encrypted, webhook_secret_nonce FROM project_repos WHERE id = ?`, id).Scan(&ciphertext, &nonce)
+	if err == sql.ErrNoRows {
+		return nil, nil, ErrNotFound
+	}
+	return ciphertext, nonce, err
+}
+
+// UpdateProjectRepoWebhookRegistered records whether CreateWebhook actually
+// succeeded against GitHub's API, set on both the initial link and any
+// later resync -- surfaced in the dashboard so a silently-failed
+// auto-registration (e.g. a token missing admin:repo_hook scope) doesn't
+// stay invisible.
+func (s *Store) UpdateProjectRepoWebhookRegistered(ctx context.Context, id int64, registered bool) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE project_repos SET webhook_registered = ? WHERE id = ?`, registered, id)
+	return err
+}
+
+func (s *Store) GetProjectRepoWebhookRegistered(ctx context.Context, id int64) (bool, error) {
+	var registered bool
+	err := s.DB.QueryRowContext(ctx, `SELECT webhook_registered FROM project_repos WHERE id = ?`, id).Scan(&registered)
+	if err == sql.ErrNoRows {
+		return false, ErrNotFound
+	}
+	return registered, err
+}
+
 // SetDeploymentRepo links a deployment to a project_repos row and the
 // branch that should trigger auto-deploy -- configurable per deployment,
 // not hardcoded to main.
@@ -243,6 +275,47 @@ func (s *Store) UpdateWebhookEventStatus(ctx context.Context, id int64, status s
 		status, deployHistoryID, id,
 	)
 	return err
+}
+
+// WebhookEvent is a delivery log entry -- what the dashboard's "recent
+// deliveries" list shows so a silently misconfigured webhook (wrong
+// secret, no matching branch, GitHub never reaching Mangrove at all) is
+// visible instead of just "auto-deploy doesn't work" with no evidence why.
+type WebhookEvent struct {
+	ID              int64     `json:"id"`
+	EventType       string    `json:"event_type"`
+	SignatureValid  bool      `json:"signature_valid"`
+	Status          string    `json:"status"`
+	ReceivedAt      time.Time `json:"received_at"`
+	DeployHistoryID *int64    `json:"deploy_history_id,omitempty"`
+}
+
+// ListWebhookEventsForProjectRepo returns the most recent deliveries for a
+// linked repo, newest first, capped at limit.
+func (s *Store) ListWebhookEventsForProjectRepo(ctx context.Context, projectRepoID int64, limit int) ([]WebhookEvent, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, event_type, signature_valid, status, received_at, deploy_history_id
+		FROM webhook_events WHERE project_repo_id = ? ORDER BY received_at DESC LIMIT ?`,
+		projectRepoID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]WebhookEvent, 0)
+	for rows.Next() {
+		var e WebhookEvent
+		var deployHistoryID sql.NullInt64
+		if err := rows.Scan(&e.ID, &e.EventType, &e.SignatureValid, &e.Status, &e.ReceivedAt, &deployHistoryID); err != nil {
+			return nil, err
+		}
+		if deployHistoryID.Valid {
+			e.DeployHistoryID = &deployHistoryID.Int64
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ---- GitHub OAuth CSRF state ----

@@ -3,7 +3,12 @@
 Mangrove is a small, self-hosted PaaS control plane: point it at a Git repo,
 a Dockerfile, a docker-compose file, or a pre-built image, and it builds,
 runs, health-checks, and reverse-proxies it -- blue/green, with automatic
-rollback if the new container never turns healthy. It also ships a library
+rollback if the new container never turns healthy. A GitHub-linked
+deployment redeploys itself on every push, and can spin off staging
+environments -- each tracking its own branch, deployed independently, one
+click away from promoting the exact commit it's running into production
+(see [docs/architecture.md](docs/architecture.md#github-auto-deploy-and-staging-environments)).
+It also ships a library
 of one-click templates (Ghost, WordPress, Vaultwarden, Uptime Kuma, n8n,
 Umami, and standalone Postgres/MySQL/MongoDB/Redis) for deploying common
 self-hosted apps without writing a Dockerfile at all.
