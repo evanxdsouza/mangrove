@@ -36,6 +36,11 @@ type Server struct {
 	GithubOAuthClientSecret string
 	GithubOAuth             *ghclient.OAuthClient
 	GithubRepos             *ghclient.ReposClient
+	// GithubComments posts/updates the bot comment on a PR's preview
+	// deployment status -- nil is valid (skipped, not an error) for the
+	// same reason orchestrator.GHStatus is: it's always constructed, but
+	// posting is only ever best-effort.
+	GithubComments *ghclient.CommentClient
 
 	// PublicURL, when set, overrides request-derived scheme+host detection
 	// in requestBaseURL -- see config.Config.PublicURL.
@@ -118,6 +123,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/staging", s.listStagingDeployments)
 				r.Post("/staging", s.createStagingDeployment)
 				r.Post("/promote", s.promoteDeployment)
+				r.Get("/previews", s.listPreviewDeployments)
+				r.Post("/pr-previews", s.setPRPreviews)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {

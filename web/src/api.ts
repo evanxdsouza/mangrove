@@ -80,8 +80,10 @@ export interface Deployment {
   password_protected: boolean;
   image_retention_count: number;
   replicas: number;
-  environment: "production" | "staging";
+  environment: "production" | "staging" | "preview";
   promotes_to_deployment_id?: number;
+  pr_previews_enabled: boolean;
+  pr_number?: number;
   status: "pending" | "building" | "running" | "stopped" | "failed";
   node_id: number;
   created_at: string;

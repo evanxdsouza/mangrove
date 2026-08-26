@@ -6,7 +6,10 @@ runs, health-checks, and reverse-proxies it -- blue/green, with automatic
 rollback if the new container never turns healthy. A GitHub-linked
 deployment redeploys itself on every push, and can spin off staging
 environments -- each tracking its own branch, deployed independently, one
-click away from promoting the exact commit it's running into production
+click away from promoting the exact commit it's running into production --
+or opt into a preview deployment for every open pull request, complete with
+a bot comment linking to it that updates itself as the PR gets pushed to
+and torn down when it closes
 (see [docs/architecture.md](docs/architecture.md#github-auto-deploy-and-staging-environments)).
 It also ships a library
 of one-click templates (Ghost, WordPress, Vaultwarden, Uptime Kuma, n8n,
