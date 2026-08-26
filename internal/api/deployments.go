@@ -544,6 +544,139 @@ func (s *Server) listStagingDeployments(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, staging)
 }
 
+// cloneDeploymentSpec parameterizes cloneDeployment for its two callers:
+// createStagingDeployment (a hand-picked branch, one at a time) and
+// findOrCreatePreviewDeployment (one per open pull request, driven by the
+// pull_request webhook).
+type cloneDeploymentSpec struct {
+	Branch      string
+	Environment string // "staging" or "preview"
+	SlugBase    string // slug (and so subdomain) tried first; suffixed -2, -3... on collision
+	Name        string
+	PRNumber    *int // set only for Environment "preview"
+}
+
+// cloneDeployment clones source's build config (services, env vars) into a
+// new deployment linked to the same repo on a different branch, with
+// auto-deploy on. It does not itself trigger a deploy -- callers dispatch
+// whatever DeployRequest fits their trigger (a fresh branch-tip deploy for
+// a hand-created staging environment, or the exact commit a pull_request
+// webhook delivery named for a preview).
+func (s *Server) cloneDeployment(ctx context.Context, source models.Deployment, spec cloneDeploymentSpec) (models.Deployment, error) {
+	sourceServices, err := s.Store.ListServices(ctx, source.ID)
+	if err != nil {
+		return models.Deployment{}, err
+	}
+	if source.BuildStrategy != "compose" && len(sourceServices) != 1 {
+		return models.Deployment{}, fmt.Errorf("source deployment has %d services; expected exactly 1", len(sourceServices))
+	}
+
+	replicas := source.Replicas
+	if replicas < 1 || source.BuildStrategy == "compose" || source.BuildStrategy == "static" {
+		replicas = 1
+	}
+
+	// Slug (and so subdomain) must be unique per project -- try a handful
+	// of suffixes rather than making the caller pick one.
+	var clone models.Deployment
+	for attempt := 0; attempt < 6; attempt++ {
+		slug := spec.SlugBase
+		if attempt > 0 {
+			slug = fmt.Sprintf("%s-%d", spec.SlugBase, attempt+1)
+		}
+		clone, err = s.Store.CreateDeployment(ctx, store.CreateDeploymentParams{
+			ProjectID:              source.ProjectID,
+			Name:                   spec.Name,
+			Slug:                   slug,
+			BuildStrategy:          source.BuildStrategy,
+			GitBranch:              spec.Branch,
+			ImageRef:               source.ImageRef,
+			RootPath:               source.RootPath,
+			DockerfilePath:         source.DockerfilePath,
+			ComposePath:            source.ComposePath,
+			StaticBuildCommand:     source.StaticBuildCommand,
+			StaticOutputDir:        source.StaticOutputDir,
+			ImageRetentionCount:    source.ImageRetentionCount,
+			Replicas:               replicas,
+			Environment:            spec.Environment,
+			PromotesToDeploymentID: &source.ID,
+			PRNumber:               spec.PRNumber,
+		})
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return models.Deployment{}, err
+		}
+	}
+	if err != nil {
+		return models.Deployment{}, fmt.Errorf("couldn't find a free slug: %w", err)
+	}
+
+	// Clone each service (config + env vars) onto the new deployment.
+	// Compose stacks discover their services from the compose file on
+	// first deploy, same as a fresh compose deployment created any other
+	// way -- there's nothing to pre-declare or clone.
+	for _, svc := range sourceServices {
+		containerName := "mangrove-" + clone.Slug + "-" + svc.Name
+		newSvc, err := s.Store.CreateService(ctx, store.CreateServiceParams{
+			DeploymentID:         clone.ID,
+			Name:                 svc.Name,
+			ContainerName:        containerName,
+			InternalPort:         svc.InternalPort,
+			IsInternalOnly:       svc.IsInternalOnly,
+			CPULimitCores:        svc.CPULimitCores,
+			MemoryLimitMB:        svc.MemoryLimitMB,
+			RestartPolicy:        svc.RestartPolicy,
+			HealthCheckPath:      svc.HealthCheckPath,
+			HealthCheckIntervalS: svc.HealthCheckIntervalS,
+			HealthCheckTimeoutS:  svc.HealthCheckTimeoutS,
+			Command:              svc.Command,
+			NoContainer:          source.BuildStrategy == "static",
+		})
+		if err != nil {
+			return clone, fmt.Errorf("deployment created but service cloning failed: %w", err)
+		}
+
+		envRows, err := s.Store.ListEnvVarRows(ctx, svc.ID)
+		if err != nil {
+			return clone, fmt.Errorf("deployment created but env var lookup failed: %w", err)
+		}
+		for _, row := range envRows {
+			if !row.IsSecret {
+				if err := s.Store.CreatePlainEnvVar(ctx, newSvc.ID, row.KeyName, row.ValuePlain.String); err != nil {
+					s.Log.Warn("clone deployment: failed to clone env var", "key", row.KeyName, "error", err)
+				}
+				continue
+			}
+			// A secret's ciphertext is bound (as AAD) to the service ID it
+			// belongs to (see resolveEnv/setEnvVar) -- it must be
+			// decrypted and re-sealed under the new service's ID, not
+			// copied as-is.
+			oldAAD := []byte("env_vars:" + strconv.FormatInt(svc.ID, 10) + ":" + row.KeyName)
+			plaintext, err := s.Secrets.Open(oldAAD, row.ValueEncrypted, row.ValueNonce)
+			if err != nil {
+				s.Log.Warn("clone deployment: failed to decrypt secret env var for cloning", "key", row.KeyName, "error", err)
+				continue
+			}
+			newAAD := []byte("env_vars:" + strconv.FormatInt(newSvc.ID, 10) + ":" + row.KeyName)
+			ciphertext, nonce, err := s.Secrets.Seal(newAAD, plaintext)
+			if err != nil {
+				s.Log.Warn("clone deployment: failed to re-encrypt secret env var for cloning", "key", row.KeyName, "error", err)
+				continue
+			}
+			if err := s.Store.CreateSecretEnvVar(ctx, newSvc.ID, row.KeyName, ciphertext, nonce); err != nil {
+				s.Log.Warn("clone deployment: failed to clone secret env var", "key", row.KeyName, "error", err)
+			}
+		}
+	}
+
+	if err := s.Store.SetDeploymentRepo(ctx, clone.ID, *source.ProjectRepoID, spec.Branch, true); err != nil {
+		return clone, fmt.Errorf("deployment created but repo link failed: %w", err)
+	}
+	return s.Store.GetDeployment(ctx, clone.ID)
+}
+
 type createStagingDeploymentRequest struct {
 	Branch string `json:"branch"`
 }
@@ -588,124 +721,12 @@ func (s *Server) createStagingDeployment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sourceServices, err := s.Store.ListServices(r.Context(), source.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if source.BuildStrategy != "compose" && len(sourceServices) != 1 {
-		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("source deployment has %d services; expected exactly 1", len(sourceServices)))
-		return
-	}
-
-	replicas := source.Replicas
-	if replicas < 1 || source.BuildStrategy == "compose" || source.BuildStrategy == "static" {
-		replicas = 1
-	}
-
-	// Slug (and so subdomain) must be unique per project -- try a handful
-	// of suffixes rather than making the caller pick one.
-	var staging models.Deployment
-	for attempt := 0; attempt < 6; attempt++ {
-		slug := source.Slug + "-staging"
-		if attempt > 0 {
-			slug = fmt.Sprintf("%s-staging-%d", source.Slug, attempt+1)
-		}
-		staging, err = s.Store.CreateDeployment(r.Context(), store.CreateDeploymentParams{
-			ProjectID:              source.ProjectID,
-			Name:                   source.Name + " (staging)",
-			Slug:                   slug,
-			BuildStrategy:          source.BuildStrategy,
-			GitBranch:              req.Branch,
-			ImageRef:               source.ImageRef,
-			RootPath:               source.RootPath,
-			DockerfilePath:         source.DockerfilePath,
-			ComposePath:            source.ComposePath,
-			StaticBuildCommand:     source.StaticBuildCommand,
-			StaticOutputDir:        source.StaticOutputDir,
-			ImageRetentionCount:    source.ImageRetentionCount,
-			Replicas:               replicas,
-			Environment:            "staging",
-			PromotesToDeploymentID: &source.ID,
-		})
-		if err == nil {
-			break
-		}
-		if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "couldn't find a free slug for the staging deployment: "+err.Error())
-		return
-	}
-
-	// Clone each service (config + env vars) onto the new deployment.
-	// Compose stacks discover their services from the compose file on
-	// first deploy, same as a fresh compose deployment created any other
-	// way -- there's nothing to pre-declare or clone.
-	for _, svc := range sourceServices {
-		containerName := "mangrove-" + staging.Slug + "-" + svc.Name
-		newSvc, err := s.Store.CreateService(r.Context(), store.CreateServiceParams{
-			DeploymentID:         staging.ID,
-			Name:                 svc.Name,
-			ContainerName:        containerName,
-			InternalPort:         svc.InternalPort,
-			IsInternalOnly:       svc.IsInternalOnly,
-			CPULimitCores:        svc.CPULimitCores,
-			MemoryLimitMB:        svc.MemoryLimitMB,
-			RestartPolicy:        svc.RestartPolicy,
-			HealthCheckPath:      svc.HealthCheckPath,
-			HealthCheckIntervalS: svc.HealthCheckIntervalS,
-			HealthCheckTimeoutS:  svc.HealthCheckTimeoutS,
-			Command:              svc.Command,
-			NoContainer:          source.BuildStrategy == "static",
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "staging deployment created but service cloning failed: "+err.Error())
-			return
-		}
-
-		envRows, err := s.Store.ListEnvVarRows(r.Context(), svc.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "staging deployment created but env var lookup failed: "+err.Error())
-			return
-		}
-		for _, row := range envRows {
-			if !row.IsSecret {
-				if err := s.Store.CreatePlainEnvVar(r.Context(), newSvc.ID, row.KeyName, row.ValuePlain.String); err != nil {
-					s.Log.Warn("staging: failed to clone env var", "key", row.KeyName, "error", err)
-				}
-				continue
-			}
-			// A secret's ciphertext is bound (as AAD) to the service ID it
-			// belongs to (see resolveEnv/setEnvVar) -- it must be
-			// decrypted and re-sealed under the new service's ID, not
-			// copied as-is.
-			oldAAD := []byte("env_vars:" + strconv.FormatInt(svc.ID, 10) + ":" + row.KeyName)
-			plaintext, err := s.Secrets.Open(oldAAD, row.ValueEncrypted, row.ValueNonce)
-			if err != nil {
-				s.Log.Warn("staging: failed to decrypt secret env var for cloning", "key", row.KeyName, "error", err)
-				continue
-			}
-			newAAD := []byte("env_vars:" + strconv.FormatInt(newSvc.ID, 10) + ":" + row.KeyName)
-			ciphertext, nonce, err := s.Secrets.Seal(newAAD, plaintext)
-			if err != nil {
-				s.Log.Warn("staging: failed to re-encrypt secret env var for cloning", "key", row.KeyName, "error", err)
-				continue
-			}
-			if err := s.Store.CreateSecretEnvVar(r.Context(), newSvc.ID, row.KeyName, ciphertext, nonce); err != nil {
-				s.Log.Warn("staging: failed to clone secret env var", "key", row.KeyName, "error", err)
-			}
-		}
-	}
-
-	if err := s.Store.SetDeploymentRepo(r.Context(), staging.ID, *source.ProjectRepoID, req.Branch, true); err != nil {
-		writeError(w, http.StatusInternalServerError, "staging deployment created but repo link failed: "+err.Error())
-		return
-	}
-	staging, err = s.Store.GetDeployment(r.Context(), staging.ID)
+	staging, err := s.cloneDeployment(r.Context(), source, cloneDeploymentSpec{
+		Branch:      req.Branch,
+		Environment: "staging",
+		SlugBase:    source.Slug + "-staging",
+		Name:        source.Name + " (staging)",
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -819,6 +840,95 @@ func (s *Server) promoteDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "status": "success"})
+}
+
+// ---- PR previews ----
+//
+// A preview deployment is, like staging, just another deployment row
+// (environment "preview", promotes_to_deployment_id naming the production
+// deployment it was cloned from) -- pr_number additionally keys it to a
+// specific pull request instead of a hand-picked branch, and it's created/
+// torn down automatically by the pull_request webhook (see webhook.go's
+// handlePullRequestEvent) rather than by a user action. See migration 0008.
+
+func (s *Server) listPreviewDeployments(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	previews, err := s.Store.ListPreviewDeployments(r.Context(), deploymentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, previews)
+}
+
+type setPRPreviewsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// setPRPreviews toggles whether this (production) deployment spins up a
+// preview deployment for every open pull request against its linked repo.
+func (s *Server) setPRPreviews(w http.ResponseWriter, r *http.Request) {
+	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid deployment id")
+		return
+	}
+	var req setPRPreviewsRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if req.Enabled {
+		dep, err := s.Store.GetDeployment(r.Context(), deploymentID)
+		if err == store.ErrNotFound {
+			writeError(w, http.StatusNotFound, "deployment not found")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if dep.ProjectRepoID == nil {
+			writeError(w, http.StatusUnprocessableEntity, "this deployment has no linked GitHub repo -- connect one first")
+			return
+		}
+		if dep.PromotesToDeploymentID != nil {
+			writeError(w, http.StatusUnprocessableEntity, "PR previews can only be enabled on a production deployment")
+			return
+		}
+	}
+	if err := s.Store.SetPRPreviewsEnabled(r.Context(), deploymentID, req.Enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// findOrCreatePreviewDeployment returns the preview deployment already
+// tracking prNumber for source, or clones one (same machinery as
+// createStagingDeployment) if this is that PR's first opened/synchronize
+// delivery. Does not itself deploy -- the caller (handlePullRequestEvent)
+// dispatches the exact commit the webhook payload named.
+func (s *Server) findOrCreatePreviewDeployment(ctx context.Context, source models.Deployment, prNumber int, branch string) (models.Deployment, error) {
+	existing, err := s.Store.GetPreviewDeployment(ctx, source.ID, prNumber)
+	if err == nil {
+		return existing, nil
+	}
+	if err != store.ErrNotFound {
+		return models.Deployment{}, err
+	}
+	pr := prNumber
+	return s.cloneDeployment(ctx, source, cloneDeploymentSpec{
+		Branch:      branch,
+		Environment: "preview",
+		SlugBase:    fmt.Sprintf("%s-pr-%d", source.Slug, prNumber),
+		Name:        fmt.Sprintf("%s (PR #%d)", source.Name, prNumber),
+		PRNumber:    &pr,
+	})
 }
 
 func (s *Server) getService(w http.ResponseWriter, r *http.Request) {

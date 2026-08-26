@@ -202,6 +202,41 @@ last redeployed manually rather than by a push, which doesn't resolve or
 record a commit SHA today), promote falls back to whatever `git_ref` was
 last recorded.
 
+### PR previews
+
+Built on the same "just another `deployments` row" idea as staging, but
+created and torn down automatically instead of by hand.
+`pr_previews_enabled` (migration `0008`) opts a production deployment in;
+`pr_number` and `github_pr_comment_id` (same migration) mark a deployment
+as a preview and record which pull request and bot comment it belongs to.
+`CreateWebhook` registers `pull_request` alongside `push`, so
+`githubWebhook` gains a second event case: `handlePullRequestEvent`
+(`internal/api/webhook.go`) fans out to every `pr_previews_enabled`
+production deployment on the repo, same shape as the push handler.
+
+`opened`/`reopened`/`synchronize` call `findOrCreatePreviewDeployment`,
+which looks up an existing preview by `(promotes_to_deployment_id,
+pr_number)` (a unique index enforces at most one) or clones a new one via
+`cloneDeployment` -- the same clone-services-and-env-vars logic
+`createStagingDeployment` uses, refactored out so the two don't drift
+against each other the way the dispatch switch once did. The clone is then
+deployed with the *exact* commit the webhook payload named
+(`pull_request.head.sha`), not a branch-tip fetch, so a comment posted
+after the deploy finishes always describes the commit that's actually
+running. `closed` deletes the preview deployment via
+`Orchestrator.DeleteDeployment` (containers, proxy route, port, the row
+itself) if one exists -- a PR closed without ever pushing after opt-in has
+none.
+
+The PR gets one bot comment, edited in place on every update rather than
+reposted (`internal/github/comment.go`'s `CommentClient.UpsertComment`,
+POST to create then PATCH to edit using the id `github_pr_comment_id`
+records) -- "building" before the deploy, then the preview URL or the
+error once `Deploy` (which blocks until build + health check settle)
+returns. Best-effort throughout, same convention as the existing
+commit-status posting: a GitHub API hiccup here never fails the underlying
+deploy or teardown.
+
 ## Access control at the proxy layer
 
 A public deployment's optional password protection

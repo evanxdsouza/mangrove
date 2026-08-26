@@ -126,6 +126,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		GithubOAuthClientSecret: cfg.GithubOAuthClientSecret,
 		GithubOAuth:             github.NewOAuthClient(),
 		GithubRepos:             github.NewReposClient(),
+		GithubComments:          github.NewCommentClient(),
 		PublicURL:               cfg.PublicURL,
 	}
 

@@ -56,13 +56,21 @@ type Deployment struct {
 	// its own branch under the same linked repo as its production sibling
 	// and auto-deploys independently; PromotesToDeploymentID names that
 	// sibling. Production deployments (the default) leave it nil.
-	Environment            string     `json:"environment"`
-	PromotesToDeploymentID *int64     `json:"promotes_to_deployment_id,omitempty"`
-	Status                 string     `json:"status"`
-	NodeID                 int64      `json:"node_id"`
-	CreatedAt              time.Time  `json:"created_at"`
-	UpdatedAt              time.Time  `json:"updated_at"`
-	LastDeployedAt         *time.Time `json:"last_deployed_at,omitempty"`
+	Environment            string `json:"environment"`
+	PromotesToDeploymentID *int64 `json:"promotes_to_deployment_id,omitempty"`
+	// PRPreviewsEnabled, on a production deployment, opts it into spinning
+	// up a preview deployment (environment "preview") for every open pull
+	// request against its linked repo. PRNumber/GithubPRCommentID are only
+	// set on a preview deployment itself: which PR it tracks, and the bot
+	// comment on that PR that gets edited in place on every update.
+	PRPreviewsEnabled bool       `json:"pr_previews_enabled"`
+	PRNumber          *int       `json:"pr_number,omitempty"`
+	GithubPRCommentID *int64     `json:"github_pr_comment_id,omitempty"`
+	Status            string     `json:"status"`
+	NodeID            int64      `json:"node_id"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	LastDeployedAt    *time.Time `json:"last_deployed_at,omitempty"`
 }
 
 type Service struct {

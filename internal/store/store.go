@@ -318,8 +318,13 @@ type CreateDeploymentParams struct {
 	// Environment is "production" (default, when empty) or "staging".
 	Environment string
 	// PromotesToDeploymentID, for a staging deployment, names the
-	// production deployment that POST .../promote deploys onto.
+	// production deployment that POST .../promote deploys onto. A preview
+	// deployment also sets this, to the production deployment it was
+	// cloned from -- PRNumber is what distinguishes it from staging.
 	PromotesToDeploymentID *int64
+	// PRNumber, for a preview deployment (Environment "preview"), names
+	// the pull request it tracks. Nil for production/staging.
+	PRNumber *int
 }
 
 func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) (models.Deployment, error) {
@@ -336,9 +341,9 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 		p.Environment = "production"
 	}
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas, environment, promotes_to_deployment_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas, p.Environment, p.PromotesToDeploymentID,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas, environment, promotes_to_deployment_id, pr_number)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas, p.Environment, p.PromotesToDeploymentID, p.PRNumber,
 	)
 	if err != nil {
 		return models.Deployment{}, err
@@ -355,7 +360,7 @@ const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(
 	       COALESCE(image_ref,''), root_path, COALESCE(dockerfile_path,''), COALESCE(compose_path,''),
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
 	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, environment,
-	       promotes_to_deployment_id, status, node_id,
+	       promotes_to_deployment_id, pr_previews_enabled, pr_number, github_pr_comment_id, status, node_id,
 	       created_at, updated_at, last_deployed_at`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
@@ -369,11 +374,13 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var d models.Deployment
 	var projectRepoID sql.NullInt64
 	var promotesToID sql.NullInt64
+	var prNumber sql.NullInt64
+	var githubPRCommentID sql.NullInt64
 	var lastDeployedAtT sql.NullTime
 	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Environment,
-		&promotesToID, &d.Status, &d.NodeID,
+		&promotesToID, &d.PRPreviewsEnabled, &prNumber, &githubPRCommentID, &d.Status, &d.NodeID,
 		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
 	if err != nil {
 		return models.Deployment{}, err
@@ -383,6 +390,13 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	}
 	if promotesToID.Valid {
 		d.PromotesToDeploymentID = &promotesToID.Int64
+	}
+	if prNumber.Valid {
+		n := int(prNumber.Int64)
+		d.PRNumber = &n
+	}
+	if githubPRCommentID.Valid {
+		d.GithubPRCommentID = &githubPRCommentID.Int64
 	}
 	if lastDeployedAtT.Valid {
 		t := lastDeployedAtT.Time
@@ -422,9 +436,10 @@ func (s *Store) ListDeployments(ctx context.Context, projectID int64) ([]models.
 }
 
 // ListStagingDeployments returns every staging deployment that promotes
-// into the given production deployment.
+// into the given production deployment -- excludes preview deployments,
+// which also set promotes_to_deployment_id but are a distinct environment.
 func (s *Store) ListStagingDeployments(ctx context.Context, promotesToDeploymentID int64) ([]models.Deployment, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE promotes_to_deployment_id = ? ORDER BY created_at DESC`, promotesToDeploymentID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE promotes_to_deployment_id = ? AND environment = 'staging' ORDER BY created_at DESC`, promotesToDeploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -439,6 +454,82 @@ func (s *Store) ListStagingDeployments(ctx context.Context, promotesToDeployment
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// ListPreviewDeployments returns every open-PR preview deployment cloned
+// from the given production deployment -- the mirror of
+// ListStagingDeployments, scoped to environment='preview'.
+func (s *Store) ListPreviewDeployments(ctx context.Context, promotesToDeploymentID int64) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE promotes_to_deployment_id = ? AND environment = 'preview' ORDER BY created_at DESC`, promotesToDeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// GetPreviewDeployment finds the preview deployment (if any) already
+// tracking prNumber for the given production deployment -- what a
+// pull_request webhook delivery looks up before deciding whether to create
+// a new preview or redeploy an existing one.
+func (s *Store) GetPreviewDeployment(ctx context.Context, promotesToDeploymentID int64, prNumber int) (models.Deployment, error) {
+	row := s.DB.QueryRowContext(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments WHERE promotes_to_deployment_id = ? AND pr_number = ? AND environment = 'preview'`,
+		promotesToDeploymentID, prNumber,
+	)
+	d, err := scanDeploymentRow(row)
+	if err == sql.ErrNoRows {
+		return models.Deployment{}, ErrNotFound
+	}
+	return d, err
+}
+
+// ListProductionDeploymentsWithPRPreviewsEnabled finds every production
+// deployment on this linked repo that has opted into per-PR previews --
+// what a pull_request webhook delivery fans out to.
+func (s *Store) ListProductionDeploymentsWithPRPreviewsEnabled(ctx context.Context, projectRepoID int64) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments WHERE project_repo_id = ? AND pr_previews_enabled = 1 AND environment = 'production'`,
+		projectRepoID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// SetPRPreviewsEnabled toggles whether a production deployment spins up a
+// preview deployment for every open pull request against its linked repo.
+func (s *Store) SetPRPreviewsEnabled(ctx context.Context, deploymentID int64, enabled bool) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET pr_previews_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, enabled, deploymentID)
+	return err
+}
+
+// SetGithubPRCommentID records the bot comment id posted on a preview
+// deployment's PR, so the next update edits it in place instead of posting
+// a new one.
+func (s *Store) SetGithubPRCommentID(ctx context.Context, deploymentID int64, commentID int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET github_pr_comment_id = ? WHERE id = ?`, commentID, deploymentID)
+	return err
 }
 
 // DeleteDeployment removes a single deployment and everything that hangs

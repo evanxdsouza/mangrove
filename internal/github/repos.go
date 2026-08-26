@@ -85,16 +85,18 @@ func (c *ReposClient) ListRepos(ctx context.Context, token string) ([]Repo, erro
 	return all, nil
 }
 
-// CreateWebhook registers a push webhook on owner/repo pointed at
-// callbackURL, signed with secret. Best-effort by convention -- callers
-// fall back to showing the user the manual paste-into-GitHub instructions
-// on error, since a token that can read a repo doesn't always have
-// admin:repo_hook scope (e.g. read-only org repos).
+// CreateWebhook registers a push + pull_request webhook on owner/repo
+// pointed at callbackURL, signed with secret. Best-effort by convention --
+// callers fall back to showing the user the manual paste-into-GitHub
+// instructions on error, since a token that can read a repo doesn't always
+// have admin:repo_hook scope (e.g. read-only org repos). pull_request
+// drives per-PR preview deployments (see internal/api/webhook.go); push
+// drives everything else (production/staging auto-deploy).
 func (c *ReposClient) CreateWebhook(ctx context.Context, token, owner, repo, callbackURL, secret string) error {
 	body, err := json.Marshal(map[string]any{
 		"name":   "web",
 		"active": true,
-		"events": []string{"push"},
+		"events": []string{"push", "pull_request"},
 		"config": map[string]string{
 			"url":          callbackURL,
 			"content_type": "json",

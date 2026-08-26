@@ -135,6 +135,9 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
               <StatusPill status={deployment.status} />
               <span className="mono text-dim">{deployment.build_strategy}</span>
               {deployment.environment === "staging" && <span className="pill pill-yellow">staging</span>}
+              {deployment.environment === "preview" && (
+                <span className="pill pill-yellow">preview{deployment.pr_number ? ` (PR #${deployment.pr_number})` : ""}</span>
+              )}
             </p>
           )}
         </div>
@@ -203,7 +206,12 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           {deployment?.promotes_to_deployment_id != null ? (
             <PromoteCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} />
           ) : (
-            deployment && <StagingCard projectId={projectId} productionDeployment={deployment} />
+            deployment && (
+              <>
+                <StagingCard projectId={projectId} productionDeployment={deployment} />
+                <PreviewsCard projectId={projectId} productionDeployment={deployment} />
+              </>
+            )
           )}
         </>
       )}
@@ -541,7 +549,7 @@ function WebhookHealth({ projectId, repo }: { projectId: number; repo: ProjectRe
           </div>
           <div className="field-hint">
             Paste these into {repo.repo_owner}/{repo.repo_name} &rarr; Settings &rarr; Webhooks (content type: application/json,
-            events: just the push event).
+            events: pushes, and pull requests if you want PR previews).
           </div>
         </div>
       )}
@@ -700,6 +708,95 @@ function StagingCard({ projectId, productionDeployment }: { projectId: number; p
           {busy ? "Creating..." : "+ New staging environment"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// PreviewsCard appears on a production deployment's page (same
+// prerequisites as StagingCard): a toggle to opt into per-PR preview
+// deployments, and the list of currently open ones. Unlike staging, a
+// preview deployment isn't created here -- it's created and torn down
+// automatically by the pull_request webhook (see handlePullRequestEvent),
+// which also posts/updates a bot comment with each preview's URL directly
+// on the PR.
+function PreviewsCard({ projectId, productionDeployment }: { projectId: number; productionDeployment: Deployment }) {
+  const [repo, setRepo] = useState<{ id: number } | null>(null);
+  const [previews, setPreviews] = useState<Deployment[] | null>(null);
+  const [enabled, setEnabled] = useState(productionDeployment.pr_previews_enabled);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPreviews = () => {
+    api
+      .get<Deployment[]>(`/api/deployments/${productionDeployment.id}/previews`)
+      .then((list) => setPreviews(list ?? []))
+      .catch(() => setPreviews([]));
+  };
+
+  useEffect(() => {
+    api
+      .get<{ id: number }>(`/api/projects/${projectId}/repo`)
+      .then(setRepo)
+      .catch(() => setRepo(null));
+    loadPreviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, productionDeployment.id]);
+
+  useEffect(() => {
+    setEnabled(productionDeployment.pr_previews_enabled);
+  }, [productionDeployment.pr_previews_enabled]);
+
+  if (!repo) {
+    return null; // no linked repo -- nothing to preview pull requests from
+  }
+
+  const toggle = async () => {
+    const next = !enabled;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/deployments/${productionDeployment.id}/pr-previews`, { enabled: next });
+      setEnabled(next);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">PR previews</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        When enabled, every open pull request against this repo gets its own preview deployment, deployed on push and
+        torn down when the PR closes -- with a bot comment on the PR linking to it.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+
+      {previews && previews.length > 0 && (
+        <div className="kv-list" style={{ marginBottom: 14 }}>
+          {previews.map((p) => (
+            <div
+              className="kv-row row-link"
+              key={p.id}
+              onClick={() => (window.location.href = `/projects/${projectId}/deployments/${p.id}`)}
+              style={{ cursor: "pointer" }}
+            >
+              <span className="kv-key">
+                PR #{p.pr_number} <span className="text-faint mono">({p.git_branch})</span>
+              </span>
+              <span className="kv-value">
+                <StatusPill status={p.status} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label className="flex gap-8" style={{ alignItems: "center", cursor: "pointer" }}>
+        <input type="checkbox" checked={enabled} onChange={toggle} disabled={busy} />
+        Enable PR previews for this repo
+      </label>
     </div>
   );
 }
