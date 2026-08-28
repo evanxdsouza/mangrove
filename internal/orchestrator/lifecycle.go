@@ -137,6 +137,8 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 				}
 				if err := o.Proxy.PutRouteMulti(ctx, *svc.HostPort, upstreams, routeOpts); err != nil {
 					o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)
+				} else {
+					o.reapplyCustomDomains(ctx, dep.ID)
 				}
 			}
 		}

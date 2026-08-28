@@ -236,6 +236,136 @@ func (c *Client) doConfigRequest(ctx context.Context, method, path string, body 
 	return nil
 }
 
+const publicServerPath = "/config/apps/http/servers/srv_public"
+
+// getPublicServer fetches the current srv_public server block (the shared
+// :443/:80 server that all verified custom domains live on), returning an
+// empty-but-initialized server if it doesn't exist yet.
+func (c *Client) getPublicServer(ctx context.Context) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.AdminAddr+publicServerPath, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", publicServerPath, err)
+	}
+	defer resp.Body.Close()
+
+	server := map[string]any{
+		"listen": []string{":443", ":80"},
+		"routes": []any{},
+	}
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		if trimmed := bytes.TrimSpace(body); len(trimmed) > 0 && string(trimmed) != "null" {
+			if err := json.Unmarshal(trimmed, &server); err != nil {
+				return nil, fmt.Errorf("decode %s: %w", publicServerPath, err)
+			}
+			if server["routes"] == nil {
+				server["routes"] = []any{}
+			}
+		}
+	}
+	return server, nil
+}
+
+// PutDomainRoute adds or atomically replaces the route for hostname within
+// the shared srv_public server block, reverse-proxying it across upstreams
+// (Caddy load balances when there's more than one, matching
+// PutRouteMulti's replica handling). Unlike PutRoute/PutFileServerRoute
+// (one server block per port), every verified custom domain shares a
+// single server block listening on :443/:80, distinguished by a host
+// matcher -- so this is a read-modify-write over that block's routes
+// array rather than a single upsertPath call. Caddy provisions/renews the
+// TLS certificate for hostname on its own the moment a route matching
+// that host exists here; no apps.tls config is needed for the common case.
+func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams []string) error {
+	server, err := c.getPublicServer(ctx)
+	if err != nil {
+		return err
+	}
+
+	dials := make([]map[string]any, 0, len(upstreams))
+	for _, u := range upstreams {
+		dials = append(dials, map[string]any{"dial": u})
+	}
+
+	routes, _ := server["routes"].([]any)
+	filtered := routes[:0]
+	for _, r := range routes {
+		if !routeMatchesHost(r, hostname) {
+			filtered = append(filtered, r)
+		}
+	}
+	filtered = append(filtered, map[string]any{
+		"match": []map[string]any{{"host": []string{hostname}}},
+		"handle": []map[string]any{
+			{
+				"handler":   "reverse_proxy",
+				"upstreams": dials,
+			},
+		},
+	})
+	server["routes"] = filtered
+
+	return c.upsertPath(ctx, publicServerPath, server)
+}
+
+// DeleteDomainRoute removes hostname's route from the shared srv_public
+// server block, leaving every other domain's route untouched.
+func (c *Client) DeleteDomainRoute(ctx context.Context, hostname string) error {
+	server, err := c.getPublicServer(ctx)
+	if err != nil {
+		return err
+	}
+
+	routes, _ := server["routes"].([]any)
+	filtered := routes[:0]
+	for _, r := range routes {
+		if !routeMatchesHost(r, hostname) {
+			filtered = append(filtered, r)
+		}
+	}
+	server["routes"] = filtered
+
+	return c.upsertPath(ctx, publicServerPath, server)
+}
+
+// routeMatchesHost reports whether a decoded Caddy route JSON object's
+// match array includes hostname -- used to find/replace the one route
+// belonging to a given custom domain within srv_public's shared routes
+// array.
+func routeMatchesHost(route any, hostname string) bool {
+	r, ok := route.(map[string]any)
+	if !ok {
+		return false
+	}
+	matches, ok := r["match"].([]any)
+	if !ok {
+		return false
+	}
+	for _, m := range matches {
+		matcher, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		hosts, ok := matcher["host"].([]any)
+		if !ok {
+			continue
+		}
+		for _, h := range hosts {
+			if hs, ok := h.(string); ok && hs == hostname {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // DeleteRoute tears down a port's server block entirely -- used when a
 // deployment is stopped, deleted, or toggled to internal-only.
 func (c *Client) DeleteRoute(ctx context.Context, port int) error {

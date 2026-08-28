@@ -128,6 +128,50 @@ systemctl restart mangrove
 systemd caches parsed unit files and won't notice an on-disk edit
 otherwise.
 
+## Custom domains
+
+Beyond the port-based routing every deployment gets automatically
+(`srv_<port>` server blocks, see `internal/proxy/caddy.go`), an owner can
+point an arbitrary domain at a deployment from its "Domains" tab in the
+dashboard. This programs a *host-matched* route on a separate, shared
+Caddy server block (`srv_public`, listening on `:80`/`:443`) -- Caddy's
+own automatic HTTPS then provisions and renews the TLS certificate for
+that hostname with no further configuration needed.
+
+Adding a domain requires proving control of its DNS first: Mangrove shows
+a `mangrove-domain-verification=<token>` value to add as a TXT record on
+the hostname, and the route only goes live once "Verify" finds it --
+without this check, anyone who points a stale/misconfigured domain's DNS
+at this box's IP could intercept traffic meant for someone else's
+deployment.
+
+`srv_public` needs `:80`/`:443` free on this box. That's true for a plain
+VPS/Nest install by default (deployment routes live on the high port
+range instead); it is **not** true if you've hand-configured Caddy to
+proxy `:80`/`:443` to something else already (e.g. Mangrove's own
+dashboard reachable through an external edge) -- custom domains won't
+work until that's resolved, since two Caddy server blocks can't bind the
+same port.
+
+## Home server / DDNS
+
+A home server sitting behind a router usually has neither a static
+public IP nor forwarded ports by default, so custom domains need two
+extra things `setup.sh` can configure interactively (choose "home" when
+asked how the box is reachable):
+
+- **Port forwarding**: forward `80` and `443` on your router to this
+  box. There's no way around this -- it's how traffic (and the ACME
+  HTTP-01 challenge Caddy uses for automatic HTTPS) reaches the box at
+  all.
+- **DDNS**: `internal/scheduler/ddns.go` runs a small background job
+  (every 5 minutes) that keeps a [DuckDNS](https://www.duckdns.org)
+  subdomain pointed at your current public IP, configured via
+  `MANGROVE_DDNS_DOMAIN`/`MANGROVE_DDNS_TOKEN`/`MANGROVE_DDNS_PROVIDER`
+  in `/etc/mangrove/mangrove.env`. Only `duckdns` is supported today.
+  Leave `MANGROVE_DDNS_DOMAIN` unset (the default) to disable the job
+  entirely -- a VPS/Nest install with a stable IP doesn't need it.
+
 ## Verifying without touching production
 
 For any change riskier than a pure code diff (schema changes, teardown

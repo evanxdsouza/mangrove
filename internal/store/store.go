@@ -1604,3 +1604,84 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	}
 	return res.RowsAffected()
 }
+
+// ---- Custom domains ----
+
+func (s *Store) CreateCustomDomain(ctx context.Context, deploymentID int64, hostname, verificationToken string) (models.CustomDomain, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO custom_domains (deployment_id, hostname, verification_token) VALUES (?, ?, ?)`,
+		deploymentID, hostname, verificationToken,
+	)
+	if err != nil {
+		return models.CustomDomain{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetCustomDomain(ctx, id)
+}
+
+func (s *Store) GetCustomDomain(ctx context.Context, id int64) (models.CustomDomain, error) {
+	var d models.CustomDomain
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE id = ?`, id,
+	).Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt)
+	if err == sql.ErrNoRows {
+		return models.CustomDomain{}, ErrNotFound
+	}
+	return d, err
+}
+
+func (s *Store) ListCustomDomainsForDeployment(ctx context.Context, deploymentID int64) ([]models.CustomDomain, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE deployment_id = ? ORDER BY id`,
+		deploymentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.CustomDomain
+	for rows.Next() {
+		var d models.CustomDomain
+		if err := rows.Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ListVerifiedCustomDomainsForDeployment is what a redeploy/restart uses to
+// know which domains need their Caddy route re-pushed alongside the
+// deployment's own port-based route -- unverified domains have no live
+// route to refresh.
+func (s *Store) ListVerifiedCustomDomainsForDeployment(ctx context.Context, deploymentID int64) ([]models.CustomDomain, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE deployment_id = ? AND verified = 1 ORDER BY id`,
+		deploymentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.CustomDomain
+	for rows.Next() {
+		var d models.CustomDomain
+		if err := rows.Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) MarkCustomDomainVerified(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE custom_domains SET verified = 1 WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) DeleteCustomDomain(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM custom_domains WHERE id = ?`, id)
+	return err
+}

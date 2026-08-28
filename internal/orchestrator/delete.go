@@ -45,6 +45,24 @@ func (o *Orchestrator) DeleteDeployment(ctx context.Context, deploymentID int64)
 		return fmt.Errorf("load services: %w", err)
 	}
 	o.teardownServices(ctx, "delete deployment", services)
+
+	// custom_domains rows cascade-delete with the deployment (see
+	// 0009_custom_domains.sql's ON DELETE CASCADE), but that's SQL-only --
+	// the live Caddy route for each hostname has to be torn down
+	// explicitly first, same reasoning as teardownServices' DeleteRoute
+	// above, or it'd keep routing to a now-deleted deployment forever.
+	if o.Proxy != nil {
+		domains, err := o.Store.ListVerifiedCustomDomainsForDeployment(ctx, deploymentID)
+		if err != nil {
+			o.Log.Warn("delete deployment: list custom domains failed", "deployment_id", deploymentID, "error", err)
+		}
+		for _, d := range domains {
+			if err := o.Proxy.DeleteDomainRoute(ctx, d.Hostname); err != nil {
+				o.Log.Warn("delete deployment: remove domain route failed", "hostname", d.Hostname, "error", err)
+			}
+		}
+	}
+
 	return o.Store.DeleteDeployment(ctx, deploymentID)
 }
 

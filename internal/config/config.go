@@ -68,6 +68,15 @@ type Config struct {
 	GithubOAuthClientID     string
 	GithubOAuthClientSecret string
 
+	// DDNSDomain/Token/Provider configure the home-server DDNS updater (see
+	// internal/scheduler/ddns.go and setup.sh's "home" install mode) that
+	// keeps a domain pointed at this box's current public IP when it sits
+	// behind a router without a static one. DDNSDomain empty (the default,
+	// and what a VPS/Nest install leaves it as) disables the job entirely.
+	DDNSDomain   string
+	DDNSToken    string
+	DDNSProvider string
+
 	// PublicURL, when set, overrides request-derived scheme+host detection
 	// for building absolute URLs Mangrove hands to GitHub (the OAuth
 	// redirect_uri, and an auto-registered webhook's callback URL). Needed
@@ -103,6 +112,9 @@ func Load() Config {
 		BaseDomain:                getEnv("MANGROVE_BASE_DOMAIN", "evanxdsouza.hackclub.app"),
 		GithubOAuthClientID:       os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_ID"),
 		GithubOAuthClientSecret:   os.Getenv("MANGROVE_GITHUB_OAUTH_CLIENT_SECRET"),
+		DDNSDomain:                os.Getenv("MANGROVE_DDNS_DOMAIN"),
+		DDNSToken:                 os.Getenv("MANGROVE_DDNS_TOKEN"),
+		DDNSProvider:              getEnv("MANGROVE_DDNS_PROVIDER", "duckdns"),
 		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
 	}
 }

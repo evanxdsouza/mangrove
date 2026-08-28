@@ -7,6 +7,7 @@ import { LogViewer } from "../components/LogViewer";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
+import { DomainsPanel } from "../components/DomainsPanel";
 import { useIsOwner } from "../userContext";
 
 type Tab = "overview" | "history" | "logs" | "env";
@@ -202,6 +203,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <>
           <OverviewTab services={services} deployment={deployment} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
+          <DomainsPanel deploymentId={deploymentId} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           {deployment?.promotes_to_deployment_id != null ? (
             <PromoteCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} />
