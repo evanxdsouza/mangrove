@@ -139,6 +139,18 @@ type EnvVar struct {
 	Value     string `json:"value,omitempty"` // decrypted for API responses only when explicitly requested
 }
 
+// CustomDomain maps a hostname to a deployment -- see the Domains
+// dashboard, internal/orchestrator/domains.go, and
+// internal/proxy/caddy.go's PutDomainRoute.
+type CustomDomain struct {
+	ID                int64     `json:"id"`
+	DeploymentID      int64     `json:"deployment_id"`
+	Hostname          string    `json:"hostname"`
+	VerificationToken string    `json:"verification_token"`
+	Verified          bool      `json:"verified"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
 type Volume struct {
 	ID               int64  `json:"id"`
 	DeploymentID     int64  `json:"deployment_id"`

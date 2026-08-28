@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +20,45 @@ func requireCaddy(t *testing.T) *Client {
 		t.Skipf("caddy admin API not reachable, skipping integration test: %v", err)
 	}
 	return c
+}
+
+// requirePublicPorts additionally skips if :80/:443 are already claimed by
+// some other server block -- e.g. a box running Mangrove itself behind an
+// external edge (see caddy.go's package doc) may already have a hand-
+// configured server proxying :80 to its own control plane. PutDomainRoute
+// is meant for boxes where Caddy is the outward-facing terminator, so
+// that's a real environment precondition, not something worth papering
+// over in the client itself.
+func requirePublicPorts(t *testing.T, c *Client) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, c.AdminAddr+"/config/apps/http/servers", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		t.Skipf("caddy admin API not reachable: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var servers map[string]struct {
+		Listen []string `json:"listen"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
+		return
+	}
+	for name, srv := range servers {
+		if name == "srv_public" {
+			continue
+		}
+		for _, l := range srv.Listen {
+			if l == ":80" || l == ":443" {
+				t.Skipf("port %s already claimed by server %q, skipping srv_public integration test", l, name)
+			}
+		}
+	}
 }
 
 // startBackend runs a trivial HTTP server on an OS-assigned loopback port,
@@ -238,6 +278,95 @@ func TestPutFileServerRouteSwapsRootAtomically(t *testing.T) {
 	}
 	if got := getWithRetry(t, fmt.Sprintf("http://127.0.0.1:%d/", port), 200); got != "output v2" {
 		t.Fatalf("expected output v2 after swap, got %q", got)
+	}
+}
+
+// getWithHostRetry is getWithRetry but sends the request with a specific
+// Host header, so it can address a host-matched srv_public route by
+// hostname while actually dialing loopback (real DNS for the test
+// hostname isn't needed -- Caddy routes purely off the Host header it's
+// sent).
+func getWithHostRetry(t *testing.T, addr, host string, wantStatus int) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = err
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != wantStatus {
+			lastErr = fmt.Errorf("got status %d, want %d", resp.StatusCode, wantStatus)
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		return string(body)
+	}
+	t.Fatalf("GET %s (Host: %s) never succeeded: %v", addr, host, lastErr)
+	return ""
+}
+
+func TestPutDomainRouteRoutesByHost(t *testing.T) {
+	c := requireCaddy(t)
+	requirePublicPorts(t, c)
+	ctx := context.Background()
+
+	backend := startBackend(t, "hello from custom domain backend")
+	host := fmt.Sprintf("test-%d.example.invalid", time.Now().UnixNano())
+
+	if err := c.PutDomainRoute(ctx, host, []string{backend}); err != nil {
+		t.Fatalf("PutDomainRoute: %v", err)
+	}
+	t.Cleanup(func() { c.DeleteDomainRoute(ctx, host) })
+
+	body := getWithHostRetry(t, "127.0.0.1:80", host, 200)
+	if body != "hello from custom domain backend" {
+		t.Errorf("got body %q, want backend response", body)
+	}
+}
+
+func TestPutDomainRouteDoesNotDisturbOtherHosts(t *testing.T) {
+	c := requireCaddy(t)
+	requirePublicPorts(t, c)
+	ctx := context.Background()
+
+	backendA := startBackend(t, "backend A")
+	backendB := startBackend(t, "backend B")
+	hostA := fmt.Sprintf("test-a-%d.example.invalid", time.Now().UnixNano())
+	hostB := fmt.Sprintf("test-b-%d.example.invalid", time.Now().UnixNano())
+
+	if err := c.PutDomainRoute(ctx, hostA, []string{backendA}); err != nil {
+		t.Fatalf("PutDomainRoute (A): %v", err)
+	}
+	t.Cleanup(func() { c.DeleteDomainRoute(ctx, hostA) })
+	if err := c.PutDomainRoute(ctx, hostB, []string{backendB}); err != nil {
+		t.Fatalf("PutDomainRoute (B): %v", err)
+	}
+	t.Cleanup(func() { c.DeleteDomainRoute(ctx, hostB) })
+
+	if got := getWithHostRetry(t, "127.0.0.1:80", hostA, 200); got != "backend A" {
+		t.Fatalf("expected backend A, got %q", got)
+	}
+	if got := getWithHostRetry(t, "127.0.0.1:80", hostB, 200); got != "backend B" {
+		t.Fatalf("expected backend B, got %q", got)
+	}
+
+	// Removing hostA's route must leave hostB's alone -- this is the whole
+	// point of the read-modify-write over srv_public's shared routes array.
+	if err := c.DeleteDomainRoute(ctx, hostA); err != nil {
+		t.Fatalf("DeleteDomainRoute (A): %v", err)
+	}
+	if got := getWithHostRetry(t, "127.0.0.1:80", hostB, 200); got != "backend B" {
+		t.Fatalf("expected backend B to still work after removing hostA, got %q", got)
 	}
 }
 

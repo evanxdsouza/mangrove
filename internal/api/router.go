@@ -125,6 +125,13 @@ func (s *Server) Router() http.Handler {
 				r.Post("/promote", s.promoteDeployment)
 				r.Get("/previews", s.listPreviewDeployments)
 				r.Post("/pr-previews", s.setPRPreviews)
+				r.Get("/domains", s.listCustomDomains)
+				r.With(auth.RequireOwner).Post("/domains", s.addCustomDomain)
+			})
+
+			r.Route("/domains/{domainID}", func(r chi.Router) {
+				r.Post("/verify", s.verifyCustomDomain)
+				r.With(auth.RequireOwner).Delete("/", s.deleteCustomDomain)
 			})
 
 			r.Route("/github/pats", func(r chi.Router) {

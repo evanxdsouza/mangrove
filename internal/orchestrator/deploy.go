@@ -373,6 +373,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 			o.teardownContainers(ctx, newContainerIDs)
 			return fail(fmt.Errorf("update proxy route: %w", err))
 		}
+		o.reapplyCustomDomains(ctx, dep.ID)
 	}
 
 	// Tear down the previous deploy's replica set (primary + any replicas

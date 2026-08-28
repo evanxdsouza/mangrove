@@ -137,6 +137,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 	pruner := scheduler.NewPruner(st, dockerExec, log)
 	go pruner.Run(ctx)
 
+	// Home-server DDNS: only started when MANGROVE_DDNS_DOMAIN is set (a
+	// VPS/Nest install leaves it empty, see setup.sh's "home" vs "vps"
+	// install mode).
+	if cfg.DDNSDomain != "" {
+		ddns := scheduler.NewDDNSUpdater(cfg.DDNSDomain, cfg.DDNSToken, cfg.DDNSProvider, log)
+		go ddns.Run(ctx)
+	}
+
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.APIPort))
 	httpServer := &http.Server{
 		Addr:    addr,

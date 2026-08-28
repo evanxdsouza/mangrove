@@ -220,6 +220,15 @@ export interface DetectionResult {
   suggested_port?: number;
 }
 
+export interface CustomDomain {
+  id: number;
+  deployment_id: number;
+  hostname: string;
+  verification_token: string;
+  verified: boolean;
+  created_at: string;
+}
+
 export interface TemplateInstallResult {
   template_key: string;
   deployments: {

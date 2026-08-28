@@ -212,6 +212,41 @@ if ! grep -q '^MANGROVE_BASE_DOMAIN=' "$MANGROVE_ENV_FILE" 2>/dev/null; then
   fi
 fi
 
+# Custom domains (the Domains dashboard, see docs/deployment.md) work by
+# having Caddy itself terminate HTTPS on :80/:443 with host-based routing
+# -- that only works once traffic actually reaches this box on those
+# ports. A VPS/Nest install already has that (a public IP, or an edge
+# that forwards here); a home server behind a router usually has neither
+# a static IP nor forwarded ports by default, so it additionally needs a
+# DDNS updater to keep a domain pointed at its current IP. Only asked
+# once, same guard pattern as MANGROVE_BASE_DOMAIN above.
+if ! grep -q '^MANGROVE_DDNS_DOMAIN=' "$MANGROVE_ENV_FILE" 2>/dev/null; then
+  install_mode="${MANGROVE_INSTALL_MODE:-}"
+  if [ -z "$install_mode" ] && [ -t 0 ]; then
+    read -r -p "Is this box reachable directly on a public IP (VPS/Nest), or a home server behind a router? [vps/home]: " install_mode || true
+  fi
+  if [ "$install_mode" = "home" ]; then
+    ddns_domain="${MANGROVE_DDNS_DOMAIN:-}"
+    ddns_token="${MANGROVE_DDNS_TOKEN:-}"
+    if [ -z "$ddns_domain" ] && [ -t 0 ]; then
+      read -r -p "DuckDNS subdomain (e.g. \"myhome\" for myhome.duckdns.org -- sign up free at duckdns.org): " ddns_domain || true
+    fi
+    if [ -n "$ddns_domain" ] && [ -z "$ddns_token" ] && [ -t 0 ]; then
+      read -r -p "DuckDNS token: " ddns_token || true
+    fi
+    if [ -n "$ddns_domain" ] && [ -n "$ddns_token" ]; then
+      {
+        echo "MANGROVE_DDNS_DOMAIN=${ddns_domain}"
+        echo "MANGROVE_DDNS_TOKEN=${ddns_token}"
+        echo "MANGROVE_DDNS_PROVIDER=duckdns"
+      } >> "$MANGROVE_ENV_FILE"
+      home_server_mode=1
+    else
+      warn "no DuckDNS domain/token given -- skipping DDNS setup; the Domains dashboard will need a static IP or your own DDNS to work"
+    fi
+  fi
+fi
+
 systemctl daemon-reload
 
 log "Resource isolation: mangrove.slice + mangrove-deployments.slice + caddy under mangrove.slice"
@@ -297,3 +332,14 @@ cat <<EOF
   Point Caddy/DNS at this box on 80/443 to serve deployed apps publicly --
   see docs/deployment.md for anything beyond this first-boot setup.
 EOF
+
+if [ "${home_server_mode:-0}" = "1" ]; then
+  cat <<EOF
+
+  Home server mode: DDNS is configured to keep ${ddns_domain}.duckdns.org
+  pointed at this box's current public IP. For the Domains dashboard to
+  actually work you still need to forward ports 80 and 443 on your
+  router to this box -- see docs/deployment.md's "Home server / DDNS"
+  section.
+EOF
+fi
