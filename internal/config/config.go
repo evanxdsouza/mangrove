@@ -56,9 +56,16 @@ type Config struct {
 	ResendAPIKey  string
 	NotifyToEmail string
 
-	// BaseDomain is used only to compose the suggested-domain-slug shown in
-	// deploy-success emails -- Mangrove never registers it (Nest has no
-	// public domain API).
+	// BaseDomain is Mangrove's own domain (or subdomain, e.g. a Nest
+	// install's <user>.hackclub.app) -- assumed to already resolve to this
+	// box (its DNS, or the DDNS updater on a home install; Mangrove never
+	// registers it itself, there's no public domain API for that). Every
+	// public, single-service deployment gets a live ingress route at
+	// <slug>.BaseDomain on Caddy's shared srv_public block
+	// (Orchestrator.pushIngressRoute) -- the same string shown as the
+	// "suggested domain" in deploy-success emails and GitHub commit
+	// statuses/PR comments. Empty disables the ingress route (those
+	// strings still compose, just to a domain-less, non-working value).
 	BaseDomain string
 
 	// GithubOAuthClientID/Secret enable the "Deploy from GitHub" flow (OAuth

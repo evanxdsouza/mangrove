@@ -52,6 +52,12 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 	if err := o.Store.SetDeploymentAccessControl(ctx, dep.ID, isPublic, passwordProtected, passwordHash); err != nil {
 		return fmt.Errorf("update deployment: %w", err)
 	}
+	// dep was loaded before the write above -- keep its in-memory
+	// PasswordProtected in sync so pushIngressRoute/removeIngressRoute
+	// below (which key off it) see this call's new value, not the stale
+	// one dep was loaded with.
+	dep.PasswordProtected = passwordProtected
+	dep.IsPublic = isPublic
 	if err := o.Store.UpdateServiceInternalOnly(ctx, svc.ID, !isPublic); err != nil {
 		return fmt.Errorf("update service: %w", err)
 	}
@@ -68,6 +74,7 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 				return fmt.Errorf("remove proxy route: %w", err)
 			}
 		}
+		o.removeIngressRoute(ctx, dep)
 		return nil
 	}
 
@@ -98,5 +105,6 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 	if err := o.Proxy.PutRouteMulti(ctx, *hostPort, upstreams, opts); err != nil {
 		return fmt.Errorf("update proxy route: %w", err)
 	}
+	o.pushIngressRoute(ctx, dep)
 	return nil
 }

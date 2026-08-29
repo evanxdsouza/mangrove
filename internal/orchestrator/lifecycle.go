@@ -75,6 +75,8 @@ func (o *Orchestrator) StopDeployment(ctx context.Context, deploymentID int64) e
 		return fmt.Errorf("deployment %d has no running container to stop", dep.ID)
 	}
 
+	o.removeIngressRoute(ctx, dep)
+
 	return o.Store.UpdateDeploymentStatus(ctx, dep.ID, "stopped")
 }
 
@@ -139,6 +141,7 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 					o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)
 				} else {
 					o.reapplyCustomDomains(ctx, dep.ID)
+					o.pushIngressRoute(ctx, dep)
 				}
 			}
 		}

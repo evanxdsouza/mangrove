@@ -40,6 +40,10 @@ func (o *Orchestrator) DeleteProject(ctx context.Context, projectID int64) error
 // before removing its DB rows via Store.DeleteDeployment. Mirrors
 // DeleteProject's teardown, just scoped to a single deployment.
 func (o *Orchestrator) DeleteDeployment(ctx context.Context, deploymentID int64) error {
+	dep, err := o.Store.GetDeployment(ctx, deploymentID)
+	if err != nil {
+		return fmt.Errorf("load deployment: %w", err)
+	}
 	services, err := o.Store.ListServices(ctx, deploymentID)
 	if err != nil {
 		return fmt.Errorf("load services: %w", err)
@@ -61,6 +65,7 @@ func (o *Orchestrator) DeleteDeployment(ctx context.Context, deploymentID int64)
 				o.Log.Warn("delete deployment: remove domain route failed", "hostname", d.Hostname, "error", err)
 			}
 		}
+		o.removeIngressRoute(ctx, dep)
 	}
 
 	return o.Store.DeleteDeployment(ctx, deploymentID)

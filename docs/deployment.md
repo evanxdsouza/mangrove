@@ -128,15 +128,40 @@ systemctl restart mangrove
 systemd caches parsed unit files and won't notice an on-disk edit
 otherwise.
 
+## Ingress
+
+Beyond the port-based routing every public deployment gets automatically
+(`srv_<port>` server blocks, see `internal/proxy/caddy.go`), a
+single-service public deployment also gets a friendly `<slug>.<MANGROVE_BASE_DOMAIN>`
+URL -- e.g. `myapp.evanxdsouza.hackclub.app` -- live the moment it deploys,
+with no setup needed. `Orchestrator.pushIngressRoute`
+(`internal/orchestrator/ingress.go`) programs this the same way a custom
+domain works below: a host-matched route on the shared `srv_public` server
+block, with Caddy's automatic HTTPS provisioning the certificate. It needs
+no DNS ownership proof the way a custom domain does, since
+`MANGROVE_BASE_DOMAIN` is assumed to already resolve to this box (see
+"Home server / DDNS" below for what that takes on a box without a static
+IP). The route is pushed/refreshed everywhere a deployment's port-based
+route is (deploy swap, restart, toggling public), and removed everywhere
+that route is (stop, delete, toggling internal-only). It's the same
+string already shown as the "suggested domain" in deploy-success emails
+and GitHub commit statuses/PR comments -- those are no longer cosmetic.
+Set `MANGROVE_BASE_DOMAIN=""` to disable it.
+
+Password-protected deployments don't get an ingress route at all:
+`PutDomainRoute` (unlike the port-based route's `PutRouteMulti`) has no
+HTTP basic auth option, so publishing one would silently bypass the
+password enforced on the port URL. Reach a password-protected deployment
+by its port instead.
+
 ## Custom domains
 
-Beyond the port-based routing every deployment gets automatically
-(`srv_<port>` server blocks, see `internal/proxy/caddy.go`), an owner can
-point an arbitrary domain at a deployment from its "Domains" tab in the
-dashboard. This programs a *host-matched* route on a separate, shared
-Caddy server block (`srv_public`, listening on `:80`/`:443`) -- Caddy's
-own automatic HTTPS then provisions and renews the TLS certificate for
-that hostname with no further configuration needed.
+Beyond the ingress route above, an owner can also point an arbitrary
+domain they own at a deployment from its "Domains" tab in the dashboard.
+This programs a *host-matched* route on the same shared Caddy server
+block (`srv_public`, listening on `:80`/`:443`) -- Caddy's own automatic
+HTTPS then provisions and renews the TLS certificate for that hostname
+with no further configuration needed.
 
 Adding a domain requires proving control of its DNS first: Mangrove shows
 a `mangrove-domain-verification=<token>` value to add as a TXT record on
@@ -149,9 +174,9 @@ deployment.
 VPS/Nest install by default (deployment routes live on the high port
 range instead); it is **not** true if you've hand-configured Caddy to
 proxy `:80`/`:443` to something else already (e.g. Mangrove's own
-dashboard reachable through an external edge) -- custom domains won't
-work until that's resolved, since two Caddy server blocks can't bind the
-same port.
+dashboard reachable through an external edge) -- neither ingress nor
+custom domains will work until that's resolved, since two Caddy server
+blocks can't bind the same port.
 
 ## Home server / DDNS
 
