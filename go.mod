@@ -3,8 +3,10 @@ module github.com/evanxdsouza/mangrove
 go 1.25.0
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/httprate v0.16.0
+	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.54.0
 	modernc.org/sqlite v1.56.0
 )

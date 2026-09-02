@@ -412,6 +412,15 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 .log-viewer .line:hover { background: rgba(255,255,255,0.03); }
 
+.terminal-panel {
+  background: #05070c;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  height: 420px;
+}
+.terminal-panel .xterm { height: 100%; }
+
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .tab {
   padding: 9px 14px;

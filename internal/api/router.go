@@ -162,6 +162,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/health", s.getServiceHealth)
 				r.Get("/logs/stream", s.streamServiceLogs)
 				r.Post("/exec", s.execServiceCommand)
+				r.Get("/terminal", s.serviceTerminal)
 			})
 
 			r.Route("/admin", func(r chi.Router) {

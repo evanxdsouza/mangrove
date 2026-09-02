@@ -133,6 +133,28 @@ migration) is `POST /api/services/{id}/exec`, executed via
 output in memory -- a fit for a short migration command, not a long-running
 or high-volume process.
 
+For anything more than a one-off command there's a full interactive web
+terminal: `GET /api/services/{id}/terminal` upgrades to a websocket
+(`internal/api/terminal.go`), backed by `executor.Executor.Terminal`
+(`internal/executor/docker.go`). Unlike `Exec`, this runs `docker exec -it`
+attached to a real host-side pty via
+[creack/pty](https://github.com/creack/pty) rather than plain pipes -- that's
+what lets window resizes actually reach the container's shell: the docker
+CLI only forwards `SIGWINCH` to the exec session when its own stdin/stdout
+look like a terminal, and a pty (unlike a pipe) does. The websocket protocol
+is deliberately not JSON-wrapped: binary frames carry raw terminal bytes in
+both directions (keystrokes in, shell output back), and the one text frame
+the client ever sends is a `{"type":"resize"}` control message -- arbitrary
+shell output isn't guaranteed to be valid UTF-8, so it can't safely share a
+JSON-text channel the way the control message does. The frontend
+(`web/src/components/Terminal.tsx`) renders it with
+[xterm.js](https://xtermjs.org/), fit to its container via the addon-fit
+add-on. The shell itself prefers bash when present, falling back to sh --
+resolved with a `command -v bash && exec bash || exec sh` guard rather than
+a bare `exec bash || exec sh`, since POSIX sh (what `/bin/sh` actually is on
+most base images) exits the whole script the instant a bare `exec` names a
+command that isn't found, rather than letting `||` catch it.
+
 ## GitHub auto-deploy and staging environments
 
 `internal/api/webhook.go`'s `githubWebhook` is Mangrove's one always-on

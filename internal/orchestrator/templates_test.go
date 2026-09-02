@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -91,6 +92,9 @@ func (f *fakeTemplateExecutor) RemoveImage(ctx context.Context, ref string) erro
 }
 func (f *fakeTemplateExecutor) ContainerAddr(ctx context.Context, ref string, port int) (string, error) {
 	return "10.0.0.1:1234", nil
+}
+func (f *fakeTemplateExecutor) Terminal(ctx context.Context, ref string) (executor.TerminalSession, error) {
+	return nil, fmt.Errorf("fakeTemplateExecutor: Terminal not supported")
 }
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
