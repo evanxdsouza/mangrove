@@ -74,8 +74,8 @@ func (s *Store) ListWorkspaces(ctx context.Context) ([]models.Workspace, error) 
 // WorkspaceProjectCount pairs a workspace with the number of projects in it
 // -- what the workspaces dashboard shows alongside each workspace.
 type WorkspaceProjectCount struct {
-	Workspace    models.Workspace
-	ProjectCount int
+	Workspace    models.Workspace `json:"workspace"`
+	ProjectCount int              `json:"project_count"`
 }
 
 func (s *Store) ListWorkspaceProjectCounts(ctx context.Context) ([]WorkspaceProjectCount, error) {

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, type ReactElement } from "react";
 import { api, ApiError, type AuthStatus, type CurrentUser } from "./api";
 import { Router, useRouter, matchPath } from "./router";
 import { Layout } from "./components/Layout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
@@ -100,7 +101,7 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
   return (
     <UserProvider user={user}>
       <Layout user={user} onLogout={onLogout}>
-        {body}
+        <ErrorBoundary key={path}>{body}</ErrorBoundary>
       </Layout>
     </UserProvider>
   );
