@@ -58,6 +58,22 @@ type Executor interface {
 	// container -- used to re-push a Caddy route (e.g. after an
 	// access-control toggle) without needing a fresh Run().
 	ContainerAddr(ctx context.Context, containerRef string, port int) (string, error)
+	// Terminal opens an interactive shell session inside an already-running
+	// container, backed by a real pseudo-terminal -- unlike Exec (one
+	// command, buffered output, then done), the returned TerminalSession
+	// stays open for the caller to drive a live shell over (the web
+	// terminal feature: an xterm.js frontend relayed through a websocket).
+	Terminal(ctx context.Context, containerRef string) (TerminalSession, error)
+}
+
+// TerminalSession is a live interactive shell running inside a container.
+// Read/Write move raw terminal bytes (escape sequences included) in both
+// directions; Resize propagates a window-size change (e.g. the browser tab
+// being resized) so full-screen programs like vim or less reflow correctly.
+// Close ends the underlying shell process and releases the pty.
+type TerminalSession interface {
+	io.ReadWriteCloser
+	Resize(cols, rows uint16) error
 }
 
 // BuildStrategy enumerates how BuildSpec.Context should be turned into an image.

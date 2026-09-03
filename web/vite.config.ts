@@ -13,7 +13,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:7777",
+      // ws: true so the terminal's websocket (GET /api/services/{id}/terminal)
+      // gets proxied too, not just plain HTTP requests.
+      "/api": { target: "http://127.0.0.1:7777", ws: true },
     },
   },
 });

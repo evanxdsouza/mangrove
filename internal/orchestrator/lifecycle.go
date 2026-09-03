@@ -168,3 +168,19 @@ func (o *Orchestrator) RunServiceCommand(ctx context.Context, serviceID int64, c
 	}
 	return o.Exec.Exec(ctx, svc.ContainerIDCurrent, command)
 }
+
+// OpenServiceTerminal opens an interactive shell session inside a service's
+// currently-running container -- the live counterpart to RunServiceCommand,
+// staying open for as long as the caller (the web terminal's websocket
+// handler) keeps reading/writing it rather than running one command and
+// returning.
+func (o *Orchestrator) OpenServiceTerminal(ctx context.Context, serviceID int64) (executor.TerminalSession, error) {
+	svc, err := o.Store.GetService(ctx, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("load service: %w", err)
+	}
+	if svc.ContainerIDCurrent == "" {
+		return nil, fmt.Errorf("service %q has no running container", svc.Name)
+	}
+	return o.Exec.Terminal(ctx, svc.ContainerIDCurrent)
+}

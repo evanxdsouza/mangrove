@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 // DockerExecutor drives the local Docker daemon via the `docker` CLI.
@@ -514,6 +516,56 @@ func (e *DockerExecutor) Exec(ctx context.Context, containerRef string, cmd []st
 		return ExecResult{}, fmt.Errorf("docker exec: %w: %s", err, out)
 	}
 	return ExecResult{Output: string(out), ExitCode: 0}, nil
+}
+
+// dockerTerminalSession backs a TerminalSession with a `docker exec -it`
+// subprocess attached to a real host-side pty (via creack/pty) rather than
+// plain os.Pipes. That matters beyond just relaying bytes: the docker CLI
+// itself only forwards window-size changes to the container's shell when
+// its own stdin/stdout look like a terminal, which a pty (unlike a pipe)
+// actually does -- so Resize below works end to end.
+type dockerTerminalSession struct {
+	ptmx *os.File
+	cmd  *exec.Cmd
+}
+
+// Terminal opens an interactive shell inside containerRef. bash is
+// preferred when present (nicer line editing/history); sh is the
+// universal fallback -- picked inside the container itself with a single
+// exec round-trip rather than a separate probe. The `command -v` guard
+// matters: unlike bash, POSIX sh (ash/dash, what /bin/sh actually is on
+// most base images) exits the whole script the moment a bare `exec cmd`
+// names a command that isn't found, rather than letting `||` catch it and
+// fall through to `exec sh` -- so bash has to be confirmed present before
+// ever being exec'd.
+func (e *DockerExecutor) Terminal(ctx context.Context, containerRef string) (TerminalSession, error) {
+	cmd := exec.CommandContext(ctx, "docker", "exec", "-it", containerRef,
+		"sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh")
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("start docker exec: %w", err)
+	}
+	return &dockerTerminalSession{ptmx: ptmx, cmd: cmd}, nil
+}
+
+func (t *dockerTerminalSession) Read(p []byte) (int, error)  { return t.ptmx.Read(p) }
+func (t *dockerTerminalSession) Write(p []byte) (int, error) { return t.ptmx.Write(p) }
+
+func (t *dockerTerminalSession) Resize(cols, rows uint16) error {
+	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: cols, Rows: rows})
+}
+
+// Close ends the shell's docker exec process and releases the pty. Killing
+// the process (rather than just closing the pty) is what actually ends the
+// `docker exec` on the daemon side promptly instead of leaving it running
+// until the shell notices EOF on its own.
+func (t *dockerTerminalSession) Close() error {
+	closeErr := t.ptmx.Close()
+	if t.cmd.Process != nil {
+		_ = t.cmd.Process.Kill()
+	}
+	_ = t.cmd.Wait()
+	return closeErr
 }
 
 func (e *DockerExecutor) HealthCheck(ctx context.Context, containerRef string, cfg HealthCheckSpec) (HealthStatus, error) {
