@@ -11,10 +11,20 @@ or opt into a preview deployment for every open pull request, complete with
 a bot comment linking to it that updates itself as the PR gets pushed to
 and torn down when it closes
 (see [docs/architecture.md](docs/architecture.md#github-auto-deploy-and-staging-environments)).
+Beyond the port-based routing every deployment gets automatically, an owner
+can point a custom domain at one straight from its dashboard, with Caddy
+provisioning and renewing TLS for it automatically -- including from behind
+a home router with no static IP, via a built-in DDNS updater (see
+[docs/deployment.md](docs/deployment.md#custom-domains)). Every service also
+gets a full interactive terminal in the browser (xterm.js over a websocket,
+attached to a real pseudo-terminal via `docker exec -it`), not just a log
+tail -- see
+[docs/architecture.md](docs/architecture.md#lifecycle-actions-short-of-a-full-deploy).
 It also ships a library
-of one-click templates (Ghost, WordPress, Vaultwarden, Uptime Kuma, n8n,
-Umami, and standalone Postgres/MySQL/MongoDB/Redis) for deploying common
-self-hosted apps without writing a Dockerfile at all.
+of one-click templates (Ghost, WordPress, Gitea, Supabase, PocketBase,
+NocoDB, Vaultwarden, Uptime Kuma, n8n, Umami, and standalone
+Postgres/MySQL/MongoDB/Redis) for deploying common self-hosted apps without
+writing a Dockerfile at all.
 
 It's built to run comfortably on a single small box -- the reference
 target throughout development has been a 2 vCPU / 2GB RAM / 16GB disk VPS,
@@ -44,10 +54,13 @@ for running this in production, and
 
 ## Production install
 
-On a fresh Debian/Ubuntu VPS, `sudo ./setup.sh` installs Docker, Caddy, Go,
-and Node if missing; builds the frontend and binary; installs the systemd
-units/slices from `deploy/systemd/` (see
-[docs/deployment.md](docs/deployment.md) for what these do); starts the
+On a fresh Debian/Ubuntu VPS (or a home server), `sudo ./setup.sh` installs
+Docker, Caddy, Go, and Node if missing; builds the frontend and binary;
+installs the systemd units/slices from `deploy/systemd/` (see
+[docs/deployment.md](docs/deployment.md) for what these do); asks whether
+the box is reachable on a public IP or sits behind a router at home,
+configuring the DDNS updater custom domains need in the latter case (see
+[docs/deployment.md](docs/deployment.md#home-server--ddns)); starts the
 service; and creates the admin account for you (prompted interactively, or
 via `MANGROVE_ADMIN_EMAIL`/`MANGROVE_ADMIN_PASSWORD` for an unattended run)
 instead of doing it through the browser's first-run screen. Safe to re-run.
@@ -97,6 +110,7 @@ defaults (see `internal/config/config.go`):
 | `MANGROVE_BASE_DOMAIN` | `evanxdsouza.hackclub.app` | Cosmetic only -- suggested domain in notification emails |
 | `MANGROVE_GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | (empty) | Enables "Deploy from GitHub" (OAuth connect + repo picker); both empty disables it, pasted PATs still work. Register an OAuth App at github.com/settings/developers with callback URL `https://<your-host>/api/github/oauth/callback` |
 | `MANGROVE_PUBLIC_URL` | (empty; request-derived) | Overrides scheme+host detection for GitHub callback URLs (OAuth redirect, auto-registered webhooks). Set this if you're behind an edge that terminates HTTPS but doesn't forward `X-Forwarded-Proto` to Mangrove's own dashboard route, e.g. `https://mangrove.example.com` |
+| `MANGROVE_DDNS_DOMAIN` / `_TOKEN` / `_PROVIDER` | (empty) / (empty) / `duckdns` | Keeps a DDNS domain pointed at this box's current public IP -- for [custom domains](docs/deployment.md#custom-domains) from a home server with no static IP. Empty `MANGROVE_DDNS_DOMAIN` (the default) disables the job entirely; a VPS with a stable IP doesn't need it. Only `duckdns` is supported today -- see [docs/deployment.md](docs/deployment.md#home-server--ddns) |
 
 ### Running the test suite
 

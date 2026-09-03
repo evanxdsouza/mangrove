@@ -127,6 +127,14 @@ deployment's already-running container(s) instead of building anything:
   strategy without a linked repo is rejected with a 422 rather than
   attempting a `git clone ""`.
 
+**Scale** (`POST /api/deployments/{id}/scale`) sets a deployment's replica
+count (1-32) and triggers a redeploy so it takes effect -- scaling is
+implemented as a blue/green swap that starts (or tears down) the requested
+number of containers, going through the same health-check gate as any other
+deploy, not a direct `docker run`/`docker stop` of the delta. Only
+single-service strategies (`dockerfile`/`nixpacks`/`image`) are scalable;
+compose stacks and static sites stay at 1.
+
 A one-off command against a service's running container (e.g. a database
 migration) is `POST /api/services/{id}/exec`, executed via
 `executor.Executor.Exec` (`docker exec`). It runs synchronously and buffers
@@ -258,6 +266,20 @@ error once `Deploy` (which blocks until build + health check settle)
 returns. Best-effort throughout, same convention as the existing
 commit-status posting: a GitHub API hiccup here never fails the underlying
 deploy or teardown.
+
+## Workspaces
+
+Every project belongs to a workspace (`workspace_id`, defaulting to
+workspace `1`, which always exists and can't be deleted) -- a purely
+organizational grouping between projects and the (single) organization,
+for separating environments or teams. `models.Workspace`'s doc comment is
+the authority here: a `workspace_members` table already exists in the
+schema as the hook for a future per-workspace permission model, but today
+every user can see every workspace regardless of membership rows in it --
+workspaces don't yet gate access the way owner/member roles do (see
+[multi-user.md](multi-user.md)). Deleting a non-default workspace
+(`DELETE /api/workspaces/{id}`) moves its projects back to workspace `1`
+rather than orphaning or cascading into them.
 
 ## Access control at the proxy layer
 
