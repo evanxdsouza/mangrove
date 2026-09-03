@@ -66,7 +66,20 @@ func (s *Server) streamServiceLogs(w http.ResponseWriter, r *http.Request) {
 	if tail == "" {
 		tail = "200"
 	}
-	logs, err := s.Orchestrator.Exec.Logs(r.Context(), svc.ContainerIDCurrent, executor.LogOptions{Follow: true, Tail: tail})
+	// follow=false bounds the response to the requested tail and lets it
+	// end on its own (`docker logs` without `-f` exits once it's printed
+	// history) instead of streaming forever -- what apiclient.Client.Logs
+	// uses for a one-shot snapshot (e.g. an MCP tool call, which is
+	// request/response and can't consume an indefinite stream). The
+	// dashboard's live-tailing LogViewer never sets this, so it keeps
+	// defaulting to true.
+	follow := true
+	if v := r.URL.Query().Get("follow"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			follow = b
+		}
+	}
+	logs, err := s.Orchestrator.Exec.Logs(r.Context(), svc.ContainerIDCurrent, executor.LogOptions{Follow: follow, Tail: tail})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "attach to logs: "+err.Error())
 		return

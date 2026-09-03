@@ -46,6 +46,9 @@ vars) for a plain-language "your apps" flow built on the same API -- see
   [docs/architecture.md](docs/architecture.md) for why.
 - **Multi-user**: owner/member roles, session-cookie auth -- see
   [docs/multi-user.md](docs/multi-user.md).
+- **Clients**: the dashboard, plus a CLI, a terminal UI, and an MCP server
+  for LLM agents, all in `cmd/`, all in this one module -- see
+  [docs/clients.md](docs/clients.md).
 
 See [docs/architecture.md](docs/architecture.md) for the full request path
 and the blue/green deploy flow, [docs/deployment.md](docs/deployment.md)
@@ -126,8 +129,25 @@ See [docs/deployment.md](docs/deployment.md) for the systemd units, the
 Caddy slice drop-in, and the binary-update procedure this project actually
 uses in production.
 
-## CLI
+## Clients: CLI, TUI, MCP
 
-`cmd/mangrovectl` is a thin CLI client for the same HTTP API the dashboard
-uses (`mangrovectl setup`, `project create`, `deploy`, `rollback`, etc.) --
-run `mangrovectl` with no arguments for the full command list.
+Besides the dashboard, this repo (one module, built together -- the
+"mono" in the name) ships three more ways to drive Mangrove, all talking
+to the same HTTP API over the network:
+
+- `cmd/mangrovectl` -- a thin, scriptable CLI (`mangrovectl setup`,
+  `project create`, `deploy`, `rollback`, etc.) -- run `mangrovectl` with
+  no arguments for the full command list.
+- `cmd/mangrove-tui` -- a full-screen terminal dashboard: browse
+  projects/deployments, redeploy/restart/stop/scale, roll back, tail live
+  logs, and open a real interactive shell into a container's `docker
+  exec -it`, all without leaving the terminal.
+- `cmd/mangrove-mcp` -- an MCP server exposing the same operations as
+  tools an LLM agent (Claude Code, Claude Desktop, etc.) can call.
+
+All three (`mangrovectl` aside, which predates and isn't migrated to it)
+share `internal/apiclient`, decoding responses straight into the same Go
+types the backend itself returns rather than each guessing at the JSON
+shape independently -- see [docs/clients.md](docs/clients.md) for why that
+matters, how auth/session-sharing works across all three, and how to wire
+`mangrove-mcp` into an MCP client's config.
