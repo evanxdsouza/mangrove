@@ -21,6 +21,7 @@ import (
 	mangrovedb "github.com/evanxdsouza/mangrove/internal/db"
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/github"
+	"github.com/evanxdsouza/mangrove/internal/mountd"
 	"github.com/evanxdsouza/mangrove/internal/notify"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
@@ -107,8 +108,13 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Secrets:  box,
 		Notifier: resendClient,
 		GHStatus: github.NewStatusClient(),
-		Config:   cfg,
-		Log:      log,
+		// mangrove-mountd is optional -- see internal/mountd.Client.
+		// ErrUnavailable, not a connection error here, is how "not
+		// installed" surfaces the first time something actually tries to
+		// use it.
+		Mountd: mountd.NewClient(cfg.MountdSocket),
+		Config: cfg,
+		Log:    log,
 	}
 
 	if !cfg.GithubOAuthEnabled() {

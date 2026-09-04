@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -89,6 +90,73 @@ func TestDockerExecutorRunHealthCheckStopRemove(t *testing.T) {
 	}
 	if err := exec_.Remove(ctx, containerName); err != nil {
 		t.Fatalf("Remove: %v", err)
+	}
+}
+
+// TestDockerExecutorRunHostMountAndPublicBind guards the two additions
+// storage/NAS shares rely on: RunSpec.HostMount actually bind-mounts a
+// specific host directory (not a named Docker volume) into the container,
+// and RunSpec.PublicBind switches the published port's bind address from
+// 127.0.0.1 (every other deployment's default -- reachable only via Caddy
+// on this host) to 0.0.0.0 (reachable from other devices on the LAN,
+// required for a protocol like SMB that Caddy can't proxy at all).
+func TestDockerExecutorRunHostMountAndPublicBind(t *testing.T) {
+	requireDocker(t)
+	ctx := context.Background()
+
+	exec_, err := NewDockerExecutor(ctx, "mangrove-test-net", t.TempDir())
+	if err != nil {
+		t.Fatalf("NewDockerExecutor: %v", err)
+	}
+
+	containerName := "mangrove-test-hostmount"
+	exec_.Remove(ctx, containerName)
+
+	hostDir := t.TempDir()
+	if err := os.WriteFile(hostDir+"/marker.txt", []byte("hello from the host"), 0o644); err != nil {
+		t.Fatalf("write marker file: %v", err)
+	}
+
+	hostPort := 18445
+	spec := RunSpec{
+		ImageRef:      "nginx:alpine",
+		ContainerName: containerName,
+		InternalPort:  80,
+		HostPort:      &hostPort,
+		PublicBind:    true,
+		MemoryLimitMB: 128,
+		CPULimitCores: 0.5,
+		RestartPolicy: "no",
+		HostMount:     &HostMount{HostPath: hostDir, ContainerPath: "/host-data", ReadOnly: true},
+	}
+	pullIfNeeded(t, spec.ImageRef)
+
+	result, err := exec_.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer exec_.Remove(ctx, containerName)
+	if result.ContainerID == "" {
+		t.Fatal("expected non-empty container ID")
+	}
+
+	execResult, err := exec_.Exec(ctx, containerName, []string{"cat", "/host-data/marker.txt"})
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if execResult.ExitCode != 0 || !strings.Contains(execResult.Output, "hello from the host") {
+		t.Fatalf("host mount not visible in container: exit=%d output=%q", execResult.ExitCode, execResult.Output)
+	}
+
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{json .HostConfig.PortBindings}}", containerName).CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker inspect: %v: %s", err, out)
+	}
+	if !strings.Contains(string(out), "0.0.0.0") {
+		t.Errorf("expected PublicBind to publish on 0.0.0.0, got port bindings: %s", out)
+	}
+	if strings.Contains(string(out), `"127.0.0.1"`) {
+		t.Errorf("PublicBind was set but the container is still bound to 127.0.0.1: %s", out)
 	}
 }
 

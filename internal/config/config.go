@@ -77,6 +77,14 @@ type Config struct {
 	DDNSToken    string
 	DDNSProvider string
 
+	// MountdSocket is where the privileged mangrove-mountd helper (see
+	// internal/mountd and docs/storage.md) listens for the storage/NAS
+	// feature. The helper is optional -- a box with no plugged-in drives
+	// (or that hasn't installed the helper) simply has an empty Storage
+	// page; internal/mountd.Client.ErrUnavailable is how callers tell "not
+	// set up" apart from a real mount failure.
+	MountdSocket string
+
 	// PublicURL, when set, overrides request-derived scheme+host detection
 	// for building absolute URLs Mangrove hands to GitHub (the OAuth
 	// redirect_uri, and an auto-registered webhook's callback URL). Needed
@@ -115,6 +123,7 @@ func Load() Config {
 		DDNSDomain:                os.Getenv("MANGROVE_DDNS_DOMAIN"),
 		DDNSToken:                 os.Getenv("MANGROVE_DDNS_TOKEN"),
 		DDNSProvider:              getEnv("MANGROVE_DDNS_PROVIDER", "duckdns"),
+		MountdSocket:              getEnv("MANGROVE_MOUNTD_SOCKET", "/run/mangrove-mountd.sock"),
 		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
 	}
 }

@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-04, against commit `da5d931` on branch `docs-refresh`.
+Last verified: 2026-09-04, against commit `959124d` on branch `docs-refresh` (updated same-day after adding the storage/NAS feature -- see the "Verified status" section's second entry below).
 
 ## What this is
 
@@ -35,6 +35,8 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `cmd/mangrovectl/` | Scriptable CLI, predates `internal/apiclient`, has its own hand-rolled HTTP client (`map[string]any`, not typed). | [clients.md](clients.md) |
 | `cmd/mangrove-tui/` | Full-screen terminal dashboard (bubbletea). Shares `internal/apiclient`. | [clients.md](clients.md) |
 | `cmd/mangrove-mcp/` | MCP server exposing a curated operations subset as tools for an LLM agent. Shares `internal/apiclient`. | [clients.md](clients.md) |
+| `cmd/mangrove-mountd/` | Privileged helper for the storage/NAS feature — mounts/unmounts removable drives so `cmd/mangrove` itself never needs mount capabilities. Separate binary, separate systemd unit, talks to the main process only over a local Unix socket. | [storage.md](storage.md) |
+| `internal/mountd/` | The mountd wire protocol (`protocol.go`), the privileged server logic `cmd/mangrove-mountd` runs (`server.go` — device enumeration via `lsblk`, mount/unmount, the root-disk exclusion safety check), and the client `internal/orchestrator` uses to talk to it (`client.go`). | [storage.md](storage.md) |
 | `internal/api/` | HTTP handlers (thin) + `router.go` (the whole API surface, chi). Auth middleware applied per-route here. | [architecture.md](architecture.md), [multi-user.md](multi-user.md) |
 | `internal/orchestrator/` | The actual logic: `deploy.go` (blue/green flow), `compose_deploy.go`, `deploy_static.go`, `lifecycle.go` (stop/restart/redeploy/scale), `templates.go` (install), `domains.go`, `delete.go`, `cancel.go`. This is where to look first for "how does X actually work." | [architecture.md](architecture.md) |
 | `internal/executor/` | Shells out to Docker CLI: build (`docker.go`, `compose.go`), git fetch (`gitfetch.go`), build-strategy detection (`detect.go` — dockerfile/nixpacks/compose/static). | [architecture.md](architecture.md) |
@@ -56,7 +58,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/config/` | `config.go` — every env var, all optional, defaults documented in the README's config table. | README |
 | `web/` | The React 19 SPA. Hand-rolled router/state (`router.tsx`, `userContext.tsx`, `uiMode.tsx`) — no react-router, no Redux. `src/pages/` (technical mode) + `src/pages/simple/` (simple mode, see [modes.md](modes.md)). | [architecture.md](architecture.md)#why-chi-why-no-cgo-sqlite-why-a-hand-rolled-frontend-router |
 | `e2e/` | Playwright suite (`tests/dashboard.spec.ts`) run via `run.sh` against a real (freshly built) Mangrove + real Docker + real Caddy — nothing mocked. | see "Verified status" below |
-| `deploy/systemd/` | The actual unit/slice files this project runs in production (`mangrove.service`, two memory-isolating slices, a Caddy drop-in). | [deployment.md](deployment.md) |
+| `deploy/systemd/` | The actual unit/slice files this project runs in production (`mangrove.service`, two memory-isolating slices, a Caddy drop-in, plus the optional `mangrove-mountd.service` + its `mangrove-storage-group.conf` drop-in for storage/NAS). | [deployment.md](deployment.md), [storage.md](storage.md) |
 | `setup.sh` | One-shot production installer for a fresh Debian/Ubuntu box — installs deps, builds, installs systemd units, prompts for VPS-vs-home (DDNS), creates the admin account. | README |
 | `data/` | Runtime SQLite DB + master encryption key for **this box's own local dev/prod instance** (git-ignored, 0700). Not part of the source tree conceptually — don't treat its presence/absence as meaningful to the code. | — |
 | `mangrove-static/` | Default `MANGROVE_STATIC_SITES_DIR` — built output for static-strategy deploys on this box. Also runtime state, not source. | — |
@@ -128,34 +130,29 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   first (typed), then the specific client. MCP's tool surface is
   deliberately narrower than the full API — see [clients.md](clients.md)'s
   "Deliberately not exposed" list before adding a destructive MCP tool.
+- **Storage/NAS (mounting drives, SMB shares)**: `internal/mountd/` (the
+  privileged helper's protocol/server/client) and
+  `internal/orchestrator/storage.go` (the deployment-shaped share on top of
+  it). Read [storage.md](storage.md) first — this is the one place the
+  system disk itself is one bug away from being touched, and the doc
+  explains exactly where that safety boundary lives and how it's tested.
 
-## Verified status (2026-09-04)
+## Verified status (2026-09-04, updated same-day for the storage/NAS feature)
 
 Everything below was actually run on this box, not inferred from reading code.
 
 | Check | Command | Result |
 |---|---|---|
-| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
+| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` (now including `cmd/mangrove-mountd` and `internal/mountd`) |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./...` | ✅ all packages pass (`internal/api`, `orchestrator`, `executor`, `store`, `auth`, `templates`, `webhook`, `proxy`, `portregistry`, `scheduler`, `secrets`, `sysinfo`, `github`, `notify`, `db`, `webui`) |
-| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds (one benign warning: main JS chunk is 586 kB / 151 kB gzipped, over the 500 kB default budget — not an error, just an unaddressed code-splitting opportunity) |
-| Frontend lint | `cd web && npm run lint` (oxlint) | ⚠️ 1 real error class, several pre-existing warnings — see "Known issues" below |
-| E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" |
+| Go tests | `go test ./...` | ✅ all packages pass, including new tests: `internal/mountd` (device-filtering/safety logic against fixture `lsblk` output, client/server wire-protocol round trip), `internal/executor` (`HostMount` + `PublicBind` against real Docker), `internal/orchestrator` (`storage_test.go` — NAS-share creation/guards against a fake mountd client) |
+| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds (one benign warning: main JS chunk is ~593 kB / 153 kB gzipped, over the 500 kB default budget — not an error, just an unaddressed code-splitting opportunity, and not new to this pass) |
+| Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
+| E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass; the storage/NAS feature has no e2e coverage of its own — see below) |
 
 ### Known issues found
 
-1. **Real bug — conditional hooks in `ScaleCard`**
-   (`web/src/pages/DeploymentDetailPage.tsx:858-865`). `ScaleCard` early-returns
-   `null` for `compose`/`static` build strategies *before* calling its four
-   `useState` hooks, which violates React's rules of hooks (`oxlint`'s
-   `react-hooks/rules-of-hooks` flags all four as errors). In practice a given
-   deployment's `build_strategy` never changes while `ScaleCard` stays
-   mounted, so this likely doesn't crash today — but it's incorrect code that
-   will break under React Strict Mode double-render semantics or if this
-   component is ever reused somewhere props can change. Fix: move the four
-   `useState` calls above the early-return guard.
-
-2. **E2E suite fails due to a port collision with this box's own production
+1. **E2E suite fails due to a port collision with this box's own production
    instance, not an app defect.** This machine runs a real, systemd-managed
    Mangrove instance in production (`mangrove.service`, PID visible via `ps`,
    listening on `127.0.0.1:7777` since 2026-09-03 — this box dogfoods its own
@@ -187,21 +184,31 @@ Everything below was actually run on this box, not inferred from reading code.
      `PORT=7777` line, or parameterize it), or run it on a box without a
      production instance already bound to 7777.
 
-3. **Minor doc drift**: `internal/templates/data/nephthys.json` (Hack Club's
+2. **Minor doc drift**: `internal/templates/data/nephthys.json` (Hack Club's
    Slack support bot template) exists and is presumably functional but isn't
    mentioned in the README's template list. Not a functional break, just an
    undocumented template — worth a one-line README addition next time
    templates.md/README get touched.
 
-### Not verified (needs Docker-heavy or interactive setup beyond this pass)
+### Not verified (needs Docker-heavy, hardware, or interactive setup beyond this pass)
 
 - Actual container build/health-check/blue-green swap against a real target
   repo (covered by `go test ./internal/orchestrator/...` with a fake
-  executor, and by e2e in principle — blocked by issue #2 above).
+  executor, and by e2e in principle — blocked by issue #1 above).
 - The interactive web terminal (xterm.js ↔ websocket ↔ `docker exec -it`
   pty) — no browser-driven manual check was done this pass.
 - GitHub OAuth / webhook delivery against a real GitHub App (needs live
   credentials).
 - `setup.sh` end-to-end on a truly fresh box (this box already has Mangrove
-  installed).
+  installed) — this now includes the new interactive storage/NAS install
+  prompt, also unexercised.
 - Custom domains / DDNS (needs real DNS + router port-forwarding).
+- **Storage/NAS against real hardware**: this environment has no removable
+  block device to plug in, so `internal/mountd`'s `lsblk`/`mount`/`umount`
+  invocations, the `dperson/samba` container's actual SMB behavior, and a
+  real SMB client (Windows/macOS/Linux) connecting to a share have not been
+  exercised end to end — only unit-tested against fixture data and a fake
+  mountd client (see [storage.md](storage.md)'s own "Not verified" section
+  for exactly what that does and doesn't cover). Treat this feature as
+  code-reviewed and logic-tested, not field-tested, until it's tried on a
+  box with a real drive.

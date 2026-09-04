@@ -188,6 +188,18 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/users/{userID}", s.deleteTeamUser)
 				})
 			})
+
+			// Storage/NAS shares: mounting a drive and creating an SMB share
+			// with plaintext credentials is system-level, same bar as /admin
+			// -- owner-only, top to bottom.
+			r.Route("/storage", func(r chi.Router) {
+				r.Use(auth.RequireOwner)
+				r.Get("/drives", s.listDrives)
+				r.Post("/drives/{uuid}/mount", s.mountDrive)
+				r.Post("/drives/{uuid}/unmount", s.unmountDrive)
+				r.Get("/shares", s.listNASShares)
+				r.Post("/shares", s.createNASShare)
+			})
 		})
 	})
 

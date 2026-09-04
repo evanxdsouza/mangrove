@@ -247,6 +247,43 @@ if ! grep -q '^MANGROVE_DDNS_DOMAIN=' "$MANGROVE_ENV_FILE" 2>/dev/null; then
   fi
 fi
 
+# Storage/NAS sharing (the Storage page, see docs/storage.md) is entirely
+# optional and needs a second, privileged component (mangrove-mountd) --
+# skip it on a box with nothing to plug a drive into. Only asked once, same
+# guard pattern as MANGROVE_DDNS_DOMAIN above.
+if [ ! -f /etc/systemd/system/mangrove-mountd.service ]; then
+  enable_storage="${MANGROVE_ENABLE_STORAGE:-}"
+  if [ -z "$enable_storage" ] && [ -t 0 ]; then
+    read -r -p "Set up drive/NAS sharing (mount a plugged-in drive and share it over SMB)? [y/N]: " enable_storage || true
+  fi
+  if [ "$enable_storage" = "y" ] || [ "$enable_storage" = "yes" ]; then
+    log "Building mangrove-mountd"
+    (cd "$REPO_DIR" && go build -o /tmp/mangrove-mountd-new ./cmd/mangrove-mountd)
+    cp /tmp/mangrove-mountd-new /usr/local/bin/mangrove-mountd-staged
+    mv /usr/local/bin/mangrove-mountd-staged /usr/local/bin/mangrove-mountd
+    rm -f /tmp/mangrove-mountd-new
+
+    # Filesystem drivers for common drive formats mangrove-mountd may need
+    # to mount that aren't always present on a minimal Debian/Ubuntu image.
+    apt-get install -y -qq exfatprogs ntfs-3g >/dev/null 2>&1 || warn "failed to install exfatprogs/ntfs-3g -- exFAT/NTFS drives may not mount"
+
+    groupadd -f mangrove-mount
+    usermod -aG mangrove-mount "$MANGROVE_SYSTEM_USER"
+
+    mkdir -p /var/lib/mangrove-drives
+    chown root:root /var/lib/mangrove-drives
+    chmod 755 /var/lib/mangrove-drives
+
+    cp "${REPO_DIR}/deploy/systemd/mangrove-mountd.service" /etc/systemd/system/mangrove-mountd.service
+    mkdir -p /etc/systemd/system/mangrove.service.d
+    cp "${REPO_DIR}/deploy/systemd/mangrove-storage-group.conf" /etc/systemd/system/mangrove.service.d/storage-group.conf
+
+    systemctl daemon-reload
+    systemctl enable --now mangrove-mountd
+    log "mangrove-mountd installed and running -- the Storage page will show plugged-in drives after mangrove restarts below"
+  fi
+fi
+
 systemctl daemon-reload
 
 log "Resource isolation: mangrove.slice + mangrove-deployments.slice + caddy under mangrove.slice"

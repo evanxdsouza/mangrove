@@ -98,10 +98,21 @@ type Service struct {
 	HealthCheckTimeoutS  int      `json:"health_check_timeout_s"`
 	// Command overrides the image's default CMD when non-empty (e.g.
 	// Redis's --requirepass) -- see executor.RunSpec.Command.
-	Command   []string  `json:"command,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Command []string `json:"command,omitempty"`
+	// DirectPublishPort, HostMountSource, and HostMountTarget are set only
+	// for a storage/NAS share (see internal/orchestrator/storage.go):
+	// DirectPublishPort is the port published straight onto the host's
+	// real network interface (bypassing Caddy/port_registry, since SMB
+	// isn't HTTP), and HostMountSource/Target describe the bind mount from
+	// a mangrove-mountd-mounted drive into the container. A service with
+	// DirectPublishPort set doesn't support redeploy/scale/rollback -- see
+	// Orchestrator.Deploy's guard.
+	DirectPublishPort *int      `json:"direct_publish_port,omitempty"`
+	HostMountSource   string    `json:"host_mount_source,omitempty"`
+	HostMountTarget   string    `json:"host_mount_target,omitempty"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type DeployHistory struct {

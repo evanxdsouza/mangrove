@@ -11,6 +11,7 @@ import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ServerHealthPage } from "./pages/ServerHealthPage";
+import { StoragePage } from "./pages/StoragePage";
 import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
 import { UserProvider } from "./userContext";
@@ -90,6 +91,12 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
     // Whole-host status: CPU/RAM/disk/load of the machine, not just
     // Mangrove containers. Technical-only for the same reason as /admin.
     body = <ServerHealthPage />;
+  } else if (path === "/storage") {
+    // Storage/NAS sharing is host-level (mounting drives) and
+    // owner-gated on the API itself -- StoragePage shows its own
+    // "owner-only" message for a member, same as /admin's routes would
+    // 403. Technical-only, same reasoning as /admin.
+    body = <StoragePage />;
   } else if (path === "/settings") {
     // Account settings (change password) are relevant regardless of mode
     // or role -- every user has an account and a password to rotate.

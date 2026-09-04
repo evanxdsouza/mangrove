@@ -202,6 +202,35 @@ type RunSpec struct {
 	Command      []string
 	OOMScoreAdj  int
 	CgroupParent string
+	// HostMount, when set, bind-mounts a specific host directory into the
+	// container -- unlike Volumes (named Docker volumes Mangrove itself
+	// creates and owns), this points at a path outside Docker's own
+	// storage entirely. Used exactly once today: a storage/NAS share
+	// bind-mounting a drive internal/mountd already mounted (see
+	// internal/orchestrator/storage.go). Never populated from a template
+	// or any other caller-supplied path -- see HostMount's own doc comment
+	// for why that boundary matters.
+	HostMount *HostMount
+	// PublicBind, when true, publishes HostPort on 0.0.0.0 instead of the
+	// default 127.0.0.1 -- i.e. reachable from other devices on the LAN,
+	// not just Caddy on this host. Every other deployment relies on
+	// 127.0.0.1-only binding as a real security boundary (only Caddy, with
+	// its own auth/TLS/routing, can reach the container directly), so this
+	// only exists for services that speak a protocol Caddy can't proxy at
+	// all (e.g. SMB) and therefore have no other way to be reachable.
+	PublicBind bool
+}
+
+// HostMount bind-mounts one specific host directory into a container.
+// HostPath must be a path Mangrove's orchestrator has already validated as
+// safe to expose (see orchestrator.CreateNASShare) -- the executor itself
+// performs no validation and will mount whatever path it's given, so
+// nothing upstream of this struct may ever construct one from raw
+// user/template input.
+type HostMount struct {
+	HostPath      string
+	ContainerPath string
+	ReadOnly      bool
 }
 
 // ReplicaResult is one running container of a replicated deployment.

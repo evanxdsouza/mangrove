@@ -1,0 +1,43 @@
+## mangrove-mountd: the privileged half of Mangrove's optional storage/NAS
+## feature (see docs/storage.md). Runs as root (mount/umount need it) so
+## mangrove.service itself never has to -- see mangrove.service's own
+## comment on why it's sandboxed as heavily as it is. The two processes
+## talk only over a local Unix domain socket; mangrove-mountd exposes no
+## network port at all.
+##
+## Install (only needed if you want the Storage page to do anything --
+## skip this unit entirely on a box with nothing to plug a drive into):
+##   groupadd -f mangrove-mount
+##   usermod -aG mangrove-mount mangrove
+##   mkdir -p /var/lib/mangrove-drives && chown root:root /var/lib/mangrove-drives && chmod 755 /var/lib/mangrove-drives
+##   cp deploy/systemd/mangrove-mountd.service /etc/systemd/system/mangrove-mountd.service
+##   systemctl daemon-reload && systemctl enable --now mangrove-mountd
+##   systemctl restart mangrove   # picks up the new supplementary group
+
+[Unit]
+Description=Mangrove storage helper (privileged drive mount/unmount)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mangrove-mountd
+Restart=on-failure
+RestartSec=2
+
+Environment=MANGROVE_MOUNTD_SOCKET=/run/mangrove-mountd.sock
+Environment=MANGROVE_MOUNTD_ROOT=/var/lib/mangrove-drives
+Environment=MANGROVE_MOUNTD_GROUP=mangrove-mount
+
+# Runs as root -- mount(2)/umount(2) on an arbitrary block device need it,
+# and there's no narrower capability that covers every filesystem driver
+# this might exercise (ntfs-3g in particular runs as a FUSE helper that
+# itself wants CAP_SYS_ADMIN). NoNewPrivileges and a tight
+# ReadWritePaths/RestrictAddressFamilies still bound what a compromised
+# process here can do beyond its actual job.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mangrove-drives /run /media /mnt
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

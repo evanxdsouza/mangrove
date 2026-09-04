@@ -239,3 +239,32 @@ export interface TemplateInstallResult {
   }[];
   credentials?: Record<string, string>;
 }
+
+// Storage/NAS: see internal/mountd (the privileged drive-mounting helper)
+// and internal/orchestrator/storage.go.
+export interface Drive {
+  uuid: string;
+  device: string;
+  label?: string;
+  filesystem?: string;
+  size_bytes: number;
+  removable: boolean;
+  mounted: boolean;
+  mount_path?: string;
+}
+
+export interface DrivesResponse {
+  helper_available: boolean;
+  drives: Drive[];
+}
+
+export interface NASShareInfo {
+  deployment_id: number;
+  deployment_name: string;
+  deployment_slug: string;
+  service_id: number;
+  status: string;
+  share_name: string;
+  direct_publish_port: number;
+  host_mount_source: string;
+}

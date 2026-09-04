@@ -680,6 +680,11 @@ type CreateServiceParams struct {
 	// would wrongly eat into admission control's budget for a deployment
 	// that consumes none.
 	NoContainer bool
+	// DirectPublishPort/HostMountSource/HostMountTarget: see
+	// models.Service's doc comment. Set only by CreateNASShare.
+	DirectPublishPort *int
+	HostMountSource   string
+	HostMountTarget   string
 }
 
 func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (models.Service, error) {
@@ -709,11 +714,13 @@ func (s *Store) CreateService(ctx context.Context, p CreateServiceParams) (model
 	res, err := s.DB.ExecContext(ctx, `
 		INSERT INTO services (deployment_id, name, container_name, internal_port, is_internal_only,
 		                       cpu_limit_cores, memory_limit_mb, restart_policy, health_check_path,
-		                       health_check_interval_s, health_check_timeout_s, command)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                       health_check_interval_s, health_check_timeout_s, command,
+		                       direct_publish_port, host_mount_source, host_mount_target)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.DeploymentID, p.Name, p.ContainerName, p.InternalPort, p.IsInternalOnly,
 		p.CPULimitCores, p.MemoryLimitMB, p.RestartPolicy, nullIfEmpty(p.HealthCheckPath),
 		p.HealthCheckIntervalS, p.HealthCheckTimeoutS, commandJSON,
+		p.DirectPublishPort, nullIfEmpty(p.HostMountSource), nullIfEmpty(p.HostMountTarget),
 	)
 	if err != nil {
 		return models.Service{}, err
@@ -727,16 +734,19 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 	var hostPort sql.NullInt64
 	var commandJSON sql.NullString
 	var replicaIDsJSON sql.NullString
+	var directPublishPort sql.NullInt64
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT id, deployment_id, name, is_primary, COALESCE(image_tag_current,''), COALESCE(container_id_current,''),
 		       container_name, internal_port, host_port, is_internal_only, cpu_limit_cores, memory_limit_mb,
 		       restart_policy, COALESCE(health_check_path,''), health_check_interval_s, health_check_timeout_s,
-		       command, COALESCE(replica_container_ids,''), status, created_at, updated_at
+		       command, COALESCE(replica_container_ids,''), status, created_at, updated_at,
+		       direct_publish_port, COALESCE(host_mount_source,''), COALESCE(host_mount_target,'')
 		FROM services WHERE id = ?`, id,
 	).Scan(&svc.ID, &svc.DeploymentID, &svc.Name, &svc.IsPrimary, &svc.ImageTagCurrent, &svc.ContainerIDCurrent,
 		&svc.ContainerName, &svc.InternalPort, &hostPort, &svc.IsInternalOnly, &svc.CPULimitCores, &svc.MemoryLimitMB,
 		&svc.RestartPolicy, &svc.HealthCheckPath, &svc.HealthCheckIntervalS, &svc.HealthCheckTimeoutS,
-		&commandJSON, &replicaIDsJSON, &svc.Status, &svc.CreatedAt, &svc.UpdatedAt)
+		&commandJSON, &replicaIDsJSON, &svc.Status, &svc.CreatedAt, &svc.UpdatedAt,
+		&directPublishPort, &svc.HostMountSource, &svc.HostMountTarget)
 	if err == sql.ErrNoRows {
 		return models.Service{}, ErrNotFound
 	}
@@ -746,6 +756,10 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 	if hostPort.Valid {
 		p := int(hostPort.Int64)
 		svc.HostPort = &p
+	}
+	if directPublishPort.Valid {
+		p := int(directPublishPort.Int64)
+		svc.DirectPublishPort = &p
 	}
 	if commandJSON.Valid && commandJSON.String != "" {
 		if err := json.Unmarshal([]byte(commandJSON.String), &svc.Command); err != nil {
@@ -762,6 +776,37 @@ func (s *Store) GetService(ctx context.Context, id int64) (models.Service, error
 
 func (s *Store) ListServices(ctx context.Context, deploymentID int64) ([]models.Service, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM services WHERE deployment_id = ? ORDER BY id`, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+
+	out := make([]models.Service, 0, len(ids))
+	for _, id := range ids {
+		svc, err := s.GetService(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, svc)
+	}
+	return out, nil
+}
+
+// ListNASShares returns every service that's a storage/NAS share
+// (direct_publish_port set), across every deployment -- used by the
+// Storage page to show existing shares, and by CreateNASShare to refuse
+// sharing a drive that's already shared under another deployment.
+func (s *Store) ListNASShares(ctx context.Context) ([]models.Service, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM services WHERE direct_publish_port IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

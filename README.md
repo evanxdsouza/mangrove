@@ -24,7 +24,11 @@ It also ships a library
 of one-click templates (Ghost, WordPress, Gitea, Supabase, PocketBase,
 NocoDB, Vaultwarden, Uptime Kuma, n8n, Umami, and standalone
 Postgres/MySQL/MongoDB/Redis) for deploying common self-hosted apps without
-writing a Dockerfile at all.
+writing a Dockerfile at all. For a home server, an optional Storage page
+turns a plugged-in drive into a NAS -- mount it and share it over SMB to
+other devices on the LAN, backed by a small separate privileged helper so
+the main control plane never needs mount capabilities itself (see
+[docs/storage.md](docs/storage.md)).
 
 It's built to run comfortably on a single small box -- the reference
 target throughout development has been a 2 vCPU / 2GB RAM / 16GB disk VPS,
@@ -52,8 +56,9 @@ vars) for a plain-language "your apps" flow built on the same API -- see
 
 See [docs/architecture.md](docs/architecture.md) for the full request path
 and the blue/green deploy flow, [docs/deployment.md](docs/deployment.md)
-for running this in production, and
-[docs/templates.md](docs/templates.md) for the one-click template format.
+for running this in production, [docs/templates.md](docs/templates.md) for
+the one-click template format, and [docs/storage.md](docs/storage.md) for
+the drive-to-NAS feature.
 
 ## Production install
 
