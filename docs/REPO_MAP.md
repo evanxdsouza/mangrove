@@ -7,6 +7,11 @@ the other `docs/*.md` files, linked inline; this file is the index and the
 map, not a replacement for them. Re-verify the "Verified status" section
 before trusting it — it's a snapshot, not a guarantee.
 
+**If you're an agent working in this repo**: start here before exploring
+from scratch, and update this file (directory table, commands, "where to
+look" pointers, or the verified-status snapshot) as part of any change that
+makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
+
 Last verified: 2026-09-04, against commit `da5d931` on branch `docs-refresh`.
 
 ## What this is
