@@ -295,3 +295,18 @@ own.
 Session validation (`internal/auth`) loads the user's role in the same
 query as the session lookup, so role-gating costs no extra DB round trip
 per request. See [multi-user.md](multi-user.md) for what each role can do.
+
+## Storage/NAS shares
+
+A drive-to-NAS deployment (`internal/orchestrator/storage.go`) is a normal
+`deployments`/`services` row like any other, but built and run outside the
+blue/green `Deploy()` flow described above -- it holds an exclusive host
+port for its whole lifetime, which the swap's "old and new containers
+briefly coexist" step can't accommodate. It also relies on two additions
+this flow doesn't otherwise use: `executor.RunSpec.HostMount` (a specific
+host directory bind-mounted in, instead of a named Docker volume) and
+`executor.RunSpec.PublicBind` (publishing a port on `0.0.0.0` instead of
+every other deployment's `127.0.0.1`-only, since SMB isn't HTTP and Caddy
+has no way to route it). See [docs/storage.md](storage.md) for the full
+design, including why mounting the drive itself is delegated to a separate
+privileged process rather than done by `mangrove.service`.

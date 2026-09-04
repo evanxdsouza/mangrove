@@ -8,6 +8,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
   const { mode, setMode } = useUiMode();
   const onAdmin = path === "/admin" || path === "/server-health";
   const simple = mode === "simple";
+  const isOwner = user.role === "owner";
 
   return (
     <div className="app-shell">
@@ -35,6 +36,17 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         {!simple && (
           <Link to="/server-health" className={`nav-link ${path === "/server-health" ? "active" : ""}`}>
             Server health
+          </Link>
+        )}
+        {/* Storage/NAS sharing mounts host drives and creates SMB shares
+            with plaintext credentials -- system-level, owner-only on the
+            API itself (see internal/api/router.go's /storage group), so
+            the nav entry point matches: hidden for a member the same way
+            Admin is hidden in simple mode, just gated on role instead of
+            mode. */}
+        {!simple && isOwner && (
+          <Link to="/storage" className={`nav-link ${path === "/storage" ? "active" : ""}`}>
+            Storage
           </Link>
         )}
         <div className="sidebar-footer">

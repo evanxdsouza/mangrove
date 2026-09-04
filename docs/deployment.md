@@ -172,6 +172,11 @@ asked how the box is reachable):
   Leave `MANGROVE_DDNS_DOMAIN` unset (the default) to disable the job
   entirely -- a VPS/Nest install with a stable IP doesn't need it.
 
+`setup.sh` also asks, separately, whether to install `mangrove-mountd` --
+the privileged helper behind the Storage page's drive-to-NAS feature (mount
+a plugged-in drive, share it over SMB to other devices on the LAN). Also
+optional, also off by default; see [docs/storage.md](storage.md).
+
 ## Verifying without touching production
 
 For any change riskier than a pure code diff (schema changes, teardown

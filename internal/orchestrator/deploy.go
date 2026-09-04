@@ -43,8 +43,12 @@ type Orchestrator struct {
 	Secrets  *secrets.Box
 	Notifier *notify.ResendClient // nil or !Enabled() is valid: notifications are skipped, not an error
 	GHStatus *github.StatusClient // nil is valid: commit-status posting is skipped, not an error
-	Config   config.Config
-	Log      *slog.Logger
+	// Mountd talks to the privileged mangrove-mountd helper for the
+	// storage/NAS feature (see storage.go). Nil is valid: a box with no
+	// storage helper installed just has an empty Storage page.
+	Mountd MountdClient
+	Config config.Config
+	Log    *slog.Logger
 
 	// inflight tracks deploys currently running, keyed by deployment ID, so
 	// a concurrent deploy is refused and an in-flight one can be cancelled
@@ -190,6 +194,17 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		return 0, fmt.Errorf("deployment %d has %d services; Deploy() handles exactly 1 (use DeployCompose for multi-service stacks)", dep.ID, len(services))
 	}
 	svc := services[0]
+
+	// A storage/NAS share (see storage.go's CreateNASShare) holds an
+	// exclusive host port for its entire lifetime, which this function's
+	// blue/green swap can't accommodate -- the old and new containers
+	// briefly coexist on the same host port during the health-check gate
+	// below. It's created directly via Exec.Run(), bypassing Deploy()
+	// entirely, and stays that way: to change its config, delete and
+	// recreate rather than redeploy/rollback/scale.
+	if svc.DirectPublishPort != nil {
+		return 0, fmt.Errorf("deployment %d is a storage/NAS share and doesn't support redeploy, rollback, or scale -- delete and recreate it to change its configuration", dep.ID)
+	}
 
 	historyID, err := o.Store.CreateDeployHistory(ctx, dep.ID, req.TriggeredBy, req.CommitSHA, req.CommitMessage, req.GitRef)
 	if err != nil {

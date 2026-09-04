@@ -322,13 +322,24 @@ func (e *DockerExecutor) runOne(ctx context.Context, spec RunSpec, containerName
 		args = append(args, "--oom-score-adj", strconv.Itoa(spec.OOMScoreAdj))
 	}
 	if spec.HostPort != nil && spec.InternalPort > 0 {
-		args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", *spec.HostPort, spec.InternalPort))
+		bindAddr := "127.0.0.1"
+		if spec.PublicBind {
+			bindAddr = "0.0.0.0"
+		}
+		args = append(args, "-p", fmt.Sprintf("%s:%d:%d", bindAddr, *spec.HostPort, spec.InternalPort))
 	}
 	for k, v := range spec.Env {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
 	}
 	for _, vol := range spec.Volumes {
 		args = append(args, "-v", fmt.Sprintf("%s:%s", vol.Name, vol.MountPath))
+	}
+	if spec.HostMount != nil {
+		hm := fmt.Sprintf("%s:%s", spec.HostMount.HostPath, spec.HostMount.ContainerPath)
+		if spec.HostMount.ReadOnly {
+			hm += ":ro"
+		}
+		args = append(args, "-v", hm)
 	}
 	for _, fm := range fileMounts {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", fm.hostPath, fm.mountPath))
