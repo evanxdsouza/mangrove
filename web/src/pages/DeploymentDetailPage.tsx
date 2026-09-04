@@ -856,13 +856,14 @@ function OverviewTab({ services, deployment }: { services: Service[]; deployment
 }
 
 function ScaleCard({ deploymentId, deployment }: { deploymentId: number; deployment: Deployment }) {
-  if (deployment.build_strategy === "compose" || deployment.build_strategy === "static") {
-    return null;
-  }
   const [value, setValue] = useState(deployment.replicas);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (deployment.build_strategy === "compose" || deployment.build_strategy === "static") {
+    return null;
+  }
 
   const apply = async () => {
     setBusy(true);
