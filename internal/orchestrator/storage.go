@@ -8,6 +8,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
@@ -80,28 +81,24 @@ func (o *Orchestrator) UnmountDrive(ctx context.Context, uuid string) error {
 // drive with this UUID, or nil if none. Matches on mount path rather than
 // UUID directly since that's what's actually recorded on the service row
 // (HostMountSource) -- mangrove-mountd always mounts under
-// <MountRoot>/<uuid>, so the UUID is the path's last element.
+// <MountRoot>/<uuid>, so the UUID is the path's final element. Compared via
+// filepath.Base rather than a raw string-suffix check, which would
+// false-positive whenever one UUID happens to be a character-for-character
+// suffix of another (e.g. "1234" matching a path ending in "...a1234").
 func (o *Orchestrator) driveInUseBy(ctx context.Context, uuid string) (*models.Service, error) {
+	if uuid == "" {
+		return nil, nil
+	}
 	shares, err := o.Store.ListNASShares(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range shares {
-		if pathTailMatches(shares[i].HostMountSource, uuid) {
+		if filepath.Base(shares[i].HostMountSource) == uuid {
 			return &shares[i], nil
 		}
 	}
 	return nil, nil
-}
-
-func pathTailMatches(path, tail string) bool {
-	if path == "" || tail == "" {
-		return false
-	}
-	if len(path) < len(tail) {
-		return false
-	}
-	return path[len(path)-len(tail):] == tail
 }
 
 // CreateNASShareParams describes a new SMB share over an already-mounted

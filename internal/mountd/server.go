@@ -381,9 +381,11 @@ func mountArgs(fstype, device, target string) ([][]string, error) {
 	case "":
 		return nil, fmt.Errorf("unknown filesystem type")
 	default:
-		// Anything else (e.g. a filesystem type util-linux itself doesn't
-		// recognize by name here): let `mount` try to auto-detect rather
-		// than refusing outright.
+		// Anything else lsblk reported a name for but this switch doesn't
+		// special-case: pass it straight through as -t <fstype> rather than
+		// refusing outright. Not auto-detection (lsblk already told us the
+		// type); this just trusts that answer instead of hand-listing every
+		// filesystem `mount` supports.
 		return [][]string{append([]string{"-t", fstype}, append(base, device, target)...)}, nil
 	}
 }

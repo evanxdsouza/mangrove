@@ -810,16 +810,18 @@ func (s *Store) ListNASShares(ctx context.Context) ([]models.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	var ids []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	out := make([]models.Service, 0, len(ids))
 	for _, id := range ids {

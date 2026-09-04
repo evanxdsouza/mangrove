@@ -259,6 +259,7 @@ export interface DrivesResponse {
 }
 
 export interface NASShareInfo {
+  project_id: number;
   deployment_id: number;
   deployment_name: string;
   deployment_slug: string;

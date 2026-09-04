@@ -46,6 +46,7 @@ function StoragePageInner() {
   const [shareTarget, setShareTarget] = useState<Drive | null>(null);
 
   const load = () => {
+    setError(null);
     Promise.all([api.get<DrivesResponse>("/api/storage/drives"), api.get<NASShareInfo[]>("/api/storage/shares")])
       .then(([d, s]) => {
         setDrivesResp(d);
@@ -157,7 +158,7 @@ function StoragePageInner() {
                     </>
                   )}
                   {share && (
-                    <Link to={`/projects/1/deployments/${share.deployment_id}`} className="btn btn-sm">
+                    <Link to={`/projects/${share.project_id}/deployments/${share.deployment_id}`} className="btn btn-sm">
                       Manage share
                     </Link>
                   )}

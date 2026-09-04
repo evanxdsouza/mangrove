@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/evanxdsouza/mangrove/internal/mountd"
+	"github.com/evanxdsouza/mangrove/internal/store"
 )
 
 // fakeMountd satisfies MountdClient without a running mangrove-mountd.
@@ -172,6 +173,54 @@ func TestUnmountDrive_RefusesWhileShared(t *testing.T) {
 	}
 	if len(fm.unmountedUUIDs) != 0 {
 		t.Error("Unmount should never have reached the mountd client")
+	}
+}
+
+// TestDriveInUseBy_MatchesFullPathSegmentOnly guards a real bug caught in
+// review: matching HostMountSource against a UUID with a raw string-suffix
+// check (rather than comparing the path's actual last segment) would treat
+// a share mounted at ".../abc1234" as "in use" by uuid "1234", even though
+// "1234" is a different, unrelated drive. filepath.Base-based comparison
+// (driveInUseBy's current implementation) must tell these apart.
+func TestDriveInUseBy_MatchesFullPathSegmentOnly(t *testing.T) {
+	o, st, _ := newTestOrchestrator(t)
+	o.Exec = &fakeTemplateExecutor{}
+	ctx := context.Background()
+
+	dep, err := st.CreateDeployment(ctx, store.CreateDeploymentParams{
+		ProjectID: 1, Name: "decoy", Slug: "decoy", BuildStrategy: "image", ImageRef: "dperson/samba", RootPath: ".",
+	})
+	if err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	directPort := smbPort
+	if _, err := st.CreateService(ctx, store.CreateServiceParams{
+		DeploymentID:      dep.ID,
+		Name:              "samba",
+		ContainerName:     "mangrove-decoy-samba",
+		InternalPort:      smbPort,
+		DirectPublishPort: &directPort,
+		HostMountSource:   "/var/lib/mangrove-drives/abc1234", // ends in "1234" but is NOT the drive with uuid "1234"
+		HostMountTarget:   "/share",
+	}); err != nil {
+		t.Fatalf("CreateService: %v", err)
+	}
+
+	inUse, err := o.driveInUseBy(ctx, "1234")
+	if err != nil {
+		t.Fatalf("driveInUseBy: %v", err)
+	}
+	if inUse != nil {
+		t.Fatalf("expected uuid %q to NOT match a share mounted at .../abc1234, but got %+v", "1234", inUse)
+	}
+
+	// The actual full-segment match still has to work.
+	inUse, err = o.driveInUseBy(ctx, "abc1234")
+	if err != nil {
+		t.Fatalf("driveInUseBy: %v", err)
+	}
+	if inUse == nil {
+		t.Fatal("expected uuid \"abc1234\" to match the share mounted at .../abc1234")
 	}
 }
 

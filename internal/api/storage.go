@@ -56,6 +56,7 @@ func (s *Server) unmountDrive(w http.ResponseWriter, r *http.Request) {
 // so the Storage page doesn't need a second round trip per share to show
 // something more useful than a bare service ID.
 type nasShareInfo struct {
+	ProjectID         int64  `json:"project_id"`
 	DeploymentID      int64  `json:"deployment_id"`
 	DeploymentName    string `json:"deployment_name"`
 	DeploymentSlug    string `json:"deployment_slug"`
@@ -84,6 +85,7 @@ func (s *Server) listNASShares(w http.ResponseWriter, r *http.Request) {
 			port = *svc.DirectPublishPort
 		}
 		out = append(out, nasShareInfo{
+			ProjectID:         dep.ProjectID,
 			DeploymentID:      dep.ID,
 			DeploymentName:    dep.Name,
 			DeploymentSlug:    dep.Slug,
