@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { useIsOwner } from "../userContext";
+import { Gauge } from "../components/Gauge";
+import { DialsIcon, PlusIcon, TrashIcon } from "../icons";
+
+// A compact instrument-log timestamp -- ledger tables here pair it with an
+// action button in the same row, and the full locale string (with year and
+// seconds) was wide enough to push that button past the card's edge.
+function fmtWhen(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 interface ResourceBudget {
   memory_allocated_mb: number;
@@ -138,6 +147,7 @@ export function AdminPage() {
           <h1>Admin</h1>
           <p>System-wide operations across every project.</p>
         </div>
+        <DialsIcon style={{ width: 24, height: 24, color: "var(--brass-dim)" }} />
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -145,7 +155,7 @@ export function AdminPage() {
       <div className="card">
         <div className="card-title">Resource budget</div>
         {budget ? (
-          <div className="grid grid-4">
+          <div className="instrument-row">
             <StatTile
               label="Memory allocated"
               value={`${budget.memory_allocated_mb} / ${budget.memory_ceiling_mb} MB`}
@@ -156,9 +166,11 @@ export function AdminPage() {
               value={`${budget.memory_used_mb.toFixed(0)} MB`}
               fraction={budget.memory_used_mb / Math.max(budget.memory_ceiling_mb, 1)}
             />
-            <div className="stat-tile">
-              <div className="stat-value">{budget.running_containers}</div>
-              <div className="stat-label">Running containers</div>
+            <div className="instrument-cell">
+              <div className="stat-tile">
+                <div className="stat-value">{budget.running_containers}</div>
+                <div className="stat-label">Running containers</div>
+              </div>
             </div>
             {budget.disk_total_gb > 0 && (
               <StatTile
@@ -173,14 +185,17 @@ export function AdminPage() {
         )}
       </div>
 
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="flex-between" style={{ marginBottom: 14 }}>
-            <div className="card-title" style={{ margin: 0 }}>
-              Port registry
-            </div>
+      {/* Port registry and Active sessions each hold a 4-column table plus
+          a row action button -- a side-by-side grid-2 halves their width
+          and pushes the action button past the card's edge on anything
+          short of a very wide screen, so each gets the full row instead. */}
+      <div className="card">
+        <div className="flex-between" style={{ marginBottom: 14 }}>
+          <div className="card-title" style={{ margin: 0 }}>
+            Port registry
           </div>
-          {ports === null ? (
+        </div>
+        {ports === null ? (
             <div className="text-dim">Loading...</div>
           ) : ports.length === 0 ? (
             <div className="text-dim">No ports allocated yet.</div>
@@ -203,7 +218,7 @@ export function AdminPage() {
                     <td>
                       {p.allocation_type !== "system" && (
                         <button className="btn btn-sm btn-danger" onClick={() => releasePort(p.port)}>
-                          Release
+                          <TrashIcon /> Release
                         </button>
                       )}
                     </td>
@@ -236,10 +251,10 @@ export function AdminPage() {
                   <tr key={s.id}>
                     <td>{s.user_email}</td>
                     <td className="mono text-dim">{s.ip_address}</td>
-                    <td className="text-dim">{new Date(s.created_at).toLocaleString()}</td>
+                    <td className="text-dim">{fmtWhen(s.created_at)}</td>
                     <td>
                       <button className="btn btn-sm btn-danger" onClick={() => revokeSession(s.id)}>
-                        Revoke
+                        <TrashIcon /> Revoke
                       </button>
                     </td>
                   </tr>
@@ -248,7 +263,6 @@ export function AdminPage() {
             </table>
           )}
         </div>
-      </div>
 
       <div className="grid grid-2">
         <div className="card">
@@ -323,10 +337,10 @@ export function AdminPage() {
                   <tr key={u.id}>
                     <td>{u.email}</td>
                     <td className="text-dim">{u.role}</td>
-                    <td className="text-dim">{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}</td>
+                    <td className="text-dim">{u.last_login_at ? fmtWhen(u.last_login_at) : "never"}</td>
                     <td>
                       <button className="btn btn-sm btn-danger" onClick={() => removeUser(u.id)}>
-                        Remove
+                        <TrashIcon /> Remove
                       </button>
                     </td>
                   </tr>
@@ -361,11 +375,11 @@ export function AdminPage() {
               {pats.map((p) => (
                 <tr key={p.id}>
                   <td>{p.label}</td>
-                  <td className="text-dim">{new Date(p.created_at).toLocaleString()}</td>
-                  <td className="text-dim">{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : "never"}</td>
+                  <td className="text-dim">{fmtWhen(p.created_at)}</td>
+                  <td className="text-dim">{p.last_used_at ? fmtWhen(p.last_used_at) : "never"}</td>
                   <td>
                     <button className="btn btn-sm btn-danger" onClick={() => deletePat(p.id)}>
-                      Remove
+                      <TrashIcon /> Remove
                     </button>
                   </td>
                 </tr>
@@ -403,7 +417,7 @@ export function AdminPage() {
                       {n.status}
                     </span>
                   </td>
-                  <td className="text-dim">{new Date(n.sent_at).toLocaleString()}</td>
+                  <td className="text-dim">{fmtWhen(n.sent_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -415,15 +429,15 @@ export function AdminPage() {
 }
 
 function StatTile({ label, value, fraction }: { label: string; value: string; fraction: number }) {
-  const cls = fraction > 0.9 ? "danger" : fraction > 0.7 ? "warn" : "";
+  const tone = fraction > 0.9 ? "danger" : fraction > 0.7 ? "warn" : "default";
   return (
-    <div className="stat-tile">
-      <div className="stat-value" style={{ fontSize: 18 }}>
-        {value}
-      </div>
-      <div className="stat-label">{label}</div>
-      <div className="meter">
-        <div className={`meter-fill ${cls}`} style={{ width: `${Math.min(fraction * 100, 100)}%` }} />
+    <div className="instrument-cell">
+      <Gauge fraction={fraction} tone={tone} />
+      <div className="stat-tile">
+        <div className="stat-value" style={{ fontSize: 15 }}>
+          {value}
+        </div>
+        <div className="stat-label">{label}</div>
       </div>
     </div>
   );
@@ -480,7 +494,7 @@ function AddTeamUserForm({ onAdded }: { onAdded: () => void }) {
         </select>
       </div>
       <button className="btn btn-sm" type="submit" disabled={busy || !email || password.length < 8}>
-        Add
+        <PlusIcon /> Add
       </button>
     </form>
   );
@@ -528,7 +542,7 @@ function AddPatForm({ onAdded }: { onAdded: () => void }) {
         />
       </div>
       <button className="btn btn-sm" type="submit" disabled={busy || !label || !token}>
-        Add
+        <PlusIcon /> Add
       </button>
     </form>
   );

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Gauge } from "../components/Gauge";
+import { GaugeIcon } from "../icons";
 
 interface SystemHealth {
   hostname: string;
@@ -71,6 +73,7 @@ export function ServerHealthPage() {
           <h1>Server health</h1>
           <p>Live status of the whole host, not just Mangrove's containers.</p>
         </div>
+        <GaugeIcon style={{ width: 26, height: 26, color: "var(--brass-dim)" }} />
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -103,41 +106,38 @@ export function ServerHealthPage() {
             </table>
           </div>
 
-          <div className="grid grid-4">
-            <StatTile
-              label="CPU"
-              value={`${health.cpu_percent.toFixed(0)}% of ${health.cpu_count} core${health.cpu_count === 1 ? "" : "s"}`}
-              fraction={health.cpu_percent / 100}
-            />
-            <StatTile
-              label="Memory"
-              value={`${fmtGB(health.memory_used_gb)} / ${fmtGB(health.memory_total_gb)}`}
-              fraction={health.memory_used_pct / 100}
-            />
-            <StatTile
-              label="Disk"
-              value={`${fmtGB(health.disk_used_gb)} / ${fmtGB(health.disk_total_gb)}`}
-              fraction={health.disk_used_pct / 100}
-            />
-            <StatTile
-              label="Load"
-              value={`${health.load_avg_1.toFixed(2)} / ${health.load_avg_5.toFixed(2)} / ${health.load_avg_15.toFixed(2)}`}
-              fraction={health.cpu_count > 0 ? health.load_avg_1 / health.cpu_count : 0}
-            />
-          </div>
-
-          {health.swap_total_gb > 0 && (
-            <div className="card">
-              <div className="card-title">Swap</div>
-              <div className="grid grid-2">
+          <div className="card">
+            <div className="card-title">Instruments</div>
+            <div className="instrument-row">
+              <StatTile
+                label="CPU"
+                value={`${health.cpu_percent.toFixed(0)}% of ${health.cpu_count} core${health.cpu_count === 1 ? "" : "s"}`}
+                fraction={health.cpu_percent / 100}
+              />
+              <StatTile
+                label="Memory"
+                value={`${fmtGB(health.memory_used_gb)} / ${fmtGB(health.memory_total_gb)}`}
+                fraction={health.memory_used_pct / 100}
+              />
+              <StatTile
+                label="Disk"
+                value={`${fmtGB(health.disk_used_gb)} / ${fmtGB(health.disk_total_gb)}`}
+                fraction={health.disk_used_pct / 100}
+              />
+              <StatTile
+                label="Load"
+                value={`${health.load_avg_1.toFixed(2)} / ${health.load_avg_5.toFixed(2)} / ${health.load_avg_15.toFixed(2)}`}
+                fraction={health.cpu_count > 0 ? health.load_avg_1 / health.cpu_count : 0}
+              />
+              {health.swap_total_gb > 0 && (
                 <StatTile
                   label="Swap used"
                   value={`${fmtGB(health.swap_used_gb)} / ${fmtGB(health.swap_total_gb)}`}
-                  fraction={health.swap_total_gb > 0 ? health.swap_used_gb / health.swap_total_gb : 0}
+                  fraction={health.swap_used_gb / health.swap_total_gb}
                 />
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </>
       ) : (
         <div className="card">
@@ -149,15 +149,15 @@ export function ServerHealthPage() {
 }
 
 function StatTile({ label, value, fraction }: { label: string; value: string; fraction: number }) {
-  const cls = fraction > 0.9 ? "danger" : fraction > 0.7 ? "warn" : "";
+  const tone = fraction > 0.9 ? "danger" : fraction > 0.7 ? "warn" : "default";
   return (
-    <div className="stat-tile">
-      <div className="stat-value" style={{ fontSize: 18 }}>
-        {value}
-      </div>
-      <div className="stat-label">{label}</div>
-      <div className="meter">
-        <div className={`meter-fill ${cls}`} style={{ width: `${Math.min(Math.max(fraction * 100, 0), 100)}%` }} />
+    <div className="instrument-cell">
+      <Gauge fraction={fraction} tone={tone} />
+      <div className="stat-tile">
+        <div className="stat-value" style={{ fontSize: 16 }}>
+          {value}
+        </div>
+        <div className="stat-label">{label}</div>
       </div>
     </div>
   );

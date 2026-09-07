@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
+import { GearIcon } from "../icons";
 
 export function SettingsPage() {
   return (
@@ -9,6 +10,7 @@ export function SettingsPage() {
           <h1>Settings</h1>
           <p>Manage your account.</p>
         </div>
+        <GearIcon style={{ width: 24, height: 24, color: "var(--brass-dim)" }} />
       </div>
 
       <div className="card">

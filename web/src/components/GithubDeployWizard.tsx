@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { Modal, useModalClose } from "./Modal";
 import { slugify } from "../pages/ProjectsPage";
+import { BranchIcon, EmptyLedgerIcon } from "../icons";
 
 type Strategy = "dockerfile" | "nixpacks" | "compose" | "static";
 type Step = "connect" | "repo" | "configure" | "result";
@@ -120,7 +121,7 @@ export function GithubDeployWizard({
           </p>
           <div className="modal-actions" style={{ justifyContent: "flex-start" }}>
             <button type="button" className="btn btn-primary" onClick={connect}>
-              Connect GitHub
+              <BranchIcon /> Connect GitHub
             </button>
           </div>
           {creds && creds.length === 0 && (
@@ -171,7 +172,10 @@ export function GithubDeployWizard({
               <div className="spinner" />
             </div>
           ) : filteredRepos.length === 0 ? (
-            <div className="card empty-state">No matching repos.</div>
+            <div className="card empty-state">
+              <EmptyLedgerIcon />
+              <p>No matching repos.</p>
+            </div>
           ) : (
             <div className="kv-list" style={{ maxHeight: 320, overflowY: "auto" }}>
               {filteredRepos.map((r) => (

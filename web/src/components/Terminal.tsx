@@ -79,10 +79,9 @@ export function ServiceTerminal({ serviceId }: { serviceId: number }) {
 
   return (
     <div>
-      <div className="flex-between" style={{ marginBottom: 8 }}>
-        <span className="text-faint" style={{ fontSize: 12 }}>
-          {status === "open" ? "Connected" : status === "connecting" ? "Connecting..." : "Disconnected"}
-        </span>
+      <div className={`recorder-status ${status === "open" ? "live" : ""}`}>
+        <span className="rec-dot" />
+        {status === "open" ? "Connected" : status === "connecting" ? "Connecting..." : "Disconnected"}
       </div>
       <div className="terminal-panel" ref={containerRef} />
     </div>

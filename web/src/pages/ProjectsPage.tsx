@@ -1,52 +1,72 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Project, type Workspace } from "../api";
+import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
+import { useWorkspaces } from "../workspaceContext";
+import { StatusPill, worstStatus } from "../components/StatusPill";
+import { EmptyLedgerIcon, PlusIcon } from "../icons";
+
+interface ProjectStatus {
+  worst: string | null;
+  count: number;
+}
 
 export function ProjectsPage() {
   const { navigate } = useRouter();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, reload: reloadWorkspaces } = useWorkspaces();
   const [projects, setProjects] = useState<Project[] | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [status, setStatus] = useState<Record<number, ProjectStatus>>({});
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const wsParam = new URLSearchParams(window.location.search).get("workspace");
-  const activeWorkspace = wsParam ? Number(wsParam) : null;
-
   const load = () => {
-    const q = activeWorkspace ? `?workspace_id=${activeWorkspace}` : "";
+    const q = activeWorkspaceId ? `?workspace_id=${activeWorkspaceId}` : "";
     api
       .get<Project[]>(`/api/projects${q}`)
-      .then((p) => setProjects(p ?? []))
+      .then((p) => {
+        const list = p ?? [];
+        setProjects(list);
+        // One request per project, same pattern SimpleAppsPage already uses
+        // to flatten every deployment -- the ledger's status beacon is a
+        // real read of what's actually deployed, not decoration.
+        Promise.all(
+          list.map((project) =>
+            api
+              .get<Deployment[]>(`/api/projects/${project.id}/deployments`)
+              .then((deps): [number, ProjectStatus] => [
+                project.id,
+                { worst: worstStatus((deps ?? []).map((d) => d.status)), count: (deps ?? []).length },
+              ])
+              .catch((): [number, ProjectStatus] => [project.id, { worst: null, count: 0 }]),
+          ),
+        ).then((entries) => setStatus(Object.fromEntries(entries)));
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load projects"));
   };
 
-  useEffect(() => {
-    api
-      .get<Workspace[]>("/api/workspaces")
-      .then((ws) => setWorkspaces(ws?.map((x: any) => x.workspace ?? x) ?? []))
-      .catch(() => setWorkspaces([]));
-  }, []);
+  useEffect(load, [activeWorkspaceId]);
 
-  useEffect(load, [activeWorkspace]);
-
-  const workspaceName = (id: number) => workspaces.find((w) => w.id === id)?.name ?? null;
+  const activeWorkspaceName = workspaces.find((w) => w.workspace.id === activeWorkspaceId)?.workspace.name ?? null;
 
   return (
     <>
       <div className="page-header">
         <div>
-          <h1>Projects</h1>
-          <p>Group deployments by app or site.</p>
+          <h1>{activeWorkspaceName ? `${activeWorkspaceName} projects` : "Projects"}</h1>
+          <p>
+            {activeWorkspaceName
+              ? "Deployments grouped by app or site, scoped to this workspace."
+              : "Group deployments by app or site, across every workspace."}
+          </p>
         </div>
         <div className="flex gap-8">
-          {activeWorkspace != null && (
-            <button className="btn" onClick={() => navigate("/projects")}>
+          {activeWorkspaceId != null && (
+            <button className="btn" onClick={() => setActiveWorkspaceId(null)}>
               All workspaces
             </button>
           )}
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + New project
+            <PlusIcon /> New project
           </button>
         </div>
       </div>
@@ -59,36 +79,63 @@ export function ProjectsPage() {
         </div>
       ) : projects.length === 0 ? (
         <div className="card empty-state">
-          {activeWorkspace != null ? "No projects in this workspace yet." : "No projects yet. Create one to deploy your first app."}
+          <EmptyLedgerIcon />
+          <p>{activeWorkspaceId != null ? "No projects in this workspace yet." : "No projects yet."}</p>
+          <div className="field-hint">Create one to deploy your first app.</div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card">
           <table>
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Status</th>
                 <th>Slug</th>
                 <th>Workspace</th>
                 <th>Created</th>
               </tr>
             </thead>
             <tbody>
-              {projects.map((p) => (
+              {projects.map((p) => {
+                const s = status[p.id];
+                return (
                 <tr key={p.id} className="row-link" onClick={() => (window.location.href = `/projects/${p.id}`)}>
                   <td>
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
                   </td>
+                  <td>
+                    {s == null ? (
+                      <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
+                    ) : s.worst == null ? (
+                      <span className="text-faint">no deployments</span>
+                    ) : (
+                      <span className="flex gap-8" style={{ alignItems: "center" }}>
+                        <StatusPill status={s.worst} />
+                        {s.count > 1 && <span className="text-faint mono" style={{ fontSize: 11.5 }}>&times;{s.count}</span>}
+                      </span>
+                    )}
+                  </td>
                   <td className="mono text-dim">{p.slug}</td>
                   <td className="text-dim">
                     {p.workspace_name ? (
-                      <Link to={`/projects?workspace=${p.workspace_id}`}>{p.workspace_name}</Link>
+                      <a
+                        href={`/`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveWorkspaceId(p.workspace_id);
+                        }}
+                      >
+                        {p.workspace_name}
+                      </a>
                     ) : (
-                      workspaceName(p.workspace_id) ?? <span className="text-faint">—</span>
+                      <span className="text-faint">—</span>
                     )}
                   </td>
                   <td className="text-dim">{new Date(p.created_at).toLocaleString()}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -96,11 +143,12 @@ export function ProjectsPage() {
 
       {showCreate && (
         <CreateProjectModal
-          workspaces={workspaces}
-          defaultWorkspaceId={activeWorkspace ?? undefined}
+          workspaces={workspaces.map((w) => w.workspace)}
+          defaultWorkspaceId={activeWorkspaceId ?? undefined}
           onClose={() => setShowCreate(false)}
           onCreated={(id) => {
             setShowCreate(false);
+            reloadWorkspaces();
             navigate(`/projects/${id}`);
           }}
         />
@@ -115,7 +163,7 @@ function CreateProjectModal({
   onClose,
   onCreated,
 }: {
-  workspaces: Workspace[];
+  workspaces: { id: number; name: string }[];
   defaultWorkspaceId?: number;
   onClose: () => void;
   onCreated: (id: number) => void;

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
+import { TerminalIcon } from "../icons";
 
 interface ExecResponse {
   output: string;
@@ -65,7 +66,7 @@ export function RunCommandCard({
           />
         </div>
         <button className="btn" type="submit" disabled={busy || !command.trim()}>
-          {busy ? "Running..." : "Run"}
+          <TerminalIcon /> {busy ? "Running..." : "Run"}
         </button>
       </form>
       {result && (
