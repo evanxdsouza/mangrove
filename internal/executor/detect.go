@@ -2,7 +2,9 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -27,6 +29,11 @@ type DetectionResult struct {
 	// wizard's blind default of 3000 is wrong for most repos otherwise,
 	// since it has no relationship to the port the app actually binds.
 	SuggestedPort int `json:"suggested_port,omitempty"`
+	// StaticBuildCommand and StaticOutputDir are only set when Strategy ==
+	// static because a package.json build produced no start command -- see
+	// detectNixpacksStaticFallback.
+	StaticBuildCommand string `json:"static_build_command,omitempty"`
+	StaticOutputDir    string `json:"static_output_dir,omitempty"`
 }
 
 // DetectBuildStrategy shallow-clones src (the same materialize() step a
@@ -47,7 +54,7 @@ func DetectBuildStrategy(ctx context.Context, src ContextSource, rootPath string
 		base = filepath.Join(dir, rootPath)
 	}
 
-	result := detectStrategy(base)
+	result := detectStrategy(ctx, base)
 	result.EnvVars = detectEnvVars(base)
 	return result, nil
 }
@@ -55,7 +62,7 @@ func DetectBuildStrategy(ctx context.Context, src ContextSource, rootPath string
 // detectStrategy checks, in order, for the strongest unambiguous signal
 // first: a compose file beats a Dockerfile beats "no server-side code at
 // all" beats the generic buildpack fallback.
-func detectStrategy(dir string) DetectionResult {
+func detectStrategy(ctx context.Context, dir string) DetectionResult {
 	for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
 		if isFile(filepath.Join(dir, name)) {
 			return DetectionResult{Strategy: StrategyCompose, ComposePath: name}
@@ -71,10 +78,78 @@ func detectStrategy(dir string) DetectionResult {
 	if isFile(filepath.Join(dir, "index.html")) && !isFile(filepath.Join(dir, "package.json")) {
 		return DetectionResult{Strategy: StrategyStatic}
 	}
+	// Some package.json apps are static frontends nixpacks can't recognize
+	// as such (a bare `bun run build`, a framework it has no SSR provider
+	// for): they build fine but have no start command, and a real deploy
+	// would fail at `nixpacks build` with "No start command could be
+	// found". Ask nixpacks itself (rather than re-implementing its
+	// framework-detection matrix) and fall back to Mangrove's Static
+	// strategy when that's the case.
+	if isFile(filepath.Join(dir, "package.json")) {
+		if result, ok := detectNixpacksStaticFallback(ctx, dir); ok {
+			return result
+		}
+	}
 	// Generic fallback: nixpacks is Mangrove's "no Dockerfile needed"
 	// buildpack strategy, and handles most common stacks (Node, Python, Go,
 	// Ruby, ...) without further guessing.
 	return DetectionResult{Strategy: StrategyNixpacks}
+}
+
+// nixpacksPlanOutput is the subset of `nixpacks plan`'s JSON fields
+// detectNixpacksStaticFallback needs.
+type nixpacksPlanOutput struct {
+	Phases map[string]struct {
+		Cmds []string `json:"cmds"`
+	} `json:"phases"`
+	Start *struct {
+		Cmd string `json:"cmd"`
+	} `json:"start"`
+}
+
+// detectNixpacksStaticFallback runs `nixpacks plan` (static analysis only --
+// it doesn't run installs or need network/Nix) against dir and reports
+// whether nixpacks found no start command but did find a build command,
+// meaning the app is really a static site nixpacks doesn't recognize as
+// one. ok is false when nixpacks found a start command (the ordinary
+// nixpacks strategy is correct), when it found neither a start nor a build
+// command (nothing to build a static fallback out of), or when `nixpacks
+// plan` itself failed (e.g. the CLI isn't installed) -- in every one of
+// those cases the caller keeps its original generic nixpacks guess.
+func detectNixpacksStaticFallback(ctx context.Context, dir string) (DetectionResult, bool) {
+	out, err := exec.CommandContext(ctx, "nixpacks", "plan", dir).Output()
+	if err != nil {
+		return DetectionResult{}, false
+	}
+	var plan nixpacksPlanOutput
+	if err := json.Unmarshal(out, &plan); err != nil {
+		return DetectionResult{}, false
+	}
+	if plan.Start != nil {
+		return DetectionResult{}, false
+	}
+	build, ok := plan.Phases["build"]
+	if !ok || len(build.Cmds) == 0 {
+		return DetectionResult{}, false
+	}
+	return DetectionResult{
+		Strategy:           StrategyStatic,
+		StaticBuildCommand: strings.Join(build.Cmds, " && "),
+		StaticOutputDir:    guessStaticOutputDir(dir),
+	}, true
+}
+
+// guessStaticOutputDir guesses the directory a static build writes to --
+// "dist" covers the large majority of bundlers (Vite, Rollup, esbuild,
+// Astro, ...); Create React App's "react-scripts build" is the one common
+// holdout that uses "build" instead, so it gets special-cased. The wizard
+// that surfaces this always lets the user correct it before deploying.
+func guessStaticOutputDir(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err == nil && strings.Contains(string(data), `"react-scripts"`) {
+		return "build"
+	}
+	return "dist"
 }
 
 func isFile(path string) bool {
