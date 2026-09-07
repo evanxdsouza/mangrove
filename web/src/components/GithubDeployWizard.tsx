@@ -273,6 +273,8 @@ function ConfigureStep({
         if (r.dockerfile_path) setDockerfilePath(r.dockerfile_path);
         if (r.compose_path) setComposePath(r.compose_path);
         if (r.suggested_port) setInternalPort(r.suggested_port);
+        if (r.static_build_command) setStaticBuildCommand(r.static_build_command);
+        if (r.static_output_dir) setStaticOutputDir(r.static_output_dir);
         setEnvVars(r.env_vars ?? []);
       })
       .catch((e) => setDetectError(errMsg(e)))
