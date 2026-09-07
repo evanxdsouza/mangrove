@@ -388,7 +388,6 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 			o.teardownContainers(ctx, newContainerIDs)
 			return fail(fmt.Errorf("update proxy route: %w", err))
 		}
-		o.reapplyCustomDomains(ctx, dep.ID)
 	}
 
 	// Tear down the previous deploy's replica set (primary + any replicas
@@ -408,6 +407,11 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	if err := o.Store.UpdateServiceReplicas(ctx, svc.ID, newContainerIDs); err != nil {
 		o.Log.Warn("failed to record replica state", "service_id", svc.ID, "error", err)
 	}
+	// Only now does services.container_id_current/replica_container_ids
+	// actually point at the new containers -- reapplying any custom
+	// domain route earlier (e.g. right after PutRouteMulti above) would
+	// resolve the *old* container, which teardownContainers just killed.
+	o.reapplyCustomDomains(ctx, dep.ID)
 
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "success", "")
 	o.Store.MarkDeployHistoryCurrent(ctx, dep.ID, historyID)

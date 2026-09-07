@@ -276,22 +276,46 @@ func (c *Client) getPublicServer(ctx context.Context) (map[string]any, error) {
 // PutDomainRoute adds or atomically replaces the route for hostname within
 // the shared srv_public server block, reverse-proxying it across upstreams
 // (Caddy load balances when there's more than one, matching
-// PutRouteMulti's replica handling). Unlike PutRoute/PutFileServerRoute
-// (one server block per port), every verified custom domain shares a
-// single server block listening on :443/:80, distinguished by a host
-// matcher -- so this is a read-modify-write over that block's routes
-// array rather than a single upsertPath call. Caddy provisions/renews the
-// TLS certificate for hostname on its own the moment a route matching
-// that host exists here; no apps.tls config is needed for the common case.
+// PutRouteMulti's replica handling). Caddy provisions/renews the TLS
+// certificate for hostname on its own the moment a route matching that
+// host exists here; no apps.tls config is needed for the common case.
 func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams []string) error {
-	server, err := c.getPublicServer(ctx)
-	if err != nil {
-		return err
-	}
-
 	dials := make([]map[string]any, 0, len(upstreams))
 	for _, u := range upstreams {
 		dials = append(dials, map[string]any{"dial": u})
+	}
+	return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{
+		{
+			"handler":   "reverse_proxy",
+			"upstreams": dials,
+		},
+	})
+}
+
+// PutFileServerDomainRoute is PutDomainRoute for a static-strategy
+// deployment: those have no running container to reverse-proxy to, so
+// hostname is routed straight to rootDir via Caddy's file_server instead
+// (the domain-route equivalent of PutFileServerRoute).
+func (c *Client) PutFileServerDomainRoute(ctx context.Context, hostname, rootDir string) error {
+	return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{
+		{
+			"handler": "file_server",
+			"root":    rootDir,
+		},
+	})
+}
+
+// putDomainRouteHandlers adds or atomically replaces hostname's route
+// within the shared srv_public server block with the given handler chain.
+// Unlike PutRoute/PutFileServerRoute (one server block per port), every
+// verified custom domain shares a single server block listening on
+// :443/:80, distinguished by a host matcher -- so this is a
+// read-modify-write over that block's routes array rather than a single
+// upsertPath call.
+func (c *Client) putDomainRouteHandlers(ctx context.Context, hostname string, handlers []map[string]any) error {
+	server, err := c.getPublicServer(ctx)
+	if err != nil {
+		return err
 	}
 
 	routes, _ := server["routes"].([]any)
@@ -302,13 +326,8 @@ func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams 
 		}
 	}
 	filtered = append(filtered, map[string]any{
-		"match": []map[string]any{{"host": []string{hostname}}},
-		"handle": []map[string]any{
-			{
-				"handler":   "reverse_proxy",
-				"upstreams": dials,
-			},
-		},
+		"match":  []map[string]any{{"host": []string{hostname}}},
+		"handle": handlers,
 	})
 	server["routes"] = filtered
 
