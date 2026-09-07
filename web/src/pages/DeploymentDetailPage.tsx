@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement, type SVGProps } from "react";
 import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEntry, type Service, type WebhookEvent } from "../api";
 import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
@@ -10,8 +10,26 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useIsOwner } from "../userContext";
+import {
+  DeployIcon,
+  DialsIcon,
+  EmptyLedgerIcon,
+  GaugeIcon,
+  LedgerIcon,
+  StripChartIcon,
+  TerminalIcon,
+  TrashIcon,
+} from "../icons";
 
 type Tab = "overview" | "history" | "logs" | "terminal" | "env";
+
+const TAB_ICON: Record<Tab, (props: SVGProps<SVGSVGElement>) => ReactElement> = {
+  overview: GaugeIcon,
+  history: LedgerIcon,
+  logs: StripChartIcon,
+  terminal: TerminalIcon,
+  env: DialsIcon,
+};
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
   const isOwner = useIsOwner();
@@ -150,7 +168,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             </button>
           ) : (
             <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
-              {deploying ? "Deploying..." : "Deploy"}
+              <DeployIcon /> {deploying ? "Deploying..." : "Deploy"}
             </button>
           )}
           <button
@@ -181,7 +199,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           )}
           {isOwner && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-              Delete deployment
+              <TrashIcon /> Delete deployment
             </button>
           )}
         </div>
@@ -194,11 +212,15 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             Caddy serves the built files directly. */}
         {(["overview", "history", "logs", "terminal", "env"] as Tab[])
           .filter((t) => (t !== "logs" && t !== "terminal") || deployment?.build_strategy !== "static")
-          .map((t) => (
-          <div key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
-          </div>
-        ))}
+          .map((t) => {
+            const Icon = TAB_ICON[t];
+            return (
+              <div key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+                <Icon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+                {t[0].toUpperCase() + t.slice(1)}
+              </div>
+            );
+          })}
       </div>
 
       {tab === "overview" && (
@@ -228,7 +250,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {tab === "logs" && (
         <div className="card">
           {services.length === 0 ? (
-            <div className="empty-state">No services yet.</div>
+            <div className="empty-state">
+              <EmptyLedgerIcon />
+              <p>No services yet.</p>
+            </div>
           ) : (
             <>
               {services.length > 1 && (
@@ -257,7 +282,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {tab === "terminal" && (
         <div className="card">
           {services.length === 0 ? (
-            <div className="empty-state">No services yet.</div>
+            <div className="empty-state">
+              <EmptyLedgerIcon />
+              <p>No services yet.</p>
+            </div>
           ) : (
             <>
               {services.length > 1 && (
@@ -286,7 +314,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {tab === "env" && (
         <div className="card">
           {services.length === 0 ? (
-            <div className="empty-state">No services yet.</div>
+            <div className="empty-state">
+              <EmptyLedgerIcon />
+              <p>No services yet.</p>
+            </div>
           ) : (
             services.map((s) => (
               <div key={s.id} style={{ marginBottom: 20 }}>
@@ -837,7 +868,12 @@ function PreviewsCard({ projectId, productionDeployment }: { projectId: number; 
 function OverviewTab({ services, deployment }: { services: Service[]; deployment: Deployment | null }) {
   const isStatic = deployment?.build_strategy === "static";
   if (services.length === 0) {
-    return <div className="card empty-state">No services yet.</div>;
+    return (
+      <div className="card empty-state">
+        <EmptyLedgerIcon />
+        <p>No services yet.</p>
+      </div>
+    );
   }
   return (
     <>

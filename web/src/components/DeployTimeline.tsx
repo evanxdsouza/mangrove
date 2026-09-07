@@ -1,13 +1,14 @@
 import type { DeployHistory } from "../api";
 import { StatusPill } from "./StatusPill";
+import { EmptyLedgerIcon } from "../icons";
 
 const DOT_COLOR: Record<string, string> = {
-  success: "var(--green)",
+  success: "var(--verdigris)",
   failed: "var(--red)",
-  building: "var(--yellow)",
-  healthchecking: "var(--yellow)",
+  building: "var(--ochre)",
+  healthchecking: "var(--ochre)",
   queued: "var(--text-faint)",
-  rolled_back: "var(--yellow)",
+  rolled_back: "var(--ochre)",
 };
 
 export function DeployTimeline({
@@ -20,14 +21,20 @@ export function DeployTimeline({
   busyId: number | null;
 }) {
   if (history.length === 0) {
-    return <div className="empty-state">No deploys yet.</div>;
+    return (
+      <div className="empty-state">
+        <EmptyLedgerIcon />
+        <p>No deploys yet.</p>
+      </div>
+    );
   }
 
   return (
     <div className="timeline">
-      {history.map((h) => (
+      {history.map((h, i) => (
         <div className="timeline-item" key={h.id}>
           <div className="timeline-marker">
+            <span className="timeline-index">{history.length - i}</span>
             <div className="dot" style={{ background: DOT_COLOR[h.status] ?? "var(--text-faint)" }} />
           </div>
           <div className="timeline-body">
@@ -45,7 +52,7 @@ export function DeployTimeline({
               {new Date(h.started_at).toLocaleString()} &middot; triggered by {h.triggered_by}
             </div>
             {h.commit_message && <div className="timeline-msg">{h.commit_message}</div>}
-            {h.error_message && <div className="timeline-msg" style={{ color: "var(--red)" }}>{h.error_message}</div>}
+            {h.error_message && <div className="timeline-msg" style={{ color: "var(--red-bright)" }}>{h.error_message}</div>}
           </div>
           {h.status === "success" && !h.is_current && (
             <button className="btn btn-sm" disabled={busyId !== null} onClick={() => onRollback(h.id)}>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createSpring, prefersReducedMotion, type SpringHandle } from "../lib/spring";
+import { CloseIcon } from "../icons";
 
 // Lets a Cancel/Close button inside a modal's own content trigger the same
 // spring-out exit as clicking the backdrop or pressing Escape, instead of
@@ -62,6 +63,9 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
       }}
     >
       <div className="modal" style={{ opacity: progress, transform: `scale(${0.96 + 0.04 * progress})` }}>
+        <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
+          <CloseIcon />
+        </button>
         <h2>{title}</h2>
         <ModalCloseContext.Provider value={requestClose}>{children}</ModalCloseContext.Provider>
       </div>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type Deployment, type Project } from "../../api";
 import { useRouter } from "../../router";
-import { STATUS_COLORS } from "../../components/StatusPill";
+import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill";
 import { AddAppModal } from "../../components/simple/AddAppModal";
 import { GithubDeployWizard } from "../../components/GithubDeployWizard";
 import { plainStatus } from "./plainCopy";
+import { BranchIcon, EmptyLedgerIcon, PlusIcon } from "../../icons";
 
 interface FlatApp {
   deployment: Deployment;
@@ -49,10 +50,10 @@ export function SimpleAppsPage() {
         </div>
         <div className="flex gap-8">
           <button className="btn" onClick={() => setShowGithub(true)}>
-            + From GitHub
+            <BranchIcon /> From GitHub
           </button>
           <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-            + Add an app
+            <PlusIcon /> Add an app
           </button>
         </div>
       </div>
@@ -64,7 +65,11 @@ export function SimpleAppsPage() {
           <div className="spinner" />
         </div>
       ) : apps.length === 0 ? (
-        <div className="card empty-state">You haven't added an app yet. Add one to get started.</div>
+        <div className="card empty-state">
+          <EmptyLedgerIcon />
+          <p>You haven't added an app yet.</p>
+          <div className="field-hint">Add one to get started.</div>
+        </div>
       ) : (
         <div className="grid grid-2">
           {apps.map(({ deployment, projectId }) => (
@@ -78,7 +83,7 @@ export function SimpleAppsPage() {
                   {deployment.name}
                 </div>
                 <span className={`pill pill-${STATUS_COLORS[deployment.status] ?? "gray"}`}>
-                  <span className="pill-dot" />
+                  <span className={`pill-dot ${IN_PROGRESS_STATUSES.has(deployment.status) ? "beacon-live" : ""}`} />
                   {plainStatus(deployment.status)}
                 </span>
               </div>

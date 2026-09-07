@@ -1,28 +1,26 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type WorkspaceProjectCount } from "../api";
-import { useRouter } from "../router";
+import { useState, type FormEvent } from "react";
+import { api, ApiError } from "../api";
+import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
+import { useWorkspaces } from "../workspaceContext";
+import { CompassIcon, PlusIcon, TrashIcon } from "../icons";
 
 export function WorkspacesPage() {
   const { navigate } = useRouter();
-  const [workspaces, setWorkspaces] = useState<WorkspaceProjectCount[] | null>(null);
+  const { workspaces, setActiveWorkspaceId, reload } = useWorkspaces();
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const load = () => {
-    api
-      .get<WorkspaceProjectCount[]>("/api/workspaces")
-      .then((w) => setWorkspaces(w ?? []))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load workspaces"));
+  const view = (id: number) => {
+    setActiveWorkspaceId(id);
+    navigate("/");
   };
-
-  useEffect(load, []);
 
   const remove = async (id: number, name: string) => {
     if (!confirm(`Delete workspace "${name}"? Its projects will be moved to the default workspace.`)) return;
     try {
       await api.del(`/api/workspaces/${id}`);
-      load();
+      reload();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to delete workspace");
     }
@@ -30,26 +28,27 @@ export function WorkspacesPage() {
 
   return (
     <>
+      <div className="breadcrumb">
+        <Link to="/">Projects</Link> / Workspaces
+      </div>
       <div className="page-header">
         <div>
           <h1>Workspaces</h1>
-          <p>Group projects by environment (e.g. production, staging) or team.</p>
+          <p>Group projects by environment (e.g. production, staging) or team. Pick one from the sidebar's station switcher to scope Projects.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + New workspace
+          <PlusIcon /> New workspace
         </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
-      {workspaces === null ? (
+      {workspaces.length === 0 ? (
         <div className="center-loading">
           <div className="spinner" />
         </div>
-      ) : workspaces.length === 0 ? (
-        <div className="card empty-state">No workspaces yet.</div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card">
           <table>
             <thead>
               <tr>
@@ -64,12 +63,14 @@ export function WorkspacesPage() {
                 <tr key={w.workspace.id}>
                   <td>
                     <a
-                      href={`/projects?workspace=${w.workspace.id}`}
+                      href="/"
                       onClick={(e) => {
                         e.preventDefault();
-                        navigate(`/projects?workspace=${w.workspace.id}`);
+                        view(w.workspace.id);
                       }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
                     >
+                      <CompassIcon style={{ width: 14, height: 14, color: "var(--brass-dim)" }} />
                       {w.workspace.name}
                     </a>
                   </td>
@@ -77,8 +78,8 @@ export function WorkspacesPage() {
                   <td className="text-dim">{w.project_count}</td>
                   <td className="text-right">
                     {w.workspace.id !== 1 && (
-                      <button className="btn btn-sm" onClick={() => remove(w.workspace.id, w.workspace.name)}>
-                        Delete
+                      <button className="btn btn-sm btn-danger" onClick={() => remove(w.workspace.id, w.workspace.name)}>
+                        <TrashIcon /> Delete
                       </button>
                     )}
                   </td>
@@ -94,7 +95,7 @@ export function WorkspacesPage() {
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            load();
+            reload();
           }}
         />
       )}

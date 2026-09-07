@@ -23,12 +23,12 @@ const (
 var ErrNoPortsAvailable = errors.New("portregistry: no free ports in range")
 
 type Entry struct {
-	ID             int64
-	Port           int
-	Status         string
-	AllocationType string
-	ServiceID      *int64
-	Note           string
+	ID             int64  `json:"id"`
+	Port           int    `json:"port"`
+	Status         string `json:"status"`
+	AllocationType string `json:"allocation_type"`
+	ServiceID      *int64 `json:"service_id,omitempty"`
+	Note           string `json:"note"`
 }
 
 // AllocateForService reserves the lowest free port in [minPort, maxPort],

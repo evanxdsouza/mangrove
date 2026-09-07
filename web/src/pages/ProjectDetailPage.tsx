@@ -8,6 +8,8 @@ import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useIsOwner } from "../userContext";
+import { useWorkspaces } from "../workspaceContext";
+import { BranchIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
 
 interface ProjectRepoInfo {
   id: number;
@@ -19,6 +21,7 @@ interface ProjectRepoInfo {
 
 export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const isOwner = useIsOwner();
+  const { reload: reloadWorkspaces } = useWorkspaces();
   const [project, setProject] = useState<Project | null>(null);
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
   const [repo, setRepo] = useState<ProjectRepoInfo | null | undefined>(undefined); // undefined = not loaded yet, null = none linked
@@ -59,6 +62,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     try {
       await api.post(`/api/projects/${projectId}/workspace`, { workspace_id: workspaceId });
       load();
+      reloadWorkspaces();
     } catch (e) {
       setError(errMsg(e));
     }
@@ -78,17 +82,17 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         </div>
         <div className="flex gap-8">
           <button className="btn" onClick={() => setShowTemplates(true)}>
-            Deploy from template
+            <LedgerIcon /> Deploy from template
           </button>
           <button className="btn" onClick={() => setShowGithubWizard(true)}>
-            Deploy from GitHub
+            <BranchIcon /> Deploy from GitHub
           </button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + New deployment
+            <PlusIcon /> New deployment
           </button>
           {isOwner && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-              Delete project
+              <TrashIcon /> Delete project
             </button>
           )}
         </div>
@@ -101,9 +105,12 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           <div className="spinner" />
         </div>
       ) : deployments.length === 0 ? (
-        <div className="card empty-state">No deployments yet in this project.</div>
+        <div className="card empty-state">
+          <EmptyLedgerIcon />
+          <p>No deployments yet in this project.</p>
+        </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card">
           <table>
             <thead>
               <tr>
@@ -148,7 +155,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           </div>
           {!repo && (
             <button className="btn btn-sm" onClick={() => setShowLinkRepo(true)}>
-              Connect a repo
+              <BranchIcon /> Connect a repo
             </button>
           )}
         </div>
