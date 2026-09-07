@@ -334,6 +334,28 @@ func TestPutDomainRouteRoutesByHost(t *testing.T) {
 	}
 }
 
+func TestPutFileServerDomainRouteServesStaticFile(t *testing.T) {
+	c := requireCaddy(t)
+	requirePublicPorts(t, c)
+	ctx := context.Background()
+
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "index.html"), []byte("hello from static domain root"), 0644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	host := fmt.Sprintf("test-static-%d.example.invalid", time.Now().UnixNano())
+
+	if err := c.PutFileServerDomainRoute(ctx, host, rootDir); err != nil {
+		t.Fatalf("PutFileServerDomainRoute: %v", err)
+	}
+	t.Cleanup(func() { c.DeleteDomainRoute(ctx, host) })
+
+	body := getWithHostRetry(t, "127.0.0.1:80", host, 200)
+	if body != "hello from static domain root" {
+		t.Errorf("got body %q, want static file contents", body)
+	}
+}
+
 func TestPutDomainRouteDoesNotDisturbOtherHosts(t *testing.T) {
 	c := requireCaddy(t)
 	requirePublicPorts(t, c)

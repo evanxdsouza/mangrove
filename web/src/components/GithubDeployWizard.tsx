@@ -241,7 +241,12 @@ function ConfigureStep({
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
   const [composePath, setComposePath] = useState("docker-compose.yml");
   const [staticBuildCommand, setStaticBuildCommand] = useState("");
-  const [staticOutputDir, setStaticOutputDir] = useState("dist");
+  // Empty, not "dist": detection leaves this blank for a repo it found no
+  // build step for (index.html at the root, no package.json) -- there,
+  // "dist" would silently point the static copy at a subdirectory that
+  // doesn't exist instead of the repo root. Only a build-detected guess
+  // (or the user) should ever put a real value here.
+  const [staticOutputDir, setStaticOutputDir] = useState("");
   const [envVars, setEnvVars] = useState<DetectedEnvVar[]>([]);
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
 
@@ -273,8 +278,8 @@ function ConfigureStep({
         if (r.dockerfile_path) setDockerfilePath(r.dockerfile_path);
         if (r.compose_path) setComposePath(r.compose_path);
         if (r.suggested_port) setInternalPort(r.suggested_port);
-        if (r.static_build_command) setStaticBuildCommand(r.static_build_command);
-        if (r.static_output_dir) setStaticOutputDir(r.static_output_dir);
+        setStaticBuildCommand(r.static_build_command ?? "");
+        setStaticOutputDir(r.static_output_dir ?? "");
         setEnvVars(r.env_vars ?? []);
       })
       .catch((e) => setDetectError(errMsg(e)))
@@ -450,7 +455,13 @@ function ConfigureStep({
           </div>
           <div className="field">
             <label htmlFor="ghw-output-dir">Output directory</label>
-            <input id="ghw-output-dir" className="input mono" value={staticOutputDir} onChange={(e) => setStaticOutputDir(e.target.value)} />
+            <input
+              id="ghw-output-dir"
+              className="input mono"
+              placeholder="dist -- leave blank to use the repo root as-is"
+              value={staticOutputDir}
+              onChange={(e) => setStaticOutputDir(e.target.value)}
+            />
           </div>
         </>
       )}
