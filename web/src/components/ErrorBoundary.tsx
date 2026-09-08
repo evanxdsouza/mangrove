@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { AlertIcon } from "../icons";
 
 interface Props {
   children: ReactNode;
@@ -30,6 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="card empty-state">
+          <AlertIcon />
           <p>Something went wrong loading this page.</p>
           <p className="text-dim mono" style={{ fontSize: 12 }}>
             {this.state.error.message}

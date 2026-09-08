@@ -56,7 +56,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/apiclient/` | Typed HTTP client shared by `mangrove-tui`/`mangrove-mcp`. Cookie-based session, `~/.mangrove/session` on disk. | [clients.md](clients.md) |
 | `internal/webui/` | `embed.go` (`go:embed` of `dist/`) serving the built SPA. `dist/` is git-ignored except a `.gitkeep`; it only exists after `cd web && npm run build`. | README Quickstart |
 | `internal/config/` | `config.go` — every env var, all optional, defaults documented in the README's config table. | README |
-| `web/` | The React 19 SPA. Hand-rolled router/state (`router.tsx`, `userContext.tsx`, `uiMode.tsx`) — no react-router, no Redux. `src/pages/` (technical mode) + `src/pages/simple/` (simple mode, see [modes.md](modes.md)). | [architecture.md](architecture.md)#why-chi-why-no-cgo-sqlite-why-a-hand-rolled-frontend-router |
+| `web/` | The React 19 SPA. Hand-rolled router/state (`router.tsx`, `userContext.tsx`, `uiMode.tsx`, `workspaceContext.tsx` — the active-workspace "station switcher" state shared by `Layout.tsx` and `ProjectsPage.tsx`, persisted like `uiMode.tsx`) — no react-router, no Redux. `src/pages/` (technical mode) + `src/pages/simple/` (simple mode, see [modes.md](modes.md)). One hand-written design system in `src/styles.css` (CSS custom-property tokens, no Tailwind/MUI) plus an authored SVG icon set in `src/icons.tsx` — the "Field Station / Instrument Room" visual identity, recorded in [DESIGN.md](../DESIGN.md). Self-hosted fonts via `@fontsource/space-grotesk` + `@fontsource/ibm-plex-mono` (latin/latin-ext subsets only, imported in `main.tsx`) — no external font CDN. | [architecture.md](architecture.md)#why-chi-why-no-cgo-sqlite-why-a-hand-rolled-frontend-router, [DESIGN.md](../DESIGN.md) |
 | `e2e/` | Playwright suite (`tests/dashboard.spec.ts`) run via `run.sh` against a real (freshly built) Mangrove + real Docker + real Caddy — nothing mocked. | see "Verified status" below |
 | `deploy/systemd/` | The actual unit/slice files this project runs in production (`mangrove.service`, two memory-isolating slices, a Caddy drop-in, plus the optional `mangrove-mountd.service` + its `mangrove-storage-group.conf` drop-in for storage/NAS). | [deployment.md](deployment.md), [storage.md](storage.md) |
 | `setup.sh` | One-shot production installer for a fresh Debian/Ubuntu box — installs deps, builds, installs systemd units, prompts for VPS-vs-home (DDNS), creates the admin account. | README |
@@ -125,7 +125,10 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   `internal/store/` and `internal/models/` changes.
 - **New dashboard page**: `web/src/pages/`, wired into `web/src/router.tsx`
   and `web/src/App.tsx`'s route dispatch. If it needs a simple-mode
-  equivalent, see [modes.md](modes.md).
+  equivalent, see [modes.md](modes.md). Build it from the existing shared
+  classes in `web/src/styles.css` (`.card`, `.btn`, `.pill`, `.field`,
+  table/`.kv-list` etc.) and icons from `web/src/icons.tsx` rather than
+  one-off styles — see [DESIGN.md](../DESIGN.md) for the system.
 - **New client-exposed operation** (TUI/MCP): add to `internal/apiclient/`
   first (typed), then the specific client. MCP's tool surface is
   deliberately narrower than the full API — see [clients.md](clients.md)'s
@@ -137,18 +140,20 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   system disk itself is one bug away from being touched, and the doc
   explains exactly where that safety boundary lives and how it's tested.
 
-## Verified status (2026-09-04, updated same-day for the storage/NAS feature)
+## Verified status (2026-09-07, updated same-day for the dashboard redesign)
 
 Everything below was actually run on this box, not inferred from reading code.
 
 | Check | Command | Result |
 |---|---|---|
-| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` (now including `cmd/mangrove-mountd` and `internal/mountd`) |
+| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./...` | ✅ all packages pass, including new tests: `internal/mountd` (device-filtering/safety logic against fixture `lsblk` output, client/server wire-protocol round trip), `internal/executor` (`HostMount` + `PublicBind` against real Docker), `internal/orchestrator` (`storage_test.go` — NAS-share creation/guards against a fake mountd client) |
-| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds (one benign warning: main JS chunk is ~593 kB / 153 kB gzipped, over the 500 kB default budget — not an error, just an unaddressed code-splitting opportunity, and not new to this pass) |
+| Go tests | `go test ./...` | ✅ all packages pass (`internal/store` and `internal/portregistry` re-run uncached after adding missing `json` struct tags to `SessionInfo`/`portregistry.Entry` — see below) |
+| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds (one benign warning: main JS chunk is ~606 kB / 156 kB gzipped, over the 500 kB default budget — not an error, an unaddressed code-splitting opportunity, not new to this pass) |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
-| E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass; the storage/NAS feature has no e2e coverage of its own — see below) |
+| Design detector | `node <impeccable skill dir>/scripts/detect.mjs --json web/src` | ✅ clean (0 findings) |
+| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ two rounds — first round found and fixed: station-switcher label text running together (missing `display:block`), the mobile sidebar nav collapsing into an unreadable wrapped row-flow (now a proper off-canvas drawer behind a hamburger toggle), an independent-review pass then found and fixed: missing status beacons on the Projects ledger, `SessionInfo`/`portregistry.Entry` missing `json` struct tags (silently blanking the Admin page's Port Registry/Active Sessions columns — a real pre-existing backend bug, not just a style issue), the Admin/Server-health resource tiles reading as a generic same-size icon-grid (restructured into one divided instrument panel), and a table+action-button admin row overflowing its card at half-width (widened to full-width, plus `.card:has(> table)` now scrolls instead of clipping) |
+| E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass) |
 
 ### Known issues found
 

@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/webhook"
 )
@@ -96,6 +97,10 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 	if o.Proxy == nil {
 		return nil
 	}
+	dep, err := o.Store.GetDeployment(ctx, domain.DeploymentID)
+	if err != nil {
+		return fmt.Errorf("load deployment: %w", err)
+	}
 	services, err := o.Store.ListServices(ctx, domain.DeploymentID)
 	if err != nil {
 		return fmt.Errorf("load services: %w", err)
@@ -104,6 +109,25 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 		return fmt.Errorf("custom domains apply to single-service deployments only (compose stack has %d services)", len(services))
 	}
 	svc := services[0]
+
+	// A static-strategy deployment never runs a container (Caddy serves
+	// its build output directly -- see DeployStatic) so there's no
+	// upstream to reverse-proxy to; route straight to its current build's
+	// output directory instead.
+	if dep.BuildStrategy == string(executor.StrategyStatic) {
+		history, err := o.Store.GetCurrentDeployHistory(ctx, dep.ID)
+		if err != nil {
+			return fmt.Errorf("load current deploy history: %w", err)
+		}
+		artifact, err := o.Store.GetArtifactForServiceAtDeployHistory(ctx, history.ID, svc.ID)
+		if err != nil {
+			return fmt.Errorf("load static output path: %w", err)
+		}
+		if artifact.OutputPath == "" {
+			return fmt.Errorf("deployment %d has no built static output to route %s to", domain.DeploymentID, domain.Hostname)
+		}
+		return o.Proxy.PutFileServerDomainRoute(ctx, domain.Hostname, artifact.OutputPath)
+	}
 
 	ids := serviceContainerIDs(svc)
 	upstreams := make([]string, 0, len(ids))

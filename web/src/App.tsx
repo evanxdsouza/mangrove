@@ -16,6 +16,7 @@ import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
 import { UserProvider } from "./userContext";
 import { UiModeProvider, useUiMode } from "./uiMode";
+import { WorkspaceProvider } from "./workspaceContext";
 import { ThemeProvider } from "./theme";
 
 type AuthState =
@@ -108,9 +109,11 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
 
   return (
     <UserProvider user={user}>
-      <Layout user={user} onLogout={onLogout}>
-        <ErrorBoundary key={path}>{body}</ErrorBoundary>
-      </Layout>
+      <WorkspaceProvider>
+        <Layout user={user} onLogout={onLogout}>
+          <ErrorBoundary key={path}>{body}</ErrorBoundary>
+        </Layout>
+      </WorkspaceProvider>
     </UserProvider>
   );
 }

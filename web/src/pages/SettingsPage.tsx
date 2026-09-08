@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from "react";
 import { api, ApiError } from "../api";
-import { Logo } from "../components/Logo";
+import { GearIcon, MangroveIcon } from "../icons";
 import { THEMES, useTheme } from "../theme";
 
 export function SettingsPage() {
@@ -11,6 +11,7 @@ export function SettingsPage() {
           <h1>Settings</h1>
           <p>Manage your account.</p>
         </div>
+        <GearIcon style={{ width: 24, height: 24, color: "var(--brass-dim)" }} />
       </div>
 
       <div className="card">
@@ -31,7 +32,7 @@ function ThemePicker() {
   return (
     <>
       <p className="text-dim" style={{ marginTop: 0 }}>
-        Pick a color theme -- the logo re-colors to match, in the sidebar and the browser tab.
+        Pick an instrument accent -- the station mark re-colors to match, in the sidebar and the browser tab.
       </p>
       <div className="theme-grid">
         {THEMES.map((t) => (
@@ -40,9 +41,9 @@ function ThemePicker() {
             type="button"
             className={`theme-swatch ${theme === t.id ? "active" : ""}`}
             onClick={() => setTheme(t.id)}
-            style={{ "--accent": t.accent, "--green": t.green } as CSSProperties}
+            style={{ "--brass": t.accent } as CSSProperties}
           >
-            <Logo size={28} />
+            <MangroveIcon />
             {t.label}
           </button>
         ))}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type EnvVarEntry } from "../api";
 import { useIsOwner } from "../userContext";
+import { PlusIcon, TrashIcon } from "../icons";
 
 export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
   const isOwner = useIsOwner();
@@ -53,7 +54,7 @@ export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
               <span className="kv-key">{v.key}</span>
               <span className="kv-value text-dim">{v.is_secret ? "•••••••• (encrypted)" : v.value}</span>
               <button className="btn btn-sm btn-danger" onClick={() => remove(v.key)}>
-                Remove
+                <TrashIcon /> Remove
               </button>
             </div>
           ))}
@@ -89,7 +90,7 @@ export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
           </div>
         )}
         <button className="btn" type="submit" disabled={busy || !key}>
-          Add
+          <PlusIcon /> Add
         </button>
       </form>
     </div>

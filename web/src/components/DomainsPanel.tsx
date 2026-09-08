@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type CustomDomain } from "../api";
 import { useIsOwner } from "../userContext";
+import { EmptyLedgerIcon, GlobeIcon, PlusIcon, TrashIcon } from "../icons";
 
 function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
@@ -71,7 +72,9 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
 
   return (
     <div className="card">
-      <div className="card-title">Domains</div>
+      <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <GlobeIcon style={{ width: 13, height: 13 }} /> Domains
+      </div>
       <p className="text-dim" style={{ marginTop: 0 }}>
         Point a custom domain at this deployment. Mangrove terminates HTTPS for it automatically once verified.
       </p>
@@ -118,7 +121,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
                 {isOwner && (
                   <td>
                     <button className="btn btn-sm btn-danger" onClick={() => remove(d.id)} disabled={removingId === d.id}>
-                      {removingId === d.id ? "Removing..." : "Remove"}
+                      <TrashIcon /> {removingId === d.id ? "Removing..." : "Remove"}
                     </button>
                   </td>
                 )}
@@ -127,7 +130,12 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
           </tbody>
         </table>
       )}
-      {domains && domains.length === 0 && <div className="empty-state">No custom domains yet.</div>}
+      {domains && domains.length === 0 && (
+        <div className="empty-state">
+          <EmptyLedgerIcon />
+          <p>No custom domains yet.</p>
+        </div>
+      )}
 
       {isOwner && (
         <div className="field" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -142,7 +150,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
             />
           </div>
           <button className="btn btn-sm" onClick={add} disabled={adding || !hostname.trim()}>
-            {adding ? "Adding..." : "Add"}
+            <PlusIcon /> {adding ? "Adding..." : "Add"}
           </button>
         </div>
       )}

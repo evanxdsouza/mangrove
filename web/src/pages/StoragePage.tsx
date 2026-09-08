@@ -4,6 +4,7 @@ import { useIsOwner } from "../userContext";
 import { Link } from "../router";
 import { Modal } from "../components/Modal";
 import { slugify } from "./ProjectsPage";
+import { AlertIcon, CabinetIcon, EmptyLedgerIcon } from "../icons";
 
 function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : "Something went wrong";
@@ -29,8 +30,11 @@ export function StoragePage() {
   if (!isOwner) {
     return (
       <div className="card empty-state">
-        Storage/NAS sharing is an owner-only feature -- mounting drives and creating shares with plaintext credentials
-        is system-level access, same bar as Admin.
+        <AlertIcon />
+        <p>Storage/NAS sharing is an owner-only feature.</p>
+        <div className="field-hint">
+          Mounting drives and creating shares with plaintext credentials is system-level access, same bar as Admin.
+        </div>
       </div>
     );
   }
@@ -94,21 +98,29 @@ function StoragePageInner() {
   return (
     <div>
       <div className="page-header">
-        <h1>Storage</h1>
+        <div>
+          <h1>Storage</h1>
+          <p>
+            Turn a plugged-in drive into a network share (SMB) other devices on your LAN can connect to. Requires the
+            mangrove-mountd helper -- see docs/storage.md for how to install it.
+          </p>
+        </div>
+        <CabinetIcon style={{ width: 24, height: 24, color: "var(--brass-dim)" }} />
       </div>
-      <p className="text-dim" style={{ marginTop: 0 }}>
-        Turn a plugged-in drive into a network share (SMB) other devices on your LAN can connect to. Requires the
-        mangrove-mountd helper -- see docs/storage.md for how to install it.
-      </p>
       {error && <div className="error-banner">{error}</div>}
 
       {!drivesResp.helper_available ? (
         <div className="card empty-state">
-          The storage helper (mangrove-mountd) isn't reachable on this box. It's a separate, optional component --
-          see docs/storage.md for what it does and how to install it.
+          <EmptyLedgerIcon />
+          <p>The storage helper (mangrove-mountd) isn't reachable on this box.</p>
+          <div className="field-hint">It's a separate, optional component -- see docs/storage.md for what it does and how to install it.</div>
         </div>
       ) : drivesResp.drives.length === 0 ? (
-        <div className="card empty-state">No removable drives detected. Plug one in, then reload this page.</div>
+        <div className="card empty-state">
+          <EmptyLedgerIcon />
+          <p>No removable drives detected.</p>
+          <div className="field-hint">Plug one in, then reload this page.</div>
+        </div>
       ) : (
         <div className="grid grid-2">
           {drivesResp.drives.map((d) => {

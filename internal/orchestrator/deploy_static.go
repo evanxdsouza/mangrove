@@ -146,6 +146,10 @@ func (o *Orchestrator) DeployStatic(ctx context.Context, req DeployRequest) (dep
 
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "success", "")
 	o.Store.MarkDeployHistoryCurrent(ctx, dep.ID, historyID)
+	// pushCustomDomainRoute's static branch reads the deploy just marked
+	// current above to find this build's output path, so any verified
+	// custom domain route can only be correctly reapplied after that call.
+	o.reapplyCustomDomains(ctx, dep.ID)
 	o.Store.UpdateDeploymentStatus(ctx, dep.ID, "running")
 	o.Store.TouchDeploymentDeployed(ctx, dep.ID)
 

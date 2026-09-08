@@ -3,6 +3,7 @@ import { api, ApiError, type TemplateInstallResult, type TemplateSummary } from 
 import { Modal } from "./Modal";
 import { Link } from "../router";
 import { slugify } from "../pages/ProjectsPage";
+import { DeployIcon } from "../icons";
 
 export function TemplateGalleryModal({
   projectId,
@@ -198,7 +199,7 @@ function InstallTemplateForm({
             Back
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy || missingRequired}>
-            {busy ? "Deploying..." : "Deploy"}
+            <DeployIcon /> {busy ? "Deploying..." : "Deploy"}
           </button>
         </div>
       </form>

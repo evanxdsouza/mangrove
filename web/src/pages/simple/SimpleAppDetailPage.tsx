@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type Deployment } from "../../api";
 import { Link, useRouter } from "../../router";
 import { ConfirmModal } from "../../components/ConfirmModal";
-import { STATUS_COLORS } from "../../components/StatusPill";
+import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill";
 import { useIsOwner } from "../../userContext";
 import { useUiMode } from "../../uiMode";
 import { plainStatus } from "./plainCopy";
+import { DeployIcon, GearIcon, TrashIcon } from "../../icons";
 
 // The simple-mode counterpart to DeploymentDetailPage -- no raw env var
 // table, no CPU/memory numbers, no build-strategy internals. Just status,
@@ -49,7 +50,7 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
           {deployment && (
             <p className="flex gap-8" style={{ alignItems: "center" }}>
               <span className={`pill pill-${STATUS_COLORS[deployment.status] ?? "gray"}`}>
-                <span className="pill-dot" />
+                <span className={`pill-dot ${IN_PROGRESS_STATUSES.has(deployment.status) ? "beacon-live" : ""}`} />
                 {plainStatus(deployment.status)}
               </span>
             </p>
@@ -58,12 +59,12 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
         <div className="flex gap-8">
           {deployment?.status === "failed" && (
             <button className="btn btn-primary" onClick={retry} disabled={retrying}>
-              {retrying ? "Trying again..." : "Try again"}
+              <DeployIcon /> {retrying ? "Trying again..." : "Try again"}
             </button>
           )}
           {isOwner && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-              Remove app
+              <TrashIcon /> Remove app
             </button>
           )}
         </div>
@@ -82,7 +83,7 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
       </div>
 
       <button type="button" className="btn btn-sm" onClick={() => setMode("technical")}>
-        Switch to advanced view
+        <GearIcon /> Switch to advanced view
       </button>
 
       {showDelete && (

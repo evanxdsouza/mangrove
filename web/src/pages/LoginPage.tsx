@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
+import { MangroveIcon } from "../icons";
 
 export function LoginPage({ mode, onSuccess }: { mode: "setup" | "login"; onSuccess: () => void }) {
   const [email, setEmail] = useState("");
@@ -28,6 +29,7 @@ export function LoginPage({ mode, onSuccess }: { mode: "setup" | "login"; onSucc
   return (
     <div className="login-shell">
       <div className="card login-card">
+        <MangroveIcon className="login-mark" />
         <h1>{mode === "setup" ? "Welcome to Mangrove" : "Sign in"}</h1>
         <p className="subtitle">
           {mode === "setup"
