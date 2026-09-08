@@ -16,6 +16,7 @@ import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
 import { UserProvider } from "./userContext";
 import { UiModeProvider, useUiMode } from "./uiMode";
+import { ThemeProvider } from "./theme";
 
 type AuthState =
   | { kind: "loading" }
@@ -144,9 +145,11 @@ function AppInner() {
 export default function App() {
   return (
     <Router>
-      <UiModeProvider>
-        <AppInner />
-      </UiModeProvider>
+      <ThemeProvider>
+        <UiModeProvider>
+          <AppInner />
+        </UiModeProvider>
+      </ThemeProvider>
     </Router>
   );
 }

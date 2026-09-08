@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import { api, ApiError } from "../api";
+import { Logo } from "../components/Logo";
+import { THEMES, useTheme } from "../theme";
 
 export function SettingsPage() {
   return (
@@ -12,8 +14,38 @@ export function SettingsPage() {
       </div>
 
       <div className="card">
+        <div className="card-title">Theme</div>
+        <ThemePicker />
+      </div>
+
+      <div className="card">
         <div className="card-title">Change password</div>
         <ChangePasswordForm />
+      </div>
+    </>
+  );
+}
+
+function ThemePicker() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Pick a color theme -- the logo re-colors to match, in the sidebar and the browser tab.
+      </p>
+      <div className="theme-grid">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`theme-swatch ${theme === t.id ? "active" : ""}`}
+            onClick={() => setTheme(t.id)}
+            style={{ "--accent": t.accent, "--green": t.green } as CSSProperties}
+          >
+            <Logo size={28} />
+            {t.label}
+          </button>
+        ))}
       </div>
     </>
   );

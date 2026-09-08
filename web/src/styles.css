@@ -48,6 +48,74 @@
   --material-backdrop: rgba(5, 7, 12, 0.55);
 }
 
+/* Color themes: override the brand/accent palette only -- semantic colors
+   (--red/--yellow/--text*) stay constant across themes so status pills and
+   body copy keep the meaning a user has already learned. "ocean" is the
+   default and matches the :root values above, so it has no block of its
+   own. The logo (Logo.tsx) is drawn from --accent/--green rather than fixed
+   hex values, so it re-colors automatically with whichever theme is active;
+   see theme.tsx for the theme list and the localStorage-backed picker. */
+:root[data-theme="mangrove"] {
+  --bg: #0a120f;
+  --bg-elevated: #101a15;
+  --bg-card: #14201a;
+  --border: #1f3229;
+  --border-hover: #2c4638;
+  --text: #e7f0ea;
+  --text-dim: #8ea89b;
+  --text-faint: #5b7268;
+  --accent: #3ecf8e;
+  --accent-dim: #1f5c40;
+  --green: #a8e05f;
+  --material-sidebar: rgba(16, 26, 21, 0.72);
+  --material-backdrop: rgba(10, 18, 15, 0.55);
+}
+:root[data-theme="tidal"] {
+  --bg: #071016;
+  --bg-elevated: #0c1720;
+  --bg-card: #101f29;
+  --border: #1c3340;
+  --border-hover: #294657;
+  --text: #e3f2f5;
+  --text-dim: #7fa3ac;
+  --text-faint: #4f6d75;
+  --accent: #22b8cf;
+  --accent-dim: #155e69;
+  --green: #3ecf8e;
+  --material-sidebar: rgba(12, 23, 32, 0.72);
+  --material-backdrop: rgba(7, 16, 22, 0.55);
+}
+:root[data-theme="dusk"] {
+  --bg: #100b16;
+  --bg-elevated: #17111f;
+  --bg-card: #1d1628;
+  --border: #302440;
+  --border-hover: #423257;
+  --text: #efe6f5;
+  --text-dim: #a68fb8;
+  --text-faint: #6c5a7c;
+  --accent: #b06bff;
+  --accent-dim: #4a2a7a;
+  --green: #3ecf8e;
+  --material-sidebar: rgba(23, 17, 31, 0.72);
+  --material-backdrop: rgba(16, 11, 22, 0.55);
+}
+:root[data-theme="amber"] {
+  --bg: #140f0a;
+  --bg-elevated: #1d160e;
+  --bg-card: #241b11;
+  --border: #3a2a17;
+  --border-hover: #4f3a20;
+  --text: #f5ebde;
+  --text-dim: #b89b7a;
+  --text-faint: #7a664f;
+  --accent: #ff9457;
+  --accent-dim: #7a3d1c;
+  --green: #3ecf8e;
+  --material-sidebar: rgba(29, 22, 14, 0.72);
+  --material-backdrop: rgba(20, 15, 10, 0.55);
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; }
@@ -124,13 +192,6 @@ button, input, select {
   align-items: center;
   gap: 8px;
   color: var(--text);
-}
-
-.sidebar-brand-mark {
-  width: 22px; height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--green));
-  flex-shrink: 0;
 }
 
 .nav-link {
@@ -412,15 +473,6 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 .log-viewer .line:hover { background: rgba(255,255,255,0.03); }
 
-.terminal-panel {
-  background: #05070c;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
-  height: 420px;
-}
-.terminal-panel .xterm { height: 100%; }
-
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .tab {
   padding: 9px 14px;
@@ -451,6 +503,32 @@ tr.row-link:hover { background: var(--bg-elevated); }
   display: flex; align-items: center; justify-content: center;
   min-height: 200px;
 }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+}
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  transition: border-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+.theme-swatch:hover { border-color: var(--border-hover); }
+/* .active reads --accent from the swatch's own locally-scoped theme colors
+   (set inline in SettingsPage.tsx), not the globally active theme -- so the
+   selected swatch's ring always renders in its own brand color. */
+.theme-swatch.active { border-color: var(--accent); color: var(--text); }
 
 .text-dim { color: var(--text-dim); }
 .text-faint { color: var(--text-faint); }

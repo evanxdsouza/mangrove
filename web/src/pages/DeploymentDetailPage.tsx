@@ -4,14 +4,13 @@ import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
 import { DeployTimeline } from "../components/DeployTimeline";
 import { LogViewer } from "../components/LogViewer";
-import { ServiceTerminal } from "../components/Terminal";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useIsOwner } from "../userContext";
 
-type Tab = "overview" | "history" | "logs" | "terminal" | "env";
+type Tab = "overview" | "history" | "logs" | "env";
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
   const isOwner = useIsOwner();
@@ -190,10 +189,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {error && <div className="error-banner">{error}</div>}
 
       <div className="tabs">
-        {/* A static site has no container to stream logs from, or shell into --
+        {/* A static site has no container to stream logs from --
             Caddy serves the built files directly. */}
-        {(["overview", "history", "logs", "terminal", "env"] as Tab[])
-          .filter((t) => (t !== "logs" && t !== "terminal") || deployment?.build_strategy !== "static")
+        {(["overview", "history", "logs", "env"] as Tab[])
+          .filter((t) => t !== "logs" || deployment?.build_strategy !== "static")
           .map((t) => (
           <div key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
@@ -249,35 +248,6 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
                 </div>
               )}
               {selectedServiceId && <LogViewer serviceId={selectedServiceId} />}
-            </>
-          )}
-        </div>
-      )}
-
-      {tab === "terminal" && (
-        <div className="card">
-          {services.length === 0 ? (
-            <div className="empty-state">No services yet.</div>
-          ) : (
-            <>
-              {services.length > 1 && (
-                <div className="field">
-                  <label htmlFor="terminal-service-select">Service</label>
-                  <select
-                    id="terminal-service-select"
-                    className="input"
-                    value={selectedServiceId ?? undefined}
-                    onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                  >
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {selectedServiceId && <ServiceTerminal key={selectedServiceId} serviceId={selectedServiceId} />}
             </>
           )}
         </div>
