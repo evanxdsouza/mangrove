@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import { api, ApiError } from "../api";
-import { GearIcon } from "../icons";
+import { GearIcon, MangroveIcon } from "../icons";
+import { THEMES, useTheme } from "../theme";
 
 export function SettingsPage() {
   return (
@@ -14,8 +15,38 @@ export function SettingsPage() {
       </div>
 
       <div className="card">
+        <div className="card-title">Theme</div>
+        <ThemePicker />
+      </div>
+
+      <div className="card">
         <div className="card-title">Change password</div>
         <ChangePasswordForm />
+      </div>
+    </>
+  );
+}
+
+function ThemePicker() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Pick an instrument accent -- the station mark re-colors to match, in the sidebar and the browser tab.
+      </p>
+      <div className="theme-grid">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`theme-swatch ${theme === t.id ? "active" : ""}`}
+            onClick={() => setTheme(t.id)}
+            style={{ "--brass": t.accent } as CSSProperties}
+          >
+            <MangroveIcon />
+            {t.label}
+          </button>
+        ))}
       </div>
     </>
   );

@@ -123,6 +123,9 @@ Warm, low-saturation, instrument-panel colors on a near-black ground — nothing
 ### Named Rules
 **The One Accent Rule.** Brass is the only color used for interactive/primary emphasis. Verdigris, red, and ochre are exclusively status semantics (health/success/danger/in-progress) and are never repurposed as a second "brand" accent.
 
+### Instrument Accent Themes
+Settings > Theme (`web/src/theme.tsx`) lets an operator swap which single color plays the accent role — Brass (default), Copper, Iron, Silver, or Indigo — persisted to `localStorage` and applied by overriding just `--brass`/`--brass-bright`/`--brass-dim`/`--brass-wash`/`--brass-wash-strong` per `[data-theme="..."]` in `styles.css`. Surfaces (`--bg`/`--border`/`--text` tokens) and the semantic colors (verdigris/red/ochre) stay fixed across every theme. This doesn't loosen the One Accent Rule — it still holds at every instant a theme is active, since switching themes replaces which single accent is live rather than adding a second one alongside brass. The station/workspace mark (`MangroveIcon` in `src/icons.tsx`) and the browser-tab favicon both read the active accent (via `currentColor`/`var(--brass-dim)`, and a regenerated data: URI respectively), so they re-color with the chosen theme automatically.
+
 ## Typography
 
 **Display/UI Font:** Space Grotesk (self-hosted via `@fontsource`, latin + latin-ext subsets; system sans fallback stack)

@@ -89,7 +89,7 @@ helper isn't reachable" (`internal/mountd.ErrUnavailable`, surfaced as
    dashboard doesn't offer a Caddy-based access-control toggle that
    wouldn't do anything.
 3. From there it's a real, first-class deployment: logs, resource stats,
-   `docker exec`, an interactive terminal, stop/restart, and delete
+   `docker exec`, stop/restart, and delete
    (`DELETE /api/deployments/{id}`, no changes needed -- see
    `Orchestrator.DeleteDeployment`) all work exactly like any other
    deployment, because it *is* one.

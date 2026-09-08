@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mangrove</title>
+    <script>
+      // Applied before React mounts so a stored non-default theme doesn't
+      // flash the default palette for a frame -- theme.tsx's ThemeProvider
+      // re-applies (and keeps in sync) once it mounts.
+      try {
+        var t = localStorage.getItem("mangrove-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <!--

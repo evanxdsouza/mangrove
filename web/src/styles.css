@@ -83,6 +83,46 @@
   --material-backdrop: rgba(6, 4, 2, 0.6);
 }
 
+/* Color themes: override the instrument-accent variables only -- surfaces
+   (bg, border, and text tokens) and the semantic colors (--verdigris/--red/
+   --ochre) stay constant across themes, so the "warm near-black instrument
+   room" identity and status-pill meanings hold regardless of which accent
+   is active. This keeps DESIGN.md's One Accent Rule true at every instant:
+   switching themes swaps which single accent is live, it never adds a
+   second one alongside brass. "brass" is the default and matches the
+   :root values above, so it has no block of its own. See theme.tsx for
+   the theme list and the localStorage-backed picker (Settings > Theme);
+   the sidebar mark and favicon (MangroveIcon in icons.tsx) both read
+   currentColor/var(--brass-dim), so they re-color automatically. */
+:root[data-theme="copper"] {
+  --brass: #c97b4a;
+  --brass-bright: #e0966a;
+  --brass-dim: #7a4a2c;
+  --brass-wash: rgba(201, 123, 74, 0.14);
+  --brass-wash-strong: rgba(201, 123, 74, 0.24);
+}
+:root[data-theme="iron"] {
+  --brass: #8fa3b0;
+  --brass-bright: #b3c4cf;
+  --brass-dim: #56636b;
+  --brass-wash: rgba(143, 163, 176, 0.14);
+  --brass-wash-strong: rgba(143, 163, 176, 0.24);
+}
+:root[data-theme="silver"] {
+  --brass: #c7c2b4;
+  --brass-bright: #e0dccf;
+  --brass-dim: #7d786c;
+  --brass-wash: rgba(199, 194, 180, 0.14);
+  --brass-wash-strong: rgba(199, 194, 180, 0.24);
+}
+:root[data-theme="indigo"] {
+  --brass: #8b7fd1;
+  --brass-bright: #a99ee0;
+  --brass-dim: #55497a;
+  --brass-wash: rgba(139, 127, 209, 0.14);
+  --brass-wash-strong: rgba(139, 127, 209, 0.24);
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; }
@@ -432,6 +472,38 @@ button, input, select, textarea {
 @media (max-width: 860px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Theme picker (Settings > Theme)
+   ========================================================================== */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+}
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+.theme-swatch svg { width: 22px; height: 22px; color: var(--brass); }
+.theme-swatch:hover { border-color: var(--border-hover); }
+/* .active reads var(--brass) as scoped inline on the swatch itself (see
+   SettingsPage.tsx), not the globally active theme -- so a swatch's ring
+   and preview mark always render in its own accent, whichever is selected. */
+.theme-swatch.active { border-color: var(--brass); color: var(--text); }
 
 /* ==========================================================================
    Buttons / inputs / forms
@@ -815,15 +887,6 @@ tr.row-link:hover { background: var(--bg-elevated); }
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
-
-.terminal-panel {
-  background: var(--bg-recorder);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  height: 420px;
-}
-.terminal-panel .xterm { height: 100%; }
 
 /* ==========================================================================
    Tabs

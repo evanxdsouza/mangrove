@@ -4,30 +4,19 @@ import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
 import { DeployTimeline } from "../components/DeployTimeline";
 import { LogViewer } from "../components/LogViewer";
-import { ServiceTerminal } from "../components/Terminal";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useIsOwner } from "../userContext";
-import {
-  DeployIcon,
-  DialsIcon,
-  EmptyLedgerIcon,
-  GaugeIcon,
-  LedgerIcon,
-  StripChartIcon,
-  TerminalIcon,
-  TrashIcon,
-} from "../icons";
+import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, StripChartIcon, TrashIcon } from "../icons";
 
-type Tab = "overview" | "history" | "logs" | "terminal" | "env";
+type Tab = "overview" | "history" | "logs" | "env";
 
 const TAB_ICON: Record<Tab, (props: SVGProps<SVGSVGElement>) => ReactElement> = {
   overview: GaugeIcon,
   history: LedgerIcon,
   logs: StripChartIcon,
-  terminal: TerminalIcon,
   env: DialsIcon,
 };
 
@@ -208,10 +197,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       {error && <div className="error-banner">{error}</div>}
 
       <div className="tabs">
-        {/* A static site has no container to stream logs from, or shell into --
+        {/* A static site has no container to stream logs from --
             Caddy serves the built files directly. */}
-        {(["overview", "history", "logs", "terminal", "env"] as Tab[])
-          .filter((t) => (t !== "logs" && t !== "terminal") || deployment?.build_strategy !== "static")
+        {(["overview", "history", "logs", "env"] as Tab[])
+          .filter((t) => t !== "logs" || deployment?.build_strategy !== "static")
           .map((t) => {
             const Icon = TAB_ICON[t];
             return (
@@ -274,38 +263,6 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
                 </div>
               )}
               {selectedServiceId && <LogViewer serviceId={selectedServiceId} />}
-            </>
-          )}
-        </div>
-      )}
-
-      {tab === "terminal" && (
-        <div className="card">
-          {services.length === 0 ? (
-            <div className="empty-state">
-              <EmptyLedgerIcon />
-              <p>No services yet.</p>
-            </div>
-          ) : (
-            <>
-              {services.length > 1 && (
-                <div className="field">
-                  <label htmlFor="terminal-service-select">Service</label>
-                  <select
-                    id="terminal-service-select"
-                    className="input"
-                    value={selectedServiceId ?? undefined}
-                    onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                  >
-                    {services.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {selectedServiceId && <ServiceTerminal key={selectedServiceId} serviceId={selectedServiceId} />}
             </>
           )}
         </div>

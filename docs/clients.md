@@ -76,10 +76,9 @@ line at the bottom; the headline ones on the deployment detail view are
 `d` redeploy, `R` restart, `x` stop, `+`/`-` scale, `l` live logs, `h`
 history (`enter` on an entry rolls back to it), and `t` shell.
 
-**Shell (`t`)** opens the exact same interactive-terminal websocket the
-dashboard's xterm.js Terminal tab does (`GET
-/api/services/{id}/terminal` -- see architecture.md's "Lifecycle actions
-short of a full deploy") and bridges it to the real local terminal: raw
+**Shell (`t`)** opens the same interactive-terminal websocket described in
+architecture.md's "Lifecycle actions short of a full deploy" (`GET
+/api/services/{id}/terminal`) and bridges it to the real local terminal: raw
 mode via `golang.org/x/term`, `SIGWINCH` forwarded as resize control
 messages, the works. It hands the terminal over via bubbletea's
 `Program.ReleaseTerminal`/`RestoreTerminal` (see `cmd/mangrove-tui/

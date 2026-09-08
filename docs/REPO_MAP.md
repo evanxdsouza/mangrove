@@ -200,8 +200,9 @@ Everything below was actually run on this box, not inferred from reading code.
 - Actual container build/health-check/blue-green swap against a real target
   repo (covered by `go test ./internal/orchestrator/...` with a fake
   executor, and by e2e in principle — blocked by issue #1 above).
-- The interactive web terminal (xterm.js ↔ websocket ↔ `docker exec -it`
-  pty) — no browser-driven manual check was done this pass.
+- The interactive terminal websocket (`GET /api/services/{id}/terminal` ↔
+  `docker exec -it` pty), now only reachable via `mangrove-tui`'s shell view
+  since the dashboard's xterm.js Terminal tab was removed.
 - GitHub OAuth / webhook delivery against a real GitHub App (needs live
   credentials).
 - `setup.sh` end-to-end on a truly fresh box (this box already has Mangrove

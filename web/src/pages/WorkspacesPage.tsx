@@ -3,7 +3,7 @@ import { api, ApiError } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
 import { useWorkspaces } from "../workspaceContext";
-import { CompassIcon, PlusIcon, TrashIcon } from "../icons";
+import { MangroveIcon, PlusIcon, TrashIcon } from "../icons";
 
 export function WorkspacesPage() {
   const { navigate } = useRouter();
@@ -70,7 +70,7 @@ export function WorkspacesPage() {
                       }}
                       style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
                     >
-                      <CompassIcon style={{ width: 14, height: 14, color: "var(--brass-dim)" }} />
+                      <MangroveIcon style={{ width: 14, height: 14, color: "var(--brass-dim)" }} />
                       {w.workspace.name}
                     </a>
                   </td>

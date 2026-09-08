@@ -7,11 +7,11 @@ import {
   CabinetIcon,
   ChevronDownIcon,
   CloseIcon,
-  CompassIcon,
   DialsIcon,
   GaugeIcon,
   GearIcon,
   LedgerIcon,
+  MangroveIcon,
   MenuIcon,
   UserIcon,
 } from "../icons";
@@ -33,7 +33,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-topbar">
           <div className="sidebar-brand">
-            <CompassIcon className="sidebar-brand-mark" />
+            <MangroveIcon className="sidebar-brand-mark" />
             Mangrove
           </div>
           <button
@@ -173,7 +173,7 @@ function StationSwitcher() {
         aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
       >
-        <CompassIcon className="station-switcher-icon" />
+        <MangroveIcon className="station-switcher-icon" />
         <span className="station-switcher-labels">
           <span className="station-switcher-eyebrow">Station</span>
           <span className="station-switcher-name">{label}</span>

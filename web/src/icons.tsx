@@ -15,15 +15,20 @@ const base = {
   strokeLinejoin: "round" as const,
 };
 
-/** Compass rose -- the station/workspace mark and sidebar brand mark. */
-export function CompassIcon(props: IconProps) {
+/** Mangrove canopy over arching prop roots -- the station/workspace mark
+    and sidebar brand mark. Mangroves are defined by their above-water prop
+    roots, so the roots are the point of the glyph, not an afterthought
+    (replaces a compass rose, which read as generic/off-brand here). */
+export function MangroveIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 6.2 13.6 11 12 12l-1.6-1z" fill="currentColor" stroke="none" />
-      <path d="M12 17.8 10.4 13 12 12l1.6 1z" fill="currentColor" stroke="none" opacity="0.45" />
-      <circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" />
-      <path d="M12 3v1.4M12 19.6V21M3 12h1.4M19.6 12H21" />
+      <circle cx="12" cy="8.3" r="3.3" />
+      <circle cx="8.3" cy="10.3" r="2.4" />
+      <circle cx="15.7" cy="10.3" r="2.4" />
+      <path d="M12 13v3.4" />
+      <path d="M12 16.4c-2.6 1-4.4 2.1-5.4 4.1" />
+      <path d="M12 16.4v4.1" />
+      <path d="M12 16.4c2.6 1 4.4 2.1 5.4 4.1" />
     </svg>
   );
 }

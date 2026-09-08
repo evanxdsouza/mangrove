@@ -141,7 +141,7 @@ migration) is `POST /api/services/{id}/exec`, executed via
 output in memory -- a fit for a short migration command, not a long-running
 or high-volume process.
 
-For anything more than a one-off command there's a full interactive web
+For anything more than a one-off command there's a full interactive
 terminal: `GET /api/services/{id}/terminal` upgrades to a websocket
 (`internal/api/terminal.go`), backed by `executor.Executor.Terminal`
 (`internal/executor/docker.go`). Unlike `Exec`, this runs `docker exec -it`
@@ -154,14 +154,18 @@ is deliberately not JSON-wrapped: binary frames carry raw terminal bytes in
 both directions (keystrokes in, shell output back), and the one text frame
 the client ever sends is a `{"type":"resize"}` control message -- arbitrary
 shell output isn't guaranteed to be valid UTF-8, so it can't safely share a
-JSON-text channel the way the control message does. The frontend
-(`web/src/components/Terminal.tsx`) renders it with
-[xterm.js](https://xtermjs.org/), fit to its container via the addon-fit
-add-on. The shell itself prefers bash when present, falling back to sh --
-resolved with a `command -v bash && exec bash || exec sh` guard rather than
-a bare `exec bash || exec sh`, since POSIX sh (what `/bin/sh` actually is on
-most base images) exits the whole script the instant a bare `exec` names a
+JSON-text channel the way the control message does. The shell itself prefers
+bash when present, falling back to sh -- resolved with a
+`command -v bash && exec bash || exec sh` guard rather than a bare
+`exec bash || exec sh`, since POSIX sh (what `/bin/sh` actually is on most
+base images) exits the whole script the instant a bare `exec` names a
 command that isn't found, rather than letting `||` catch it.
+
+The dashboard no longer has a UI for this (the xterm.js-based Terminal tab
+was removed -- it didn't work reliably in the browser). The endpoint is kept
+because `mangrove-tui`'s shell view (`cmd/mangrove-tui/terminal.go`) dials
+the exact same websocket and bridges it to a real local pty; see
+clients.md.
 
 ## GitHub auto-deploy and staging environments
 
