@@ -125,12 +125,7 @@ func (o *Orchestrator) DeployStatic(ctx context.Context, req DeployRequest) (dep
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil {
 		routeOpts := proxy.RouteOptions{}
 		if dep.PasswordProtected {
-			hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
-			if err != nil {
-				o.Log.Warn("failed to load password hash for password-protected deployment; route will be unprotected", "deployment_id", dep.ID, "error", err)
-			} else {
-				routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
-			}
+			routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
 		}
 		if err := o.Proxy.PutFileServerRoute(ctx, *registeredPort, outputPath, routeOpts); err != nil {
 			return fail(fmt.Errorf("update proxy route: %w", err))

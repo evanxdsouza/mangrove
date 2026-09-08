@@ -45,6 +45,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/db/` | `db.go` (connection, WAL, migration runner) + `migrations/*.sql` (numbered, forward-only). | — |
 | `internal/portregistry/` | Allocates/releases host ports for public deployments from `MANGROVE_PORT_RANGE_MIN/_MAX`. | [architecture.md](architecture.md) |
 | `internal/auth/` | Password hashing (bcrypt), session cookie issuing/validation, role middleware (`RequireAuth`/`RequireOwner`). | [multi-user.md](multi-user.md) |
+| `internal/gateauth/` | Signed, tamper-evident tokens (sealed under the same master key as `internal/secrets`) backing a password-protected deployment's gate cookie and its cross-domain "continue with your Mangrove account" handoff -- no new DB table. | [protected-deployments.md](protected-deployments.md) |
 | `internal/github/` | GitHub OAuth, repo listing, commit-status posting, PR comment upsert. | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/templates/` | `templates.go` (loader + `validate()`, panics at `init()` on a bad template) + `data/*.json` (the templates themselves, embedded via `go:embed`). | [templates.md](templates.md) |
@@ -133,6 +134,14 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   first (typed), then the specific client. MCP's tool surface is
   deliberately narrower than the full API — see [clients.md](clients.md)'s
   "Deliberately not exposed" list before adding a destructive MCP tool.
+- **Protected deployments (the password/account gate page)**:
+  `internal/api/gate.go` + `gate_templates.go` (the gate/handoff/login HTTP
+  handlers and their standalone HTML), `internal/gateauth/` (the signed
+  tokens), `internal/proxy/caddy.go`'s `gateHandler` (how Caddy routes a
+  protected deployment there instead of straight to the app),
+  `internal/orchestrator/access.go`'s `GateUpstreams` (how Mangrove finds
+  the real app once a visitor is let through). Read
+  [protected-deployments.md](protected-deployments.md) first.
 - **Storage/NAS (mounting drives, SMB shares)**: `internal/mountd/` (the
   privileged helper's protocol/server/client) and
   `internal/orchestrator/storage.go` (the deployment-shaped share on top of
@@ -140,19 +149,18 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   system disk itself is one bug away from being touched, and the doc
   explains exactly where that safety boundary lives and how it's tested.
 
-## Verified status (2026-09-07, updated same-day for the dashboard redesign)
+## Verified status (2026-09-08, updated same-day for the protected-deployment gate page)
 
-Everything below was actually run on this box, not inferred from reading code.
+Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this change doesn't touch the pages they cover); the Go/frontend build+test rows were re-run fresh against the gate feature specifically.
 
 | Check | Command | Result |
 |---|---|---|
-| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
+| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/`, including the new `internal/gateauth` package |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./...` | ✅ all packages pass (`internal/store` and `internal/portregistry` re-run uncached after adding missing `json` struct tags to `SessionInfo`/`portregistry.Entry` — see below) |
-| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds (one benign warning: main JS chunk is ~606 kB / 156 kB gzipped, over the 500 kB default budget — not an error, an unaddressed code-splitting opportunity, not new to this pass) |
+| Go tests | `go test ./internal/...` | ✅ all packages pass, including new coverage: `internal/gateauth` (token round-trip/AAD/expiry/tamper), `internal/proxy` (`TestPutRouteWithPasswordProtectionRoutesToGate`, run for real against this box's live Caddy admin API, not skipped — confirmed with `-run`/`-v`), `internal/api` (`TestGate*`, a real-SQLite/real-secrets-box integration test exercising the full gate + cross-domain account-handoff flow end to end via `httptest`) |
+| Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
-| Design detector | `node <impeccable skill dir>/scripts/detect.mjs --json web/src` | ✅ clean (0 findings) |
-| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ two rounds — first round found and fixed: station-switcher label text running together (missing `display:block`), the mobile sidebar nav collapsing into an unreadable wrapped row-flow (now a proper off-canvas drawer behind a hamburger toggle), an independent-review pass then found and fixed: missing status beacons on the Projects ledger, `SessionInfo`/`portregistry.Entry` missing `json` struct tags (silently blanking the Admin page's Port Registry/Active Sessions columns — a real pre-existing backend bug, not just a style issue), the Admin/Server-health resource tiles reading as a generic same-size icon-grid (restructured into one divided instrument panel), and a table+action-button admin row overflowing its card at half-width (widened to full-width, plus `.card:has(> table)` now scrolls instead of clipping) |
+| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass, unchanged by this session — see "Not verified" below for what *this* change specifically hasn't been through a real browser for |
 | E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass) |
 
 ### Known issues found
@@ -209,6 +217,16 @@ Everything below was actually run on this box, not inferred from reading code.
   installed) — this now includes the new interactive storage/NAS install
   prompt, also unexercised.
 - Custom domains / DDNS (needs real DNS + router port-forwarding).
+- **The protected-deployment gate page in a real browser.** The full
+  handler logic (gate page render, wrong/right password, the three-hop
+  account handoff, cookie issuance) is covered by `internal/api`'s
+  `TestGate*` integration tests and `internal/proxy`'s Caddy-routing test,
+  but nobody has clicked through it in an actual browser against a real
+  deployed container -- `gateProxyThrough`'s happy path (successfully
+  streaming a real app's response, including a WebSocket upgrade) is
+  exercised only by Go's stdlib `httputil.ReverseProxy` being trusted to
+  do the right thing, not by an end-to-end request against a running
+  container. See [protected-deployments.md](protected-deployments.md).
 - **Storage/NAS against real hardware**: this environment has no removable
   block device to plug in, so `internal/mountd`'s `lsblk`/`mount`/`umount`
   invocations, the `dperson/samba` container's actual SMB behavior, and a

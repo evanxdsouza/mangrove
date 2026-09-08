@@ -58,6 +58,14 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Minute)) // generous; build/deploy calls can run long
 
+	// Intercepts every request Caddy forwards for a password-protected
+	// deployment (see internal/proxy/caddy.go's gateHandler) before any
+	// other routing happens -- those requests carry arbitrary paths (the
+	// protected app's own routes), so this can't be a normal chi route,
+	// it has to run ahead of route matching. Everything else passes
+	// straight through untouched. See internal/api/gate.go.
+	r.Use(s.gateIntercept)
+
 	r.Route("/api", func(r chi.Router) {
 		// Auth endpoints are the one part of /api that must work without an
 		// existing session -- there'd be no way to ever log in otherwise.
@@ -215,6 +223,19 @@ func (s *Server) Router() http.Handler {
 	// plan §5, and so the /api RequireAuth group can never accidentally
 	// swallow it.
 	r.Post("/webhooks/github/{token}", s.githubWebhook)
+
+	// The other deliberate exception to "no unauthenticated path": the
+	// far side of a protected deployment's "continue with your Mangrove
+	// account" handoff (see internal/api/gate.go). It self-checks the
+	// dashboard session cookie by hand rather than sitting behind
+	// RequireAuth, since it has to work for a signed-out visitor too (it's
+	// how they get *to* the login form). Rate-limited the same way
+	// /api/auth/login is, since it accepts a password.
+	r.Get("/gate-auth", s.gateAuthHandoff)
+	r.Group(func(r chi.Router) {
+		r.Use(httprate.LimitByIP(5, 5*time.Minute))
+		r.Post("/gate-auth", s.gateAuthLogin)
+	})
 
 	// Dashboard SPA: mounted last so it never shadows /api, /healthz, or /webhooks.
 	r.Handle("/*", webui.Handler())

@@ -357,7 +357,9 @@ function AccessControlCard({
     <div className="card">
       <div className="card-title">Access control</div>
       <p className="text-dim" style={{ marginTop: 0 }}>
-        Enforced at the Caddy proxy layer, independent of any auth the app itself has.
+        Enforced in front of the app itself, independent of any auth it has. A password-protected
+        deployment shows visitors a gate page where they can sign in with a Mangrove account or
+        enter the password below.
       </p>
       {error && <div className="error-banner">{error}</div>}
       {!isOwner && <div className="field-hint">Only an owner can change access control.</div>}

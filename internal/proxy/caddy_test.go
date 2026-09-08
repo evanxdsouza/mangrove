@@ -160,40 +160,60 @@ func TestDeleteRouteRemovesServer(t *testing.T) {
 	}
 }
 
-func TestPutRouteWithBasicAuthRequiresCredentials(t *testing.T) {
+// TestPutRouteWithPasswordProtectionRoutesToGate verifies that a
+// password-protected route sends traffic to Mangrove's own gate handler
+// (tagged with the deployment id header) instead of straight to the real
+// backend -- see gateHandler in caddy.go and internal/api/gate.go, which is
+// what actually decides whether to let a request through.
+func TestPutRouteWithPasswordProtectionRoutesToGate(t *testing.T) {
 	c := requireCaddy(t)
 	ctx := context.Background()
 
 	backend := startBackend(t, "secret content")
 	port := freePort(t)
 
-	// bcrypt hash of "testpassword123", generated once for this fixture.
-	const bcryptHash = "$2a$10$IAn/zt/YT8JBvFZORD82w.VzaDnqxPcOnMhE8pXoiW9J5IhqDw1ga"
+	var gotHeader string
+	gateLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	gateSrv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Mangrove-Gate-Deployment")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("gate page"))
+	})}
+	go gateSrv.Serve(gateLn)
+	t.Cleanup(func() { gateSrv.Close() })
+	gatePort := gateLn.Addr().(*net.TCPAddr).Port
 
 	if err := c.PutRoute(ctx, port, backend, RouteOptions{
 		PasswordProtected: true,
-		Username:          "mangrove",
-		BcryptHash:        bcryptHash,
+		GateDeploymentID:  42,
+		GatePort:          gatePort,
 	}); err != nil {
 		t.Fatalf("PutRoute: %v", err)
 	}
 	t.Cleanup(func() { c.DeleteRoute(ctx, port) })
 
 	deadline := time.Now().Add(5 * time.Second)
-	var status int
+	var body string
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
 		if err == nil {
-			status = resp.StatusCode
+			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if status != 0 {
+			if len(b) > 0 {
+				body = string(b)
 				break
 			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	if status != http.StatusUnauthorized {
-		t.Errorf("expected 401 without credentials, got %d", status)
+	if body != "gate page" {
+		t.Errorf("expected the route to be served by the gate stub, got body %q", body)
+	}
+	if gotHeader != "42" {
+		t.Errorf("expected the gate to see X-Mangrove-Gate-Deployment=42, got %q", gotHeader)
 	}
 }
 
@@ -323,7 +343,7 @@ func TestPutDomainRouteRoutesByHost(t *testing.T) {
 	backend := startBackend(t, "hello from custom domain backend")
 	host := fmt.Sprintf("test-%d.example.invalid", time.Now().UnixNano())
 
-	if err := c.PutDomainRoute(ctx, host, []string{backend}); err != nil {
+	if err := c.PutDomainRoute(ctx, host, []string{backend}, RouteOptions{}); err != nil {
 		t.Fatalf("PutDomainRoute: %v", err)
 	}
 	t.Cleanup(func() { c.DeleteDomainRoute(ctx, host) })
@@ -345,7 +365,7 @@ func TestPutFileServerDomainRouteServesStaticFile(t *testing.T) {
 	}
 	host := fmt.Sprintf("test-static-%d.example.invalid", time.Now().UnixNano())
 
-	if err := c.PutFileServerDomainRoute(ctx, host, rootDir); err != nil {
+	if err := c.PutFileServerDomainRoute(ctx, host, rootDir, RouteOptions{}); err != nil {
 		t.Fatalf("PutFileServerDomainRoute: %v", err)
 	}
 	t.Cleanup(func() { c.DeleteDomainRoute(ctx, host) })
@@ -366,11 +386,11 @@ func TestPutDomainRouteDoesNotDisturbOtherHosts(t *testing.T) {
 	hostA := fmt.Sprintf("test-a-%d.example.invalid", time.Now().UnixNano())
 	hostB := fmt.Sprintf("test-b-%d.example.invalid", time.Now().UnixNano())
 
-	if err := c.PutDomainRoute(ctx, hostA, []string{backendA}); err != nil {
+	if err := c.PutDomainRoute(ctx, hostA, []string{backendA}, RouteOptions{}); err != nil {
 		t.Fatalf("PutDomainRoute (A): %v", err)
 	}
 	t.Cleanup(func() { c.DeleteDomainRoute(ctx, hostA) })
-	if err := c.PutDomainRoute(ctx, hostB, []string{backendB}); err != nil {
+	if err := c.PutDomainRoute(ctx, hostB, []string{backendB}, RouteOptions{}); err != nil {
 		t.Fatalf("PutDomainRoute (B): %v", err)
 	}
 	t.Cleanup(func() { c.DeleteDomainRoute(ctx, hostB) })

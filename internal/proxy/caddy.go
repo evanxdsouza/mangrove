@@ -20,6 +20,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+
+	"github.com/evanxdsouza/mangrove/internal/gateauth"
 )
 
 const defaultAdminAddr = "http://127.0.0.1:2019"
@@ -39,12 +42,20 @@ func NewClient(adminAddr string) *Client {
 // RouteOptions configures a deployment's Caddy route beyond the basic
 // upstream proxy.
 type RouteOptions struct {
-	// PasswordProtected, when true, requires HTTP basic auth (via
-	// BcryptHash) before the reverse proxy handler runs -- enforced at the
-	// proxy layer, independent of whatever auth the app itself has.
+	// PasswordProtected, when true, routes through Mangrove's own gate
+	// handler (internal/api/gate.go) instead of straight to the real
+	// upstream/root -- Mangrove decides whether to let the request through
+	// (valid signed gate cookie) or serve the "this deployment is
+	// protected" page, then itself proxies through on success. Enforced
+	// this way (not Caddy's http_basic auth) so the gate can be a styled
+	// page with a "continue with your Mangrove account" option, not just a
+	// native browser credentials popup -- see docs/protected-deployments.md.
 	PasswordProtected bool
-	Username          string
-	BcryptHash        string // bcrypt hash, as Caddy's http_basic provider requires (not argon2id)
+	// GateDeploymentID/GatePort identify which deployment and where
+	// Mangrove's own loopback API listens -- only meaningful when
+	// PasswordProtected is true.
+	GateDeploymentID int64
+	GatePort         int
 }
 
 // EnsureBaseConfig makes sure apps.http.servers exists in Caddy's running
@@ -101,23 +112,26 @@ func (c *Client) load(ctx context.Context, config any) error {
 	return nil
 }
 
-// authHandlers returns the leading Caddy handler chain enforcing HTTP basic
-// auth when opts.PasswordProtected is set -- shared by PutRoute and
-// PutFileServerRoute so password protection works the same way regardless
-// of what's serving the actual response.
-func authHandlers(opts RouteOptions) []map[string]any {
-	if !opts.PasswordProtected {
-		return nil
-	}
-	return []map[string]any{
-		{
-			"handler": "authentication",
-			"providers": map[string]any{
-				"http_basic": map[string]any{
-					"accounts": []map[string]any{
-						{"username": opts.Username, "password": opts.BcryptHash},
-					},
-					"realm": "mangrove",
+// gateHandler returns the single Caddy handler a password-protected route
+// gets in place of its real reverse_proxy/file_server handler: an
+// unconditional reverse proxy to Mangrove's own loopback API, tagged with
+// which deployment this is via a forcibly-set header (Caddy's "set" always
+// overwrites any client-supplied value with the same name, so this can't be
+// spoofed by a visitor -- and Mangrove's API port is loopback-only, so it
+// can't be reached except through this route). Mangrove decides whether to
+// let the request through or serve the gate page, and if it lets it
+// through, proxies on to the real upstream/root itself -- see
+// internal/api/gate.go and docs/protected-deployments.md.
+func gateHandler(opts RouteOptions) map[string]any {
+	return map[string]any{
+		"handler": "reverse_proxy",
+		"upstreams": []map[string]any{
+			{"dial": fmt.Sprintf("127.0.0.1:%d", opts.GatePort)},
+		},
+		"headers": map[string]any{
+			"request": map[string]any{
+				"set": map[string][]string{
+					gateauth.HeaderDeploymentID: {strconv.FormatInt(opts.GateDeploymentID, 10)},
 				},
 			},
 		},
@@ -137,28 +151,34 @@ func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, op
 // PutRoute. The swap is atomic either way -- a single PATCH/PUT replaces
 // the whole route, so traffic never splits between old and new replicas.
 func (c *Client) PutRouteMulti(ctx context.Context, port int, upstreams []string, opts RouteOptions) error {
-	dials := make([]map[string]any, 0, len(upstreams))
-	for _, u := range upstreams {
-		dials = append(dials, map[string]any{"dial": u})
-	}
-
-	handlers := authHandlers(opts)
-	handlers = append(handlers, map[string]any{
-		"handler":   "reverse_proxy",
-		"upstreams": dials,
-		// Nest's edge terminates HTTPS for visitors but forwards plain HTTP
-		// to this box with no indication of the original scheme. Without
-		// this, backend apps (Ghost, WordPress, etc.) assume HTTP and can
-		// misbuild absolute URLs or, worse, redirect-loop enforcing HTTPS
-		// against a connection that's actually HTTP.
-		"headers": map[string]any{
-			"request": map[string]any{
-				"set": map[string][]string{
-					"X-Forwarded-Proto": {"https"},
+	var handlers []map[string]any
+	if opts.PasswordProtected {
+		// Traffic must not reach the real app until the gate says so -- the
+		// gate handler is the *only* handler on this route, not a leading
+		// check in front of the normal reverse_proxy handler.
+		handlers = []map[string]any{gateHandler(opts)}
+	} else {
+		dials := make([]map[string]any, 0, len(upstreams))
+		for _, u := range upstreams {
+			dials = append(dials, map[string]any{"dial": u})
+		}
+		handlers = []map[string]any{{
+			"handler":   "reverse_proxy",
+			"upstreams": dials,
+			// Nest's edge terminates HTTPS for visitors but forwards plain HTTP
+			// to this box with no indication of the original scheme. Without
+			// this, backend apps (Ghost, WordPress, etc.) assume HTTP and can
+			// misbuild absolute URLs or, worse, redirect-loop enforcing HTTPS
+			// against a connection that's actually HTTP.
+			"headers": map[string]any{
+				"request": map[string]any{
+					"set": map[string][]string{
+						"X-Forwarded-Proto": {"https"},
+					},
 				},
 			},
-		},
-	})
+		}}
+	}
 
 	server := map[string]any{
 		"listen": []string{fmt.Sprintf(":%d", port)},
@@ -178,11 +198,15 @@ func (c *Client) PutRouteMulti(ctx context.Context, port int, upstreams []string
 // reverse-proxy to. rootDir must be an absolute host path reachable by the
 // Caddy process (see executor.DockerExecutor.StaticSitesDir).
 func (c *Client) PutFileServerRoute(ctx context.Context, port int, rootDir string, opts RouteOptions) error {
-	handlers := authHandlers(opts)
-	handlers = append(handlers, map[string]any{
-		"handler": "file_server",
-		"root":    rootDir,
-	})
+	var handlers []map[string]any
+	if opts.PasswordProtected {
+		handlers = []map[string]any{gateHandler(opts)}
+	} else {
+		handlers = []map[string]any{{
+			"handler": "file_server",
+			"root":    rootDir,
+		}}
+	}
 
 	server := map[string]any{
 		"listen": []string{fmt.Sprintf(":%d", port)},
@@ -279,7 +303,10 @@ func (c *Client) getPublicServer(ctx context.Context) (map[string]any, error) {
 // PutRouteMulti's replica handling). Caddy provisions/renews the TLS
 // certificate for hostname on its own the moment a route matching that
 // host exists here; no apps.tls config is needed for the common case.
-func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams []string) error {
+func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams []string, opts RouteOptions) error {
+	if opts.PasswordProtected {
+		return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{gateHandler(opts)})
+	}
 	dials := make([]map[string]any, 0, len(upstreams))
 	for _, u := range upstreams {
 		dials = append(dials, map[string]any{"dial": u})
@@ -296,7 +323,10 @@ func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams 
 // deployment: those have no running container to reverse-proxy to, so
 // hostname is routed straight to rootDir via Caddy's file_server instead
 // (the domain-route equivalent of PutFileServerRoute).
-func (c *Client) PutFileServerDomainRoute(ctx context.Context, hostname, rootDir string) error {
+func (c *Client) PutFileServerDomainRoute(ctx context.Context, hostname, rootDir string, opts RouteOptions) error {
+	if opts.PasswordProtected {
+		return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{gateHandler(opts)})
+	}
 	return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{
 		{
 			"handler": "file_server",

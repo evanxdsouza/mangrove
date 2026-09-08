@@ -8,6 +8,7 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
+	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/webhook"
 )
 
@@ -110,6 +111,11 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 	}
 	svc := services[0]
 
+	opts := proxy.RouteOptions{}
+	if dep.PasswordProtected {
+		opts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
+	}
+
 	// A static-strategy deployment never runs a container (Caddy serves
 	// its build output directly -- see DeployStatic) so there's no
 	// upstream to reverse-proxy to; route straight to its current build's
@@ -123,10 +129,10 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 		if err != nil {
 			return fmt.Errorf("load static output path: %w", err)
 		}
-		if artifact.OutputPath == "" {
+		if artifact.OutputPath == "" && !opts.PasswordProtected {
 			return fmt.Errorf("deployment %d has no built static output to route %s to", domain.DeploymentID, domain.Hostname)
 		}
-		return o.Proxy.PutFileServerDomainRoute(ctx, domain.Hostname, artifact.OutputPath)
+		return o.Proxy.PutFileServerDomainRoute(ctx, domain.Hostname, artifact.OutputPath, opts)
 	}
 
 	ids := serviceContainerIDs(svc)
@@ -139,10 +145,10 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 		}
 		upstreams = append(upstreams, addr)
 	}
-	if len(upstreams) == 0 {
+	if len(upstreams) == 0 && !opts.PasswordProtected {
 		return fmt.Errorf("deployment %d has no running container to route %s to", domain.DeploymentID, domain.Hostname)
 	}
-	return o.Proxy.PutDomainRoute(ctx, domain.Hostname, upstreams)
+	return o.Proxy.PutDomainRoute(ctx, domain.Hostname, upstreams, opts)
 }
 
 // reapplyCustomDomains re-pushes every verified custom domain's Caddy route
