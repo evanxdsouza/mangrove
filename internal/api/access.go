@@ -13,9 +13,11 @@ type setAccessRequest struct {
 }
 
 // setDeploymentAccess is the per-deployment public/internal-only and
-// password-protection toggle -- enforced at the Caddy proxy layer,
-// independent of whatever auth the deployed app itself has. Applies
-// immediately to a running deployment, not just on the next deploy.
+// password-protection toggle. Password protection is enforced in front of
+// the deployed app entirely (a styled gate page offering the password or a
+// Mangrove account sign-in, see internal/api/gate.go), independent of
+// whatever auth the app itself has. Applies immediately to a running
+// deployment, not just on the next deploy.
 func (s *Server) setDeploymentAccess(w http.ResponseWriter, r *http.Request) {
 	deploymentID, err := parseID(chi.URLParam(r, "deploymentID"))
 	if err != nil {

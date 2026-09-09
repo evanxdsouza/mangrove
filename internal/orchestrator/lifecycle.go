@@ -128,12 +128,7 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 			if len(upstreams) > 0 {
 				routeOpts := proxy.RouteOptions{}
 				if dep.PasswordProtected {
-					hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
-					if err != nil {
-						o.Log.Warn("restart deployment: failed to load password hash; route will be unprotected", "deployment_id", dep.ID, "error", err)
-					} else {
-						routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
-					}
+					routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
 				}
 				if err := o.Proxy.PutRouteMulti(ctx, *svc.HostPort, upstreams, routeOpts); err != nil {
 					o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)

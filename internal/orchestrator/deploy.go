@@ -377,12 +377,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil && runResult.ContainerAddr != "" {
 		routeOpts := proxy.RouteOptions{}
 		if dep.PasswordProtected {
-			hash, err := o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
-			if err != nil {
-				o.Log.Warn("failed to load password hash for password-protected deployment; route will be unprotected", "deployment_id", dep.ID, "error", err)
-			} else {
-				routeOpts = proxy.RouteOptions{PasswordProtected: true, Username: basicAuthUsername, BcryptHash: hash}
-			}
+			routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
 		}
 		if err := o.Proxy.PutRouteMulti(ctx, *registeredPort, upstreams, routeOpts); err != nil {
 			o.teardownContainers(ctx, newContainerIDs)
