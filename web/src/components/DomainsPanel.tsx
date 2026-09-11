@@ -7,11 +7,15 @@ function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
 }
 
-// DomainsPanel lets an owner point a real domain at this deployment --
-// Mangrove programs a host-matched Caddy route once the domain's DNS TXT
-// record proves ownership, and Caddy provisions/renews the TLS
-// certificate on its own from there (see internal/proxy/caddy.go's
-// PutDomainRoute and internal/orchestrator/domains.go).
+// DomainsPanel lets an owner point a real domain at this deployment. In
+// the default mode, Mangrove programs a host-matched Caddy route once the
+// domain's DNS TXT record proves ownership, and Caddy provisions/renews
+// the TLS certificate on its own from there. In "port" mode (see
+// config.Config.CustomDomainMode) there's no DNS step -- each domain gets
+// its own dedicated port, live immediately, for the caller to register in
+// an external domain->port dashboard (e.g. Hack Club Nest) themselves. See
+// internal/proxy/caddy.go's PutDomainRoute/PutRoute and
+// internal/orchestrator/domains.go.
 export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
   const isOwner = useIsOwner();
   const [domains, setDomains] = useState<CustomDomain[] | null>(null);
@@ -76,7 +80,9 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
         <GlobeIcon style={{ width: 13, height: 13 }} /> Domains
       </div>
       <p className="text-dim" style={{ marginTop: 0 }}>
-        Point a custom domain at this deployment. Mangrove terminates HTTPS for it automatically once verified.
+        Point a custom domain at this deployment. Mangrove terminates HTTPS for it automatically once verified, or
+        (if this box is only reachable via a domain→port mapping, e.g. Hack Club Nest) gives the domain its own
+        dedicated port to register there instead.
       </p>
       {error && <div className="error-banner">{error}</div>}
 
@@ -94,7 +100,18 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
               <tr key={d.id}>
                 <td>{d.hostname}</td>
                 <td>
-                  {d.verified ? (
+                  {d.routing_mode === "port" ? (
+                    <div>
+                      <span className="pill pill-green">
+                        <span className="pill-dot" />
+                        Live on port {d.port}
+                      </span>
+                      <div className="field-hint" style={{ marginTop: 4 }}>
+                        Register <code>{d.hostname}</code> → port <code>{d.port}</code> in your host's dashboard
+                        (e.g. Nest) to point it here. No DNS verification needed.
+                      </div>
+                    </div>
+                  ) : d.verified ? (
                     <span className="pill pill-green">
                       <span className="pill-dot" />
                       Verified

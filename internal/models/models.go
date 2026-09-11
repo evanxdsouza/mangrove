@@ -153,12 +153,20 @@ type EnvVar struct {
 // CustomDomain maps a hostname to a deployment -- see the Domains
 // dashboard, internal/orchestrator/domains.go, and
 // internal/proxy/caddy.go's PutDomainRoute.
+//
+// RoutingMode is "auto_tls" (default: host-matched route on Caddy's shared
+// :80/:443 block, gated on VerificationToken/Verified) or "port" (a
+// dedicated Port allocated from the same pool as service ports, live
+// immediately -- see config.Config.CustomDomainMode). Port is only set in
+// "port" mode.
 type CustomDomain struct {
 	ID                int64     `json:"id"`
 	DeploymentID      int64     `json:"deployment_id"`
 	Hostname          string    `json:"hostname"`
 	VerificationToken string    `json:"verification_token"`
 	Verified          bool      `json:"verified"`
+	RoutingMode       string    `json:"routing_mode"`
+	Port              *int      `json:"port,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 

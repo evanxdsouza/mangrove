@@ -228,6 +228,13 @@ export interface CustomDomain {
   hostname: string;
   verification_token: string;
   verified: boolean;
+  // "auto_tls" (default): host-matched route on Caddy's shared :80/:443
+  // block, DNS-TXT verified, automatic HTTPS. "port": a dedicated port
+  // routed exactly like the deployment's own base port -- no verification
+  // step, live immediately -- for a box only reachable via a domain->port
+  // mapping registered elsewhere (e.g. Hack Club Nest's dashboard).
+  routing_mode: "auto_tls" | "port";
+  port?: number;
   created_at: string;
 }
 

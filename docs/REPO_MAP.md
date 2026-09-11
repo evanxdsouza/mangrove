@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-04, against commit `959124d` on branch `docs-refresh` (updated same-day after adding the storage/NAS feature -- see the "Verified status" section's second entry below).
+Last verified: 2026-09-11, updated same-day after adding custom domains' `MANGROVE_CUSTOM_DOMAIN_MODE=port` routing mode -- see the "Verified status" section below.
 
 ## What this is
 
@@ -148,16 +148,28 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   it). Read [storage.md](storage.md) first — this is the one place the
   system disk itself is one bug away from being touched, and the doc
   explains exactly where that safety boundary lives and how it's tested.
+- **Custom domains (the "Domains" tab)**: `internal/orchestrator/domains.go`
+  (`AddCustomDomain`/`VerifyCustomDomain`/`pushCustomDomainRoute`), backed
+  by either `internal/proxy/caddy.go`'s shared `srv_public` host-matched
+  routes (default `auto_tls` mode — needs `:80`/`:443` actually reachable
+  from the internet) or, when `MANGROVE_CUSTOM_DOMAIN_MODE=port`
+  (`internal/config/config.go`), a dedicated port from
+  `internal/portregistry`'s `AllocateForCustomDomain`, routed exactly like
+  a deployment's own base port — the model a box behind Hack Club Nest
+  (or anything else that only forwards a registered domain→port pair) has
+  to use, since it's never reachable on `:80`/`:443` directly. Read
+  [deployment.md](deployment.md#custom-domains) first, specifically the
+  "Custom domains on Nest" subsection for the `port` mode.
 
-## Verified status (2026-09-08, updated same-day for the protected-deployment gate page)
+## Verified status (2026-09-11, updated same-day for custom-domain port-routing mode)
 
-Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this change doesn't touch the pages they cover); the Go/frontend build+test rows were re-run fresh against the gate feature specifically.
+Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this change doesn't touch the pages they cover); the Go/frontend build+test rows were re-run fresh against the custom-domain port-routing-mode feature specifically.
 
 | Check | Command | Result |
 |---|---|---|
-| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/`, including the new `internal/gateauth` package |
+| Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./internal/...` | ✅ all packages pass, including new coverage: `internal/gateauth` (token round-trip/AAD/expiry/tamper), `internal/proxy` (`TestPutRouteWithPasswordProtectionRoutesToGate`, run for real against this box's live Caddy admin API, not skipped — confirmed with `-run`/`-v`), `internal/api` (`TestGate*`, a real-SQLite/real-secrets-box integration test exercising the full gate + cross-domain account-handoff flow end to end via `httptest`) |
+| Go tests | `go test ./internal/...` | ✅ all packages pass, including new coverage in `internal/orchestrator/domains_test.go` (`TestAddCustomDomainPortModeIsLiveImmediately`, `TestRemoveCustomDomainPortModeReleasesPort`, `TestVerifyCustomDomainPortModeIsANoOp`, plus a default-mode regression test) and an updated `internal/db` migration-count test |
 | Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
 | Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass, unchanged by this session — see "Not verified" below for what *this* change specifically hasn't been through a real browser for |
@@ -216,7 +228,13 @@ Everything below was actually run on this box, not inferred from reading code. T
 - `setup.sh` end-to-end on a truly fresh box (this box already has Mangrove
   installed) — this now includes the new interactive storage/NAS install
   prompt, also unexercised.
-- Custom domains / DDNS (needs real DNS + router port-forwarding).
+- DDNS (needs a real router with port-forwarding). Custom domains'
+  default `auto_tls` mode also needs real DNS (unverified beyond what
+  already existed). The new `MANGROVE_CUSTOM_DOMAIN_MODE=port` mode is
+  covered by `internal/orchestrator/domains_test.go` against a fake
+  executor and `o.Proxy == nil` (so the DB/port-allocation side is
+  exercised, but not a real Caddy `PutRoute` call or an actual Nest
+  domain→port registration) -- see [deployment.md](deployment.md#custom-domains-on-nest-or-anywhere-else-80443-isnt-reachable).
 - **The protected-deployment gate page in a real browser.** The full
   handler logic (gate page render, wrong/right password, the three-hop
   account handoff, cookie issuance) is covered by `internal/api`'s

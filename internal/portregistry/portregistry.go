@@ -59,6 +59,34 @@ func AllocateForService(ctx context.Context, db *sql.DB, serviceID int64, minPor
 	return port, tx.Commit()
 }
 
+// AllocateForCustomDomain reserves the lowest free port in [minPort,
+// maxPort] for a "port"-mode custom domain (see config.Config's
+// CustomDomainMode doc comment) -- unlike AllocateForService, this doesn't
+// touch services.host_port; the port belongs to the domain row, not a
+// service, and note records which domain so the admin port-registry view
+// can explain it.
+func AllocateForCustomDomain(ctx context.Context, db *sql.DB, domainID int64, minPort, maxPort int) (int, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	port, err := firstFreePort(ctx, tx, minPort, maxPort)
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO port_registry (port, status, allocation_type, note) VALUES (?, 'allocated', 'custom_domain_port', ?)`,
+		port, fmt.Sprintf("custom_domain:%d", domainID),
+	); err != nil {
+		return 0, fmt.Errorf("insert port_registry row: %w", err)
+	}
+
+	return port, tx.Commit()
+}
+
 // RegisterSystemPort records a fixed, never-reassignable port (Mangrove's
 // own webhook/API port) so the allocator's collision check sees it as
 // taken. It is a no-op if already registered.
