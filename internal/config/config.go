@@ -94,6 +94,28 @@ type Config struct {
 	// only applied to deployment routes, not Mangrove's own). No trailing
 	// slash, e.g. "https://mangrove.example.com".
 	PublicURL string
+
+	// CustomDomainMode selects how a deployment's "Domains" tab custom
+	// domains get routed: "auto_tls" (default) programs a host-matched
+	// route on Caddy's shared :80/:443 server block and lets Caddy's own
+	// ACME provision HTTPS for it, gated behind a DNS TXT ownership check
+	// -- the right model for a plain VPS or home server with :80/:443
+	// actually reachable from the internet. "port" is for a box that
+	// isn't (e.g. Hack Club Nest, where a domain only reaches this box on
+	// whatever port its owner registers for it in Nest's own dashboard,
+	// which does its own HTTPS termination): each domain gets a normal
+	// dedicated port from the same pool deployments allocate from, routed
+	// exactly like a deployment's own base port, live immediately with no
+	// DNS verification step (registering the port against the domain in
+	// Nest's dashboard is itself the ownership proof). See
+	// internal/orchestrator/domains.go.
+	CustomDomainMode string
+}
+
+// CustomDomainPortMode reports whether MANGROVE_CUSTOM_DOMAIN_MODE=port is
+// set -- see CustomDomainMode's doc comment.
+func (c Config) CustomDomainPortMode() bool {
+	return c.CustomDomainMode == "port"
 }
 
 // GithubOAuthEnabled reports whether an OAuth App has been registered via
@@ -125,6 +147,7 @@ func Load() Config {
 		DDNSProvider:              getEnv("MANGROVE_DDNS_PROVIDER", "duckdns"),
 		MountdSocket:              getEnv("MANGROVE_MOUNTD_SOCKET", "/run/mangrove-mountd.sock"),
 		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
+		CustomDomainMode:          getEnv("MANGROVE_CUSTOM_DOMAIN_MODE", "auto_tls"),
 	}
 }
 

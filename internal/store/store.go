@@ -1654,9 +1654,26 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 
 // ---- Custom domains ----
 
+const customDomainColumns = `id, deployment_id, hostname, verification_token, verified, routing_mode, port, created_at`
+
+func scanCustomDomain(scan func(...any) error) (models.CustomDomain, error) {
+	var d models.CustomDomain
+	var port sql.NullInt64
+	if err := scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.RoutingMode, &port, &d.CreatedAt); err != nil {
+		return models.CustomDomain{}, err
+	}
+	if port.Valid {
+		p := int(port.Int64)
+		d.Port = &p
+	}
+	return d, nil
+}
+
+// CreateCustomDomain creates an "auto_tls"-mode domain, unverified -- see
+// AddCustomDomain's DNS TXT verification flow.
 func (s *Store) CreateCustomDomain(ctx context.Context, deploymentID int64, hostname, verificationToken string) (models.CustomDomain, error) {
 	res, err := s.DB.ExecContext(ctx,
-		`INSERT INTO custom_domains (deployment_id, hostname, verification_token) VALUES (?, ?, ?)`,
+		`INSERT INTO custom_domains (deployment_id, hostname, verification_token, routing_mode) VALUES (?, ?, ?, 'auto_tls')`,
 		deploymentID, hostname, verificationToken,
 	)
 	if err != nil {
@@ -1666,11 +1683,24 @@ func (s *Store) CreateCustomDomain(ctx context.Context, deploymentID int64, host
 	return s.GetCustomDomain(ctx, id)
 }
 
+// CreateCustomDomainPortMode creates a "port"-mode domain, live
+// immediately (verified=1, no DNS check) -- see config.Config's
+// CustomDomainMode doc comment.
+func (s *Store) CreateCustomDomainPortMode(ctx context.Context, deploymentID int64, hostname string, port int) (models.CustomDomain, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`INSERT INTO custom_domains (deployment_id, hostname, verification_token, verified, routing_mode, port) VALUES (?, ?, '', 1, 'port', ?)`,
+		deploymentID, hostname, port,
+	)
+	if err != nil {
+		return models.CustomDomain{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetCustomDomain(ctx, id)
+}
+
 func (s *Store) GetCustomDomain(ctx context.Context, id int64) (models.CustomDomain, error) {
-	var d models.CustomDomain
-	err := s.DB.QueryRowContext(ctx,
-		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE id = ?`, id,
-	).Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt)
+	row := s.DB.QueryRowContext(ctx, `SELECT `+customDomainColumns+` FROM custom_domains WHERE id = ?`, id)
+	d, err := scanCustomDomain(row.Scan)
 	if err == sql.ErrNoRows {
 		return models.CustomDomain{}, ErrNotFound
 	}
@@ -1679,7 +1709,7 @@ func (s *Store) GetCustomDomain(ctx context.Context, id int64) (models.CustomDom
 
 func (s *Store) ListCustomDomainsForDeployment(ctx context.Context, deploymentID int64) ([]models.CustomDomain, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE deployment_id = ? ORDER BY id`,
+		`SELECT `+customDomainColumns+` FROM custom_domains WHERE deployment_id = ? ORDER BY id`,
 		deploymentID,
 	)
 	if err != nil {
@@ -1689,8 +1719,8 @@ func (s *Store) ListCustomDomainsForDeployment(ctx context.Context, deploymentID
 
 	var out []models.CustomDomain
 	for rows.Next() {
-		var d models.CustomDomain
-		if err := rows.Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt); err != nil {
+		d, err := scanCustomDomain(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -1701,10 +1731,11 @@ func (s *Store) ListCustomDomainsForDeployment(ctx context.Context, deploymentID
 // ListVerifiedCustomDomainsForDeployment is what a redeploy/restart uses to
 // know which domains need their Caddy route re-pushed alongside the
 // deployment's own port-based route -- unverified domains have no live
-// route to refresh.
+// route to refresh. Port-mode domains are always verified=1 (see
+// CreateCustomDomainPortMode), so they're included here too.
 func (s *Store) ListVerifiedCustomDomainsForDeployment(ctx context.Context, deploymentID int64) ([]models.CustomDomain, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, deployment_id, hostname, verification_token, verified, created_at FROM custom_domains WHERE deployment_id = ? AND verified = 1 ORDER BY id`,
+		`SELECT `+customDomainColumns+` FROM custom_domains WHERE deployment_id = ? AND verified = 1 ORDER BY id`,
 		deploymentID,
 	)
 	if err != nil {
@@ -1714,8 +1745,8 @@ func (s *Store) ListVerifiedCustomDomainsForDeployment(ctx context.Context, depl
 
 	var out []models.CustomDomain
 	for rows.Next() {
-		var d models.CustomDomain
-		if err := rows.Scan(&d.ID, &d.DeploymentID, &d.Hostname, &d.VerificationToken, &d.Verified, &d.CreatedAt); err != nil {
+		d, err := scanCustomDomain(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, d)

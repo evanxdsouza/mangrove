@@ -8,14 +8,25 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
+	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/webhook"
 )
 
-// AddCustomDomain registers hostname against a deployment, unverified. The
-// caller must complete DNS verification (VerifyCustomDomain) before
-// Mangrove will program a live Caddy route for it -- see the
-// verification_token comment in 0009_custom_domains.sql.
+// AddCustomDomain registers hostname against a deployment.
+//
+// In the default "auto_tls" mode this is unverified: the caller must
+// complete DNS verification (VerifyCustomDomain) before Mangrove will
+// program a live Caddy route for it -- see the verification_token comment
+// in 0009_custom_domains.sql.
+//
+// In "port" mode (config.Config.CustomDomainMode -- see its doc comment
+// for why) there's no DNS check: a dedicated port is allocated immediately
+// and the route goes live in this same call, matching how a deployment's
+// own base port already works. A failure to push that route is returned
+// directly (not swallowed as best-effort) since, unlike auto_tls's
+// verify-then-wait-for-DNS flow, there's no later step that would ever
+// retry it -- the caller needs to know now if e.g. nothing's running yet.
 func (o *Orchestrator) AddCustomDomain(ctx context.Context, deploymentID int64, hostname string) (models.CustomDomain, error) {
 	hostname = normalizeHostname(hostname)
 	if err := validateHostname(hostname); err != nil {
@@ -25,11 +36,35 @@ func (o *Orchestrator) AddCustomDomain(ctx context.Context, deploymentID int64, 
 		return models.CustomDomain{}, fmt.Errorf("load deployment: %w", err)
 	}
 
+	if o.Config.CustomDomainPortMode() {
+		return o.addCustomDomainPortMode(ctx, deploymentID, hostname)
+	}
+
 	token, err := webhook.GenerateToken()
 	if err != nil {
 		return models.CustomDomain{}, fmt.Errorf("generate verification token: %w", err)
 	}
 	return o.Store.CreateCustomDomain(ctx, deploymentID, hostname, token)
+}
+
+func (o *Orchestrator) addCustomDomainPortMode(ctx context.Context, deploymentID int64, hostname string) (models.CustomDomain, error) {
+	port, err := portregistry.AllocateForCustomDomain(ctx, o.Store.DB, deploymentID, o.Config.PortRangeMin, o.Config.PortRangeMax)
+	if err != nil {
+		return models.CustomDomain{}, fmt.Errorf("allocate port: %w", err)
+	}
+
+	domain, err := o.Store.CreateCustomDomainPortMode(ctx, deploymentID, hostname, port)
+	if err != nil {
+		_ = portregistry.Release(ctx, o.Store.DB, port)
+		return models.CustomDomain{}, err
+	}
+
+	if err := o.pushCustomDomainRoute(ctx, domain); err != nil {
+		_ = portregistry.Release(ctx, o.Store.DB, port)
+		_ = o.Store.DeleteCustomDomain(ctx, domain.ID)
+		return models.CustomDomain{}, fmt.Errorf("route %s to port %d: %w", hostname, port, err)
+	}
+	return domain, nil
 }
 
 // VerifyCustomDomain checks hostname's DNS for a TXT record proving control
@@ -42,6 +77,8 @@ func (o *Orchestrator) VerifyCustomDomain(ctx context.Context, domainID int64) (
 	if err != nil {
 		return models.CustomDomain{}, fmt.Errorf("load domain: %w", err)
 	}
+	// Port-mode domains are verified=1 from creation (CreateCustomDomainPortMode)
+	// -- there's no DNS check to run here.
 	if domain.Verified {
 		return domain, nil
 	}
@@ -73,16 +110,27 @@ func (o *Orchestrator) VerifyCustomDomain(ctx context.Context, domainID int64) (
 	return domain, nil
 }
 
-// RemoveCustomDomain tears down hostname's live Caddy route (if any) and
-// deletes the row.
+// RemoveCustomDomain tears down hostname's live Caddy route (if any),
+// releases its dedicated port in "port" mode, and deletes the row.
 func (o *Orchestrator) RemoveCustomDomain(ctx context.Context, domainID int64) error {
 	domain, err := o.Store.GetCustomDomain(ctx, domainID)
 	if err != nil {
 		return fmt.Errorf("load domain: %w", err)
 	}
 	if o.Proxy != nil && domain.Verified {
-		if err := o.Proxy.DeleteDomainRoute(ctx, domain.Hostname); err != nil {
-			return fmt.Errorf("remove proxy route: %w", err)
+		if domain.RoutingMode == "port" && domain.Port != nil {
+			if err := o.Proxy.DeleteRoute(ctx, *domain.Port); err != nil {
+				return fmt.Errorf("remove proxy route: %w", err)
+			}
+		} else if domain.RoutingMode != "port" {
+			if err := o.Proxy.DeleteDomainRoute(ctx, domain.Hostname); err != nil {
+				return fmt.Errorf("remove proxy route: %w", err)
+			}
+		}
+	}
+	if domain.Port != nil {
+		if err := portregistry.Release(ctx, o.Store.DB, *domain.Port); err != nil {
+			o.Log.Warn("release custom domain port failed", "hostname", domain.Hostname, "port", *domain.Port, "error", err)
 		}
 	}
 	return o.Store.DeleteCustomDomain(ctx, domainID)
@@ -132,6 +180,12 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 		if artifact.OutputPath == "" && !opts.PasswordProtected {
 			return fmt.Errorf("deployment %d has no built static output to route %s to", domain.DeploymentID, domain.Hostname)
 		}
+		if domain.RoutingMode == "port" {
+			if domain.Port == nil {
+				return fmt.Errorf("port-mode domain %s has no allocated port", domain.Hostname)
+			}
+			return o.Proxy.PutFileServerRoute(ctx, *domain.Port, artifact.OutputPath, opts)
+		}
 		return o.Proxy.PutFileServerDomainRoute(ctx, domain.Hostname, artifact.OutputPath, opts)
 	}
 
@@ -147,6 +201,12 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 	}
 	if len(upstreams) == 0 && !opts.PasswordProtected {
 		return fmt.Errorf("deployment %d has no running container to route %s to", domain.DeploymentID, domain.Hostname)
+	}
+	if domain.RoutingMode == "port" {
+		if domain.Port == nil {
+			return fmt.Errorf("port-mode domain %s has no allocated port", domain.Hostname)
+		}
+		return o.Proxy.PutRouteMulti(ctx, *domain.Port, upstreams, opts)
 	}
 	return o.Proxy.PutDomainRoute(ctx, domain.Hostname, upstreams, opts)
 }

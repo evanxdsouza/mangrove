@@ -153,6 +153,35 @@ dashboard reachable through an external edge) -- custom domains won't
 work until that's resolved, since two Caddy server blocks can't bind the
 same port.
 
+### Custom domains on Nest (or anywhere else `:80`/`:443` isn't reachable)
+
+The above assumes this box can be hit on `:80`/`:443` directly, which
+neither DNS-TXT verification nor Caddy's own ACME need to work -- true for
+a plain VPS or a home server with port forwarding, but **not** true for
+Nest's actual model: a box only ever receives traffic on whatever port its
+owner registers against a domain in Nest's own dashboard, which does its
+own HTTPS termination and has no general DNS-record management (so there's
+nowhere to put a TXT record either). `srv_public`'s host-matched routing
+only works if the outside world can reach this box's `:80`/`:443`
+listener directly, which Nest never lets happen.
+
+Set `MANGROVE_CUSTOM_DOMAIN_MODE=port` in `/etc/mangrove/mangrove.env` to
+switch every *new* custom domain into the model the rest of a Nest install
+already uses: adding a domain (from the "Domains" tab) skips DNS
+verification entirely and instead allocates it a dedicated port from the
+same pool deployments use (`MANGROVE_PORT_RANGE_MIN/_MAX`), routed exactly
+like a deployment's own base port -- live immediately. The dashboard shows
+the assigned port; register `<hostname> -> <that port>` in Nest's own
+dashboard the same way you already do for the box's own dashboard domain.
+Removing the domain releases the port back to the pool. See
+`internal/orchestrator/domains.go` and `internal/portregistry`'s
+`AllocateForCustomDomain`.
+
+This is a per-install setting, not per-domain: existing `auto_tls` domains
+already verified before the switch keep working as host-matched
+`srv_public` routes (nothing migrates them), but every domain added after
+the switch is a dedicated port instead.
+
 ## Home server / DDNS
 
 A home server sitting behind a router usually has neither a static
