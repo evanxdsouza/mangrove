@@ -39,7 +39,11 @@ export function SimpleAppsPage() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't load your apps"));
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <>

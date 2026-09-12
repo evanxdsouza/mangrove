@@ -44,7 +44,12 @@ export function ProjectsPage() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load projects"));
   };
 
-  useEffect(load, [activeWorkspaceId]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   const activeWorkspaceName = workspaces.find((w) => w.workspace.id === activeWorkspaceId)?.workspace.name ?? null;
 
