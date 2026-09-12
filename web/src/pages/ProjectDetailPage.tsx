@@ -68,7 +68,12 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     }
   };
 
-  useEffect(load, [projectId]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   return (
     <>

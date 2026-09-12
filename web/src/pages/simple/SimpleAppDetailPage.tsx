@@ -24,7 +24,12 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
   const load = () => {
     api.get<Deployment>(`/api/deployments/${deploymentId}`).then(setDeployment).catch((e) => setError(errMsg(e)));
   };
-  useEffect(load, [deploymentId]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploymentId]);
 
   const retry = async () => {
     setRetrying(true);

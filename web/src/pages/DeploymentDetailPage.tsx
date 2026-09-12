@@ -51,7 +51,12 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       .catch((e) => setError(errMsg(e)));
   };
 
-  useEffect(load, [deploymentId]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploymentId]);
 
   const deploy = async () => {
     setDeploying(true);
@@ -908,10 +913,14 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
 
   useEffect(() => {
     if (isStatic) return; // no container, no health checks to fetch
-    api
-      .get<HealthCheckEntry[]>(`/api/services/${service.id}/health?limit=1`)
-      .then((h) => setHealth(h ?? []))
-      .catch(() => setHealth([]));
+    const loadHealth = () =>
+      api
+        .get<HealthCheckEntry[]>(`/api/services/${service.id}/health?limit=1`)
+        .then((h) => setHealth(h ?? []))
+        .catch(() => setHealth([]));
+    loadHealth();
+    const interval = setInterval(loadHealth, 4000);
+    return () => clearInterval(interval);
   }, [service.id, isStatic]);
 
   const latestHealth = health && health.length > 0 ? health[0] : null;
