@@ -186,6 +186,18 @@ func (e *DockerExecutor) buildDockerfile(ctx context.Context, buildDir string, s
 // setting NIXPACKS_NODE_VERSION in BuildArgs, which wins over this default.
 const defaultNixpacksNodeVersion = "22"
 
+// defaultNixpacksNodeOptions caps the V8 heap for a Node build step (e.g.
+// `npm run build`) unless the deployment overrides NODE_OPTIONS itself.
+// Without an explicit ceiling, V8 lets its heap grow until the *host*
+// OOM-killer steps in (a bare "exit code: 137" mid-build) instead of
+// garbage-collecting under memory pressure -- Mangrove's target of a
+// modest home-server/VPS box makes that the common case, not an edge one.
+// Only helps Node's own heap: a bundler that does its heavy lifting
+// outside V8 (e.g. Turbopack's Rust core) won't be bounded by this at
+// all, and needs real memory instead. Irrelevant (and harmless) for
+// non-Node nixpacks builds.
+const defaultNixpacksNodeOptions = "--max-old-space-size=1536"
+
 // buildNixpacks shells out to the `nixpacks` CLI (a documented host
 // dependency, installed alongside Docker) rather than reimplementing its
 // language-detection/build-plan logic.
@@ -199,8 +211,13 @@ func (e *DockerExecutor) buildNixpacks(ctx context.Context, buildDir string, spe
 		nodeVersion = defaultNixpacksNodeVersion
 	}
 	args = append(args, "--env", "NIXPACKS_NODE_VERSION="+nodeVersion)
+	nodeOptions, explicit := spec.BuildArgs["NODE_OPTIONS"]
+	if !explicit {
+		nodeOptions = defaultNixpacksNodeOptions
+	}
+	args = append(args, "--env", "NODE_OPTIONS="+nodeOptions)
 	for k, v := range spec.BuildArgs {
-		if k == "NIXPACKS_NODE_VERSION" {
+		if k == "NIXPACKS_NODE_VERSION" || k == "NODE_OPTIONS" {
 			continue
 		}
 		// BuildArgs reach the nixpacks build as --env (the CLI's flag for
