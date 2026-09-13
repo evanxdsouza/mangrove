@@ -993,22 +993,71 @@ func (s *Store) UpdateDeployHistoryStatus(ctx context.Context, id int64, status 
 }
 
 // SweepStuckDeploys marks any deploy_history row left in an in-progress
-// state (queued/building/healthchecking) as failed. These can only be
-// leftovers from a Mangrove process that crashed or was killed mid-deploy
-// -- called once at startup so the UI never shows a deploy as eternally
-// "in progress" when nothing is actually working on it. This is the
-// honest scope of "durable" here: the record survives and is correctly
-// marked, not that the interrupted build resumes -- a fresh push or
-// manual deploy simply retries.
+// state (queued/building/healthchecking) as failed, and -- since a
+// deployment's own status is set to "building" at the start of the same
+// deploy (see orchestrator.Deploy) and only flipped to "running"/"failed"
+// once that deploy actually finishes -- also fails the parent deployment
+// itself wherever it's still parked in "building"/"pending" for one of
+// these swept rows. Without this second update, a deploy interrupted by
+// a crash or restart left the deployment stuck showing "building" in the
+// UI forever, even though nothing was still working on it (the swap
+// hadn't reached the point of touching the old, still-running container,
+// so the previous deploy stayed up and healthy underneath the stale
+// badge). These can only be leftovers from a Mangrove process that
+// crashed or was killed mid-deploy -- called once at startup so the UI
+// never shows a deploy as eternally "in progress". This is the honest
+// scope of "durable" here: the record survives and is correctly marked,
+// not that the interrupted build resumes -- a fresh push or manual
+// deploy simply retries.
 func (s *Store) SweepStuckDeploys(ctx context.Context) (int64, error) {
-	res, err := s.DB.ExecContext(ctx,
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx,
+		`SELECT DISTINCT deployment_id FROM deploy_history WHERE status IN ('queued', 'building', 'healthchecking')`,
+	)
+	if err != nil {
+		return 0, err
+	}
+	var deploymentIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		deploymentIDs = append(deploymentIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	res, err := tx.ExecContext(ctx,
 		`UPDATE deploy_history SET status = 'failed', error_message = 'interrupted by a Mangrove restart', finished_at = CURRENT_TIMESTAMP
 		 WHERE status IN ('queued', 'building', 'healthchecking')`,
 	)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, id := range deploymentIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE deployments SET status = 'failed' WHERE id = ? AND status IN ('building', 'pending')`,
+			id,
+		); err != nil {
+			return 0, err
+		}
+	}
+
+	return n, tx.Commit()
 }
 
 func (s *Store) MarkDeployHistoryCurrent(ctx context.Context, deploymentID, deployHistoryID int64) error {
