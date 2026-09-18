@@ -18,7 +18,7 @@ permission system -- every non-owner is a member, full stop.
 
 Everything not listed here works the same for both roles (deploying,
 rolling back, viewing logs, editing non-secret env vars, connecting a
-GitHub repo, installing templates). A member is blocked from exactly four
+GitHub repo, installing templates). A member is blocked from exactly six
 things, each enforced **server-side** (the dashboard also hides the
 corresponding UI, but the API is the real boundary -- see
 `internal/api/roles_test.go` for the tests that hit these routes directly
@@ -33,12 +33,24 @@ as a member and assert `403`, independent of what the UI shows):
 4. **Changing access control** -- flipping a deployment
    public/private or setting its password
    (`POST /api/deployments/{id}/access`).
+5. **Listing or revoking sessions** -- `GET /api/admin/sessions` and
+   `DELETE /api/admin/sessions/{id}` operate on *every* session on the box,
+   not just the caller's own; letting a member call these would let them
+   revoke the owner's session (a lockout vector) or harvest every user's
+   session metadata.
+6. **Port registry management and container pruning** -- `GET`/`POST
+   /api/admin/ports`, `DELETE /api/admin/ports/{port}`, and
+   `POST /api/admin/prune`. Both are system-wide, unscoped-to-any-project
+   operations (freeing a port out from under someone else's deployment,
+   pruning images across the whole box), the same bar as user management.
 
 The rationale for each: deletion and access-control changes are
 destructive/security-relevant actions with no undo; user management is an
 obvious privilege-escalation vector if members could grant themselves or
 others owner access; secrets are, definitionally, things not everyone with
-dashboard access should be able to read or overwrite.
+dashboard access should be able to read or overwrite; session and
+port/prune management are unscoped system-wide operations that a member
+could use to lock out the owner or disrupt deployments they don't own.
 
 ## Deleting a user
 

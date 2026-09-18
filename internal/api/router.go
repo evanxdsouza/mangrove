@@ -176,21 +176,33 @@ func (s *Server) Router() http.Handler {
 			r.Route("/admin", func(r chi.Router) {
 				r.Get("/resource-budget", s.getResourceBudget)
 				r.Get("/system-health", s.getSystemHealth)
-				r.Get("/ports", s.listPorts)
-				r.Post("/ports", s.reservePort)
-				r.Delete("/ports/{port}", s.releasePort)
-				r.Get("/sessions", s.listSessions)
-				r.Delete("/sessions/{sessionID}", s.revokeSession)
 				r.Get("/nodes", s.listNodes)
 				r.Get("/notifications", s.listNotifications)
-				r.Post("/prune", s.triggerPrune)
 				r.Get("/secrets-status", s.getSecretsStatus)
 
-				// User management is owner-only, top to bottom -- a member
-				// listing/inviting/removing other accounts is exactly the
-				// kind of privilege escalation roles exist to prevent.
+				// Owner-only, top to bottom -- each of these is either a
+				// system-wide, unscoped view/action (ports, prune) or one
+				// that lets the caller act on *any* user's session,
+				// including the owner's own (list/revoke) -- a member
+				// revoking the owner's session is a lockout vector, not a
+				// legitimate "manage my own sessions" feature, so this
+				// isn't scoped down to "your own sessions only", it's
+				// gated the same as user management below. See
+				// docs/multi-user.md.
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireOwner)
+					r.Get("/ports", s.listPorts)
+					r.Post("/ports", s.reservePort)
+					r.Delete("/ports/{port}", s.releasePort)
+					r.Get("/sessions", s.listSessions)
+					r.Delete("/sessions/{sessionID}", s.revokeSession)
+					r.Post("/prune", s.triggerPrune)
+					r.Get("/backup", s.backup)
+
+					// User management is owner-only, top to bottom -- a
+					// member listing/inviting/removing other accounts is
+					// exactly the kind of privilege escalation roles exist
+					// to prevent.
 					r.Get("/users", s.listUsers)
 					r.Post("/users", s.createTeamUser)
 					r.Delete("/users/{userID}", s.deleteTeamUser)
