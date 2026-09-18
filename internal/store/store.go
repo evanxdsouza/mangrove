@@ -7,11 +7,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/models"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type Store struct {
@@ -21,6 +24,24 @@ type Store struct {
 func New(db *sql.DB) *Store { return &Store{DB: db} }
 
 var ErrNotFound = fmt.Errorf("not found")
+
+// ErrDuplicate means an insert lost a race against a UNIQUE constraint --
+// some other concurrent call already wrote the row this one was about to
+// write (e.g. two near-simultaneous webhook deliveries with the same
+// delivery ID). Callers that treat "already exists" as a normal, expected
+// outcome (idempotent inserts) should check for this instead of surfacing
+// the raw driver error.
+var ErrDuplicate = fmt.Errorf("duplicate")
+
+// isUniqueConstraintErr reports whether err is a SQLite UNIQUE constraint
+// violation, wrapped or not.
+func isUniqueConstraintErr(err error) bool {
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+	}
+	return false
+}
 
 // ---- Workspaces ----
 

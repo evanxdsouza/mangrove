@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
@@ -130,6 +131,16 @@ func (o *Orchestrator) CreateNASShare(ctx context.Context, p CreateNASShareParam
 	}
 	if p.Slug == "" || p.ShareName == "" || p.Username == "" || p.Password == "" {
 		return models.Deployment{}, fmt.Errorf("slug, share name, username, and password are all required")
+	}
+	// ';' is the field separator in dperson/samba's own "-u user;pass" and
+	// "-s name;path;browsable;guest;..." argument format (see sambaCommand
+	// below) -- letting it through would silently shift fields instead of
+	// erroring, e.g. a share name crafted as "x;/share;yes;yes" would flip
+	// the share to guest-accessible rather than fail to create. Not a shell
+	// injection (exec-form args, no shell), but a real field-injection into
+	// the container's own config parser.
+	if strings.ContainsRune(p.ShareName, ';') || strings.ContainsRune(p.Username, ';') || strings.ContainsRune(p.Password, ';') {
+		return models.Deployment{}, fmt.Errorf("share name, username, and password cannot contain ';'")
 	}
 
 	drives, err := o.Mountd.List(ctx)

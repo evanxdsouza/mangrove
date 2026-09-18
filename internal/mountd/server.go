@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,14 @@ type Server struct {
 	// "mangrove-mount" -- see deploy/systemd/mangrove-mountd.service.
 	SocketGroup string
 	Log         *slog.Logger
+
+	// mountMu serializes mount/unmount so two concurrent requests for the
+	// same (or different) UUID can't race between the "is it already
+	// mounted" check and the actual mount/unmount call -- one goroutine per
+	// connection means without this, a double-click or two racing API
+	// requests could both pass the not-yet-mounted check and both shell out
+	// to `mount` for the same device at once.
+	mountMu sync.Mutex
 }
 
 // ListenAndServe creates (replacing any stale socket file) the Unix socket
@@ -312,6 +321,9 @@ func (s *Server) findByUUID(ctx context.Context, uuid string) (Drive, error) {
 }
 
 func (s *Server) mount(ctx context.Context, uuid string) (Drive, error) {
+	s.mountMu.Lock()
+	defer s.mountMu.Unlock()
+
 	d, err := s.findByUUID(ctx, uuid)
 	if err != nil {
 		return Drive{}, err
@@ -391,6 +403,9 @@ func mountArgs(fstype, device, target string) ([][]string, error) {
 }
 
 func (s *Server) unmount(ctx context.Context, uuid string) error {
+	s.mountMu.Lock()
+	defer s.mountMu.Unlock()
+
 	target := filepath.Join(s.MountRoot, uuid)
 	if !strings.HasPrefix(target, filepath.Clean(s.MountRoot)+string(filepath.Separator)) {
 		return fmt.Errorf("refusing to unmount outside mount root")

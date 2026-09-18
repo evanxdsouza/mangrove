@@ -100,6 +100,14 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	eventID, err := s.Store.CreateWebhookEvent(r.Context(), deliveryID, eventType, &repo.ID, sigValid, string(body))
+	if errors.Is(err, store.ErrDuplicate) {
+		// Lost the race against another delivery with the same ID that landed
+		// between the WebhookDeliveryExists check above and this insert --
+		// same outcome as the exists check catching it: acknowledge, don't
+		// reprocess.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
