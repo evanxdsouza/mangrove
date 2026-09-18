@@ -57,9 +57,21 @@ export interface Workspace {
   created_at: string;
 }
 
+export type WorkspaceRole = "admin" | "editor" | "viewer";
+
 export interface WorkspaceProjectCount {
   workspace: Workspace;
   project_count: number;
+  // Absent/"" if the caller isn't a member of this workspace at all
+  // (and isn't a global owner, who implicitly gets "admin" everywhere).
+  your_role?: WorkspaceRole | "";
+}
+
+export interface WorkspaceMember {
+  user_id: number;
+  email: string;
+  role: WorkspaceRole;
+  created_at: string;
 }
 
 export interface Deployment {

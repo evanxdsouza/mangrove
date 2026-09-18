@@ -8,7 +8,7 @@ import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
-import { useIsOwner } from "../userContext";
+import { useWorkspaceRole } from "../workspaceContext";
 import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, StripChartIcon, TrashIcon } from "../icons";
 
 type Tab = "overview" | "history" | "logs" | "env";
@@ -21,7 +21,10 @@ const TAB_ICON: Record<Tab, (props: SVGProps<SVGSVGElement>) => ReactElement> = 
 };
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
-  const isOwner = useIsOwner();
+  const [projectWorkspaceId, setProjectWorkspaceId] = useState<number | null>(null);
+  const role = useWorkspaceRole(projectWorkspaceId);
+  const isAdmin = role === "admin";
+  const canEdit = role === "admin" || role === "editor";
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [history, setHistory] = useState<DeployHistory[]>([]);
@@ -64,6 +67,17 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentId]);
+
+  // Resolved once per project, not on every poll -- role gating on this
+  // page (delete, access control, domains, secrets, run-command) is all
+  // workspace-scoped, but Deployment itself doesn't carry workspace_id
+  // (only project_id), so this is the one extra lookup that needs.
+  useEffect(() => {
+    api
+      .get<{ workspace_id: number }>(`/api/projects/${projectId}`)
+      .then((p) => setProjectWorkspaceId(p.workspace_id))
+      .catch(() => {});
+  }, [projectId]);
 
   const deploy = async () => {
     setDeploying(true);
@@ -198,7 +212,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
               )}
             </>
           )}
-          {isOwner && (
+          {isAdmin && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
               <TrashIcon /> Delete deployment
             </button>
@@ -226,9 +240,9 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
 
       {tab === "overview" && (
         <>
-          <OverviewTab services={services} deployment={deployment} />
-          <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} />
-          <DomainsPanel deploymentId={deploymentId} />
+          <OverviewTab services={services} deployment={deployment} canEdit={canEdit} />
+          <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} isAdmin={isAdmin} />
+          <DomainsPanel deploymentId={deploymentId} canEdit={canEdit} isAdmin={isAdmin} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           {deployment?.promotes_to_deployment_id != null ? (
             <PromoteCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} />
@@ -291,7 +305,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             services.map((s) => (
               <div key={s.id} style={{ marginBottom: 20 }}>
                 {services.length > 1 && <div className="card-title">{s.name}</div>}
-                <EnvVarsEditor serviceId={s.id} />
+                <EnvVarsEditor serviceId={s.id} isAdmin={isAdmin} />
               </div>
             ))
           )}
@@ -325,12 +339,13 @@ function AccessControlCard({
   deploymentId,
   deployment,
   onSaved,
+  isAdmin,
 }: {
   deploymentId: number;
   deployment: Deployment | null;
   onSaved: () => void;
+  isAdmin: boolean;
 }) {
-  const isOwner = useIsOwner();
   const [isPublic, setIsPublic] = useState(false);
   const [passwordProtected, setPasswordProtected] = useState(false);
   const [password, setPassword] = useState("");
@@ -374,10 +389,10 @@ function AccessControlCard({
         enter the password below.
       </p>
       {error && <div className="error-banner">{error}</div>}
-      {!isOwner && <div className="field-hint">Only an owner can change access control.</div>}
+      {!isAdmin && <div className="field-hint">Only an owner can change access control.</div>}
       <div className="field">
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={isPublic} disabled={!isOwner} onChange={(e) => setIsPublic(e.target.checked)} />
+          <input type="checkbox" checked={isPublic} disabled={!isAdmin} onChange={(e) => setIsPublic(e.target.checked)} />
           Public (expose on the assigned port)
         </label>
       </div>
@@ -385,7 +400,7 @@ function AccessControlCard({
         <>
           <div className="field">
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={passwordProtected} disabled={!isOwner} onChange={(e) => setPasswordProtected(e.target.checked)} />
+              <input type="checkbox" checked={passwordProtected} disabled={!isAdmin} onChange={(e) => setPasswordProtected(e.target.checked)} />
               Password-protected
             </label>
           </div>
@@ -396,7 +411,7 @@ function AccessControlCard({
                 id="access-password"
                 className="input"
                 type="password"
-                disabled={!isOwner}
+                disabled={!isAdmin}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={deployment?.password_protected ? "Enter a new password to change it" : ""}
@@ -405,7 +420,7 @@ function AccessControlCard({
           )}
         </>
       )}
-      {isOwner && (
+      {isAdmin && (
         <button className="btn btn-sm" onClick={save} disabled={busy}>
           {busy ? "Saving..." : "Save"}
         </button>
@@ -836,7 +851,15 @@ function PreviewsCard({ projectId, productionDeployment }: { projectId: number; 
   );
 }
 
-function OverviewTab({ services, deployment }: { services: Service[]; deployment: Deployment | null }) {
+function OverviewTab({
+  services,
+  deployment,
+  canEdit,
+}: {
+  services: Service[];
+  deployment: Deployment | null;
+  canEdit: boolean;
+}) {
   const isStatic = deployment?.build_strategy === "static";
   if (services.length === 0) {
     return (
@@ -854,7 +877,12 @@ function OverviewTab({ services, deployment }: { services: Service[]; deployment
         ))}
       </div>
       {deployment && <ScaleCard deploymentId={deployment.id} deployment={deployment} />}
-      {!isStatic &&
+      {/* Running a command in a live container is an editor+ action
+          server-side (the headline fix this pass closed -- see
+          auth.RequireWorkspaceRole on POST /services/{id}/exec) -- hidden
+          rather than shown-then-403ing for a viewer. */}
+      {canEdit &&
+        !isStatic &&
         services.map((s) => (
           <RunCommandCard key={s.id} serviceId={s.id} serviceName={s.name} showServiceName={services.length > 1} />
         ))}

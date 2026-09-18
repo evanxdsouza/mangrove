@@ -66,10 +66,20 @@ func (s *Server) setEnvVar(w http.ResponseWriter, r *http.Request) {
 
 	// Setting a secret is the only place a member could otherwise stash
 	// (and, since they already know it, effectively "read") a credential
-	// through this endpoint -- owner-only, same tier as viewing generated
-	// template credentials.
-	if role, _ := auth.RoleFromContext(r.Context()); role != "owner" {
-		writeError(w, http.StatusForbidden, "owner role required to set secret env vars")
+	// through this endpoint -- admin+ in the service's workspace (or a
+	// global owner), same tier as viewing generated template credentials.
+	workspaceID, err := s.Store.WorkspaceIDForService(r.Context(), serviceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok, err := auth.HasWorkspaceRole(r.Context(), s.Store, "admin", workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusForbidden, "admin role (in this workspace) required to set secret env vars")
 		return
 	}
 

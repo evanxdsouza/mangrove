@@ -7,8 +7,7 @@ import { StatusPill } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
-import { useIsOwner } from "../userContext";
-import { useWorkspaces } from "../workspaceContext";
+import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
 import { BranchIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
 
 interface ProjectRepoInfo {
@@ -20,9 +19,9 @@ interface ProjectRepoInfo {
 }
 
 export function ProjectDetailPage({ projectId }: { projectId: number }) {
-  const isOwner = useIsOwner();
   const { reload: reloadWorkspaces } = useWorkspaces();
   const [project, setProject] = useState<Project | null>(null);
+  const isAdmin = useWorkspaceRole(project?.workspace_id) === "admin";
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
   const [repo, setRepo] = useState<ProjectRepoInfo | null | undefined>(undefined); // undefined = not loaded yet, null = none linked
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +103,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
             <PlusIcon /> New deployment
           </button>
-          {isOwner && (
+          {isAdmin && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
               <TrashIcon /> Delete project
             </button>

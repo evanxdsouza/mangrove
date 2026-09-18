@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type EnvVarEntry } from "../api";
-import { useIsOwner } from "../userContext";
 import { PlusIcon, TrashIcon } from "../icons";
 
-export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
-  const isOwner = useIsOwner();
+// isAdmin gates the "Secret" checkbox -- setting a secret env var is
+// admin+ in the service's workspace server-side (internal/api/env.go),
+// same tier as viewing generated template credentials.
+export function EnvVarsEditor({ serviceId, isAdmin }: { serviceId: number; isAdmin: boolean }) {
   const [vars, setVars] = useState<EnvVarEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState("");
@@ -81,7 +82,7 @@ export function EnvVarsEditor({ serviceId }: { serviceId: number }) {
             type={isSecret ? "password" : "text"}
           />
         </div>
-        {isOwner && (
+        {isAdmin && (
           <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={isSecret} onChange={(e) => setIsSecret(e.target.checked)} />

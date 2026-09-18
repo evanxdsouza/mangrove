@@ -77,6 +77,14 @@ func (env *roleTestEnv) do(method, path string, cookie *http.Cookie, body any) *
 	return rec
 }
 
+// TestMemberForbiddenFromOwnerOnlyRoutes covers the routes that are
+// global-owner-only regardless of workspace role -- host-level operations
+// (user accounts, sessions, ports, pruning) with no per-workspace
+// dimension at all. Delete project/deployment, access control, and secret
+// env vars used to be in this list too, but since the workspace-roles pass
+// they're workspace-admin-scoped, not global-owner-only -- see
+// TestWorkspaceRoleThresholds and TestWorkspaceAdminScopedNotGlobal in
+// workspace_roles_test.go for those.
 func TestMemberForbiddenFromOwnerOnlyRoutes(t *testing.T) {
 	env := newRoleTestEnv(t)
 	memberCookie, _ := env.cookieFor(t, "member@example.com", "member")
@@ -87,13 +95,9 @@ func TestMemberForbiddenFromOwnerOnlyRoutes(t *testing.T) {
 		path   string
 		body   any
 	}{
-		{"delete project", http.MethodDelete, "/api/projects/1", nil},
-		{"delete deployment", http.MethodDelete, "/api/deployments/1", nil},
-		{"set access control", http.MethodPost, "/api/deployments/1/access", map[string]any{"is_public": true}},
 		{"list users", http.MethodGet, "/api/admin/users", nil},
 		{"create user", http.MethodPost, "/api/admin/users", map[string]any{"email": "x@example.com", "password": "password123", "role": "member"}},
 		{"delete user", http.MethodDelete, "/api/admin/users/999", nil},
-		{"set secret env var", http.MethodPut, "/api/services/1/env/API_KEY", map[string]any{"value": "x", "is_secret": true}},
 		{"list sessions", http.MethodGet, "/api/admin/sessions", nil},
 		{"revoke session", http.MethodDelete, "/api/admin/sessions/999", nil},
 		{"list ports", http.MethodGet, "/api/admin/ports", nil},

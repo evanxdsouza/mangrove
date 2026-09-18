@@ -3,7 +3,7 @@ import { api, ApiError, type Deployment } from "../../api";
 import { Link, useRouter } from "../../router";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill";
-import { useIsOwner } from "../../userContext";
+import { useWorkspaceRole } from "../../workspaceContext";
 import { useUiMode } from "../../uiMode";
 import { plainStatus } from "./plainCopy";
 import { DeployIcon, GearIcon, TrashIcon } from "../../icons";
@@ -13,10 +13,11 @@ import { DeployIcon, GearIcon, TrashIcon } from "../../icons";
 // in plain words, and the two actions a non-technical user actually
 // needs: try again if it's broken, remove it if they're done with it.
 export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) {
-  const isOwner = useIsOwner();
   const { setMode } = useUiMode();
   const { navigate } = useRouter();
   const [deployment, setDeployment] = useState<Deployment | null>(null);
+  const [projectWorkspaceId, setProjectWorkspaceId] = useState<number | null>(null);
+  const isAdmin = useWorkspaceRole(projectWorkspaceId) === "admin";
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -36,6 +37,17 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentId]);
+
+  // Deployment doesn't carry workspace_id directly (only project_id) --
+  // same one-time lookup as DeploymentDetailPage.
+  useEffect(() => {
+    if (!deployment) return;
+    api
+      .get<{ workspace_id: number }>(`/api/projects/${deployment.project_id}`)
+      .then((p) => setProjectWorkspaceId(p.workspace_id))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deployment?.project_id]);
 
   const retry = async () => {
     setRetrying(true);
@@ -73,7 +85,7 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
               <DeployIcon /> {retrying ? "Trying again..." : "Try again"}
             </button>
           )}
-          {isOwner && (
+          {isAdmin && (
             <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
               <TrashIcon /> Remove app
             </button>

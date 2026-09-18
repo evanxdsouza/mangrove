@@ -1,7 +1,24 @@
 # Multi-user and roles
 
-Mangrove has two roles: **owner** and **member**. There's no finer-grained
-permission system -- every non-owner is a member, full stop.
+Two independent axes, not one:
+
+- **Global role** (`users.role`: `owner` or `member`) -- host-level. Governs
+  things with no per-project meaning at all: managing org accounts, the
+  `/admin` panel (sessions, ports, pruning, backups), the storage/NAS
+  feature. An `owner` is also an implicit **admin of every workspace**,
+  bypassing the second axis entirely -- see "How it's enforced" below.
+- **Workspace role** (`workspace_members.role`: `admin`, `editor`, or
+  `viewer`) -- per workspace, governs everything workspace-scoped: a
+  project's deployments, services, secrets, custom domains, exec/shell
+  access. A `member` with no `workspace_members` row in a given workspace
+  has **no access to it at all** -- not read-only, none.
+
+Before this existed, `workspace_members` was a schema stub nobody read
+(every `member` could see and act on every project in every workspace,
+including running an arbitrary command in any container via
+`POST /services/{id}/exec` -- the single biggest gap this closed). Finishing
+it is what makes `owner`/`member` actually mean "host administrator" vs.
+"everyone else," instead of the only permission distinction in the app.
 
 ## How an account is created
 
@@ -13,44 +30,91 @@ permission system -- every non-owner is a member, full stop.
   means an owner sets an initial email/password directly and shares it out
   of band; the new user can change their password afterward via
   `POST /api/auth/change-password`.
+- Every new account auto-joins the default workspace (id 1) as **editor**
+  -- not a mirror of their global role -- so the common single-workspace
+  install keeps working immediately without a separate membership step.
+  Access to any other workspace, or a different role in the default one,
+  is granted explicitly afterward (see "Managing workspace membership").
 
-## What a member can't do
+## What a member can't do (global, host-level)
 
-Everything not listed here works the same for both roles (deploying,
-rolling back, viewing logs, editing non-secret env vars, connecting a
-GitHub repo, installing templates). A member is blocked from exactly six
-things, each enforced **server-side** (the dashboard also hides the
-corresponding UI, but the API is the real boundary -- see
-`internal/api/roles_test.go` for the tests that hit these routes directly
-as a member and assert `403`, independent of what the UI shows):
+Everything not listed here works the same for both global roles -- the
+real per-project distinctions now live in workspace roles, not here. A
+member is blocked from exactly three things, each enforced **server-side**
+via `auth.RequireOwner` (see `internal/api/roles_test.go`'s
+`TestMemberForbiddenFromOwnerOnlyRoutes`):
 
-1. **Deleting** a project or deployment (`DELETE /api/projects/{id}`,
-   `DELETE /api/deployments/{id}`).
-2. **Managing other users** -- listing, creating, or removing accounts
-   (everything under `/api/admin/users`).
-3. **Setting a secret env var** (`PUT /api/services/{id}/env/{key}` with
-   `is_secret: true`). Non-secret env vars remain open to members.
-4. **Changing access control** -- flipping a deployment
-   public/private or setting its password
-   (`POST /api/deployments/{id}/access`).
-5. **Listing or revoking sessions** -- `GET /api/admin/sessions` and
+1. **Managing other org accounts** -- listing, creating, or removing
+   (everything under `/api/admin/users`). An obvious privilege-escalation
+   vector if members could grant themselves or others owner access.
+2. **Listing or revoking sessions** -- `GET /api/admin/sessions` and
    `DELETE /api/admin/sessions/{id}` operate on *every* session on the box,
    not just the caller's own; letting a member call these would let them
    revoke the owner's session (a lockout vector) or harvest every user's
    session metadata.
-6. **Port registry management and container pruning** -- `GET`/`POST
-   /api/admin/ports`, `DELETE /api/admin/ports/{port}`, and
-   `POST /api/admin/prune`. Both are system-wide, unscoped-to-any-project
-   operations (freeing a port out from under someone else's deployment,
-   pruning images across the whole box), the same bar as user management.
+3. **Port registry management, container pruning, and backups** --
+   `GET`/`POST /api/admin/ports`, `DELETE /api/admin/ports/{port}`,
+   `POST /api/admin/prune`, and `GET /api/admin/backup`. All are
+   system-wide, unscoped-to-any-workspace operations -- a backup in
+   particular is equivalent to every secret on the box (see
+   [backup.md](backup.md)).
 
-The rationale for each: deletion and access-control changes are
-destructive/security-relevant actions with no undo; user management is an
-obvious privilege-escalation vector if members could grant themselves or
-others owner access; secrets are, definitionally, things not everyone with
-dashboard access should be able to read or overwrite; session and
-port/prune management are unscoped system-wide operations that a member
-could use to lock out the owner or disrupt deployments they don't own.
+## Workspace roles: admin / editor / viewer
+
+Scoped per workspace, checked via `auth.RequireWorkspaceRole` (or, for the
+handful of routes with no single resource ID to resolve a workspace from,
+`auth.HasWorkspaceRole` called inline -- see "How it's enforced"). A
+global `owner` always passes regardless of workspace role.
+
+- **viewer**: read-only. View projects, deployments, services, logs,
+  history, non-secret env vars, domains.
+- **editor**: viewer, plus deploying/redeploying/scaling/stopping/
+  restarting/rolling back, editing non-secret env vars, installing
+  templates, connecting a repo, creating staging/PR-preview deployments,
+  verifying a pending custom domain, and **running a command in a live
+  container** (`POST /services/{id}/exec`) -- the route that used to be
+  open to any authenticated user regardless of workspace.
+- **admin**: editor, plus the four things that used to be global-owner-only
+  and are now devolved to whoever administers *that* workspace: deleting a
+  project or deployment, setting a secret env var, changing a deployment's
+  access control (public/private/password), adding or removing a custom
+  domain, deleting the workspace itself, and managing its membership (see
+  below). A workspace-admin has **no special power outside their own
+  workspace** -- see `TestWorkspaceAdminScopedNotGlobal` in
+  `internal/api/workspace_roles_test.go`.
+
+A resource that doesn't exist returns `404` even to someone with no access
+to it, not `403` -- a caller shouldn't be able to distinguish "exists, not
+yours" from "doesn't exist" by status code.
+
+### Known limitation: GitHub PATs aren't workspace-scoped
+
+`github_pats` is an org-level resource (`org_id`, not `workspace_id`), and
+a single PAT can back repos across multiple projects in multiple
+workspaces at once via `project_repos.github_pat_id`. There's no single
+workspace to check a PAT's routes against without a schema change, so
+`/api/github/pats` stays open to any authenticated user, unchanged. Real
+gap, left as-is rather than guessed at.
+
+## Managing workspace membership
+
+Admin-only (`/api/workspaces/{id}/members`, `GET`/`POST`/`PUT`/`DELETE`),
+reachable from the dashboard's Workspaces page:
+
+- **Add** grants an *existing* org account a role, looked up by exact
+  email match -- deliberately not a picker over the full user roster,
+  which stays reserved for global owners (see above). This is how a
+  workspace-admin who isn't a global owner adds a known colleague without
+  that broader visibility.
+- **Change role** / **remove** are exactly what they say; removing a
+  member revokes their access to that workspace only, it does not touch
+  their org account (`DELETE /api/admin/users/{id}` is the only thing that
+  does, and stays global-owner-only).
+
+There's no "last admin" guardrail on a workspace the way there is for the
+last org owner (`CountOwners`, below) -- a global owner can always still
+manage any workspace regardless of its `workspace_members` rows, so a
+workspace can never actually get stranded.
 
 ## Deleting a user
 
@@ -67,20 +131,41 @@ able to grant owner access to anyone else.
 
 ## How it's enforced under the hood
 
-Session validation (`internal/auth`) loads the caller's role in the same
-query as the session lookup itself (`GetSessionByTokenHash` joins
+Session validation (`internal/auth`) loads the caller's global role in the
+same query as the session lookup itself (`GetSessionByTokenHash` joins
 `sessions` to `users`), so role-gating costs no extra round trip.
-`RequireAuth` middleware stashes the role in request context;
-`RequireOwner` (a second, stackable middleware) checks it and returns
-`403 {"error":"owner role required"}` before the handler runs at all for
-routes wrapped in it (see `internal/api/router.go` for exactly which
-routes that's applied to). A handful of routes without a matching REST
-verb to hang middleware off cleanly (the secret-write path inside
-`setEnvVar`, which is otherwise open to members for non-secret writes)
-check the role inline instead, but the effect is identical: role comes
-from the same context value either way.
+`RequireAuth` middleware stashes the role in request context; `RequireOwner`
+checks it for host-level routes exactly as before.
 
-On the frontend, `web/src/userContext.tsx` exposes `useIsOwner()` (a small
-wrapper over the current user's role, set once at login/session-restore)
-so pages can hide owner-only controls -- purely cosmetic, since the API
+Workspace roles add a second layer, `internal/auth/workspace.go`:
+
+- `auth.HasWorkspaceRole(ctx, store, minRole, workspaceID)` is the core
+  check -- a global owner always passes; otherwise it looks up the
+  caller's `workspace_members` row and compares rank (`viewer < editor <
+  admin`).
+- `auth.RequireWorkspaceRole(store, minRole, resolve)` wraps it as
+  middleware for routes with a single resource ID to resolve a workspace
+  from (e.g. `{deploymentID}` -> `internal/store`'s
+  `WorkspaceIDForDeployment`, one hop; `{serviceID}` -> two hops through
+  `deployments` -> `projects`). See `internal/api/workspace_resolvers.go`
+  for every resolver and `internal/api/router.go` for exactly which routes
+  use which minimum role.
+- A handful of routes have no single resource ID to hang middleware off
+  (`listProjects` spans every workspace; `createProject`'s target
+  workspace is in the JSON body; `setProjectWorkspace` involves *two*
+  workspaces, source and destination) and call `HasWorkspaceRole` inline
+  instead -- same check, same effect.
+
+**Upgrading an existing install**: `internal/db/migrations/0012_workspace_role_backfill.sql`
+backfills a `workspace_members` row for every (workspace, user) pair that
+doesn't already have one -- existing owners become admin, existing members
+become editor -- so upgrading never silently drops anyone from access they
+already had. New workspaces/users after the upgrade get their membership
+from `CreateWorkspace` (creator becomes admin) and `CreateUser` (auto-joins
+the default workspace as editor) instead of the migration.
+
+On the frontend, `web/src/userContext.tsx`'s `useIsOwner()` (global) and
+`web/src/workspaceContext.tsx`'s `useWorkspaceRole(workspaceId)`
+(per-workspace, derived from the already-loaded workspace list, no extra
+fetch) both exist side by side -- purely cosmetic either way, since the API
 enforces the real boundary regardless of what the UI shows or hides.

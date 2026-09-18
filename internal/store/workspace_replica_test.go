@@ -18,8 +18,13 @@ func TestWorkspacesAndReplicaFields(t *testing.T) {
 	st := New(db)
 	ctx := context.Background()
 
+	ownerID, err := st.CreateUser(ctx, "owner@example.com", "hash", "owner")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
 	// Workspace creation and listing with project counts.
-	ws, err := st.CreateWorkspace(ctx, "Production", "production")
+	ws, err := st.CreateWorkspace(ctx, "Production", "production", ownerID)
 	if err != nil {
 		t.Fatalf("CreateWorkspace: %v", err)
 	}
@@ -36,9 +41,9 @@ func TestWorkspacesAndReplicaFields(t *testing.T) {
 		t.Fatalf("expected project in workspace %d, got %d", ws.ID, proj.WorkspaceID)
 	}
 
-	counts, err := st.ListWorkspaceProjectCounts(ctx)
+	counts, err := st.ListWorkspaceProjectCountsForUser(ctx, ownerID, true)
 	if err != nil {
-		t.Fatalf("ListWorkspaceProjectCounts: %v", err)
+		t.Fatalf("ListWorkspaceProjectCountsForUser: %v", err)
 	}
 	if len(counts) != 2 { // default (id 1) + the new one
 		t.Fatalf("expected 2 workspaces, got %d", len(counts))
@@ -72,7 +77,7 @@ func TestWorkspacesAndReplicaFields(t *testing.T) {
 	}
 
 	// Deleting a workspace moves its projects back to default rather than orphaning.
-	ws2, err := st.CreateWorkspace(ctx, "Staging", "staging")
+	ws2, err := st.CreateWorkspace(ctx, "Staging", "staging", ownerID)
 	if err != nil {
 		t.Fatalf("CreateWorkspace: %v", err)
 	}
@@ -82,9 +87,9 @@ func TestWorkspacesAndReplicaFields(t *testing.T) {
 	if err := st.DeleteWorkspace(ctx, ws2.ID); err != nil {
 		t.Fatalf("DeleteWorkspace: %v", err)
 	}
-	all, err := st.ListProjects(ctx)
+	all, err := st.ListProjectsForUser(ctx, ownerID, true)
 	if err != nil {
-		t.Fatalf("ListProjects: %v", err)
+		t.Fatalf("ListProjectsForUser: %v", err)
 	}
 	for _, p := range all {
 		if p.Slug == "web" && p.WorkspaceID != 1 {
