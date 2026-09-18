@@ -35,6 +35,7 @@ export function SimpleAppsPage() {
           ),
         );
         setApps(lists.flat());
+        setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't load your apps"));
   };

@@ -22,7 +22,13 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
   const [showDelete, setShowDelete] = useState(false);
 
   const load = () => {
-    api.get<Deployment>(`/api/deployments/${deploymentId}`).then(setDeployment).catch((e) => setError(errMsg(e)));
+    api
+      .get<Deployment>(`/api/deployments/${deploymentId}`)
+      .then((d) => {
+        setDeployment(d);
+        setError(null);
+      })
+      .catch((e) => setError(errMsg(e)));
   };
   useEffect(() => {
     load();

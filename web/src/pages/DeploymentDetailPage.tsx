@@ -37,12 +37,19 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   const [showDelete, setShowDelete] = useState(false);
 
   const load = () => {
-    api.get<Deployment>(`/api/deployments/${deploymentId}`).then(setDeployment).catch((e) => setError(errMsg(e)));
+    api
+      .get<Deployment>(`/api/deployments/${deploymentId}`)
+      .then((d) => {
+        setDeployment(d);
+        setError(null);
+      })
+      .catch((e) => setError(errMsg(e)));
     api
       .get<Service[]>(`/api/deployments/${deploymentId}/services`)
       .then((s) => {
         setServices(s ?? []);
         setSelectedServiceId((prev) => prev ?? (s && s.length > 0 ? s[0].id : null));
+        setError(null);
       })
       .catch((e) => setError(errMsg(e)));
     api
