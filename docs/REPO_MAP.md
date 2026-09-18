@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-11, updated same-day after adding custom domains' `MANGROVE_CUSTOM_DOMAIN_MODE=port` routing mode -- see the "Verified status" section below.
+Last verified: 2026-09-18, updated same-day after an edge-case stability pass across deploy orchestration, status polling, custom domains/ports, and privileged/security paths (mountd, webhook, storage) -- see the "Verified status" section below.
 
 ## What this is
 
@@ -161,15 +161,18 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   [deployment.md](deployment.md#custom-domains) first, specifically the
   "Custom domains on Nest" subsection for the `port` mode.
 
-## Verified status (2026-09-11, updated same-day for custom-domain port-routing mode)
+## Verified status (2026-09-18, updated same-day for the edge-case stability pass)
 
-Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this change doesn't touch the pages they cover); the Go/frontend build+test rows were re-run fresh against the custom-domain port-routing-mode feature specifically.
+Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this pass touches backend logic and status-display fixes, not those page flows); the Go/frontend build+test rows and a new race-detector pass were re-run fresh against this session's fixes.
+
+This pass found and fixed real bugs in production code paths, not just added coverage: a deploy-cancellation bug that leaked containers and stuck deployments at "building"/"healthchecking" forever (`internal/orchestrator/cancel.go`/`deploy.go`/`compose_deploy.go`/`deploy_static.go`), stop/restart aborting on the first failed container instead of best-effort (`internal/orchestrator/lifecycle.go`), a delete-vs-in-flight-deploy race that could orphan a container and proxy route (`internal/orchestrator/delete.go`), a GitHub webhook delivery-dedup TOCTOU that surfaced a raw 500 (prompting needless GitHub retries) instead of an idempotent 200 (`internal/api/webhook.go`, `internal/store/github.go`), an unserialized mountd mount/unmount race (`internal/mountd/server.go`), a `;`-field-injection gap in NAS share creation (`internal/orchestrator/storage.go`), a misleading port-registry note key and an unvalidated `MANGROVE_CUSTOM_DOMAIN_MODE` typo that silently reproduces the "domain pending forever" bug (`internal/portregistry/portregistry.go`, `cmd/mangrove/main.go`), and a stale-error-banner bug in the PR #24 status polling that pinned a transient network error on screen forever (`web/src/pages/*.tsx`).
 
 | Check | Command | Result |
 |---|---|---|
 | Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./internal/...` | ✅ all packages pass, including new coverage in `internal/orchestrator/domains_test.go` (`TestAddCustomDomainPortModeIsLiveImmediately`, `TestRemoveCustomDomainPortModeReleasesPort`, `TestVerifyCustomDomainPortModeIsANoOp`, plus a default-mode regression test) and an updated `internal/db` migration-count test |
+| Go tests | `go test ./...` | ✅ all packages pass, including new regression tests: `TestAwaitNoInflightDeployWaitsForCompletion`, `TestStopDeploymentToleratesOneFailedContainer`, `TestDeleteDeploymentWaitsForInflightDeploy` (orchestrator), webhook-dedup-race coverage in `internal/store/github_test.go`, a NAS share field-injection test in `internal/orchestrator/storage_test.go`, and a port-registry note assertion in `domains_test.go` |
+| Go race detector | `go test -race ./internal/orchestrator/... ./internal/store/... ./internal/mountd/...` | ✅ clean — the three packages touched by this pass's concurrency fixes |
 | Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
 | Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass, unchanged by this session — see "Not verified" below for what *this* change specifically hasn't been through a real browser for |
@@ -254,3 +257,15 @@ Everything below was actually run on this box, not inferred from reading code. T
   for exactly what that does and doesn't cover). Treat this feature as
   code-reviewed and logic-tested, not field-tested, until it's tried on a
   box with a real drive.
+- **`internal/mountd/server.go`'s root-disk exclusion on an LVM/dm-crypt
+  root.** `rootDiskName` resolves the root disk by taking
+  `filepath.Base(findmnt -no SOURCE /)` and matching it against lsblk's
+  `NAME` field — verified correct on this box's plain-partition root, but on
+  an LVM root, `findmnt`'s reported source and lsblk's `NAME` for the same
+  dm device aren't guaranteed to agree in string form across
+  util-linux/kernel versions. If they diverge, the "never touch the system
+  disk" exclusion in `filterDrives` goes silently inert and the root disk
+  could be offered as a mountable drive. Flagged by the 2026-09-18 edge-case
+  audit; not fixed because it needs a real LVM-root box to verify either the
+  bug or a fix, not a guess. Test on such a box before trusting this
+  exclusion on any LVM/dm-crypt host.
