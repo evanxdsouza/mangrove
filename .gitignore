@@ -12,6 +12,8 @@
 /bin/
 /mangrove
 /mangrovectl
+/mangrove-tui
+/mangrove-mcp
 *.test
 *.out
 
