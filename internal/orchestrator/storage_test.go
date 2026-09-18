@@ -70,6 +70,34 @@ func TestCreateNASShare_RequiresMountedDrive(t *testing.T) {
 	}
 }
 
+// TestCreateNASShare_RejectsSemicolonInFields covers the dperson/samba
+// argument format: '-u user;pass' and '-s name;path;browsable;guest;...'
+// both use ';' as their field separator. A share name, username, or
+// password containing one would silently shift fields (e.g. flip a share to
+// guest-accessible) instead of erroring -- CreateNASShare must reject it
+// up front rather than hand a field-injected argv to the container.
+func TestCreateNASShare_RejectsSemicolonInFields(t *testing.T) {
+	fm := &fakeMountd{drives: []mountd.Drive{{UUID: "u1", Device: "/dev/sdb1", Filesystem: "ext4", Mounted: true, MountPath: "/var/lib/mangrove-drives/u1"}}}
+
+	cases := []struct {
+		name   string
+		params CreateNASShareParams
+	}{
+		{"share name", CreateNASShareParams{DriveUUID: "u1", Slug: "backup", ShareName: "x;/share;yes;yes;no", Username: "user", Password: "pass1234"}},
+		{"username", CreateNASShareParams{DriveUUID: "u1", Slug: "backup", ShareName: "backup", Username: "user;evil", Password: "pass1234"}},
+		{"password", CreateNASShareParams{DriveUUID: "u1", Slug: "backup", ShareName: "backup", Username: "user", Password: "pass;1234"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			o, _ := newStorageTestOrchestrator(t, fm)
+			_, err := o.CreateNASShare(context.Background(), tc.params)
+			if err == nil || !strings.Contains(err.Error(), "';'") {
+				t.Fatalf("expected a ';' validation error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestCreateNASShare_Succeeds(t *testing.T) {
 	fm := &fakeMountd{drives: []mountd.Drive{{UUID: "u1", Device: "/dev/sdb1", Filesystem: "ext4", Mounted: true, MountPath: "/var/lib/mangrove-drives/u1"}}}
 	o, fe := newStorageTestOrchestrator(t, fm)

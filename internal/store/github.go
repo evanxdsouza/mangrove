@@ -258,6 +258,14 @@ func (s *Store) CreateWebhookEvent(ctx context.Context, deliveryID, eventType st
 		deliveryID, eventType, projectRepoID, signatureValid, payloadJSON,
 	)
 	if err != nil {
+		if isUniqueConstraintErr(err) {
+			// Lost a race against a concurrent delivery of the same ID (GitHub
+			// retries reuse the original X-GitHub-Delivery) -- the
+			// WebhookDeliveryExists check above is only a fast-path, not the
+			// real guarantee; delivery_id's UNIQUE constraint is. Report it as
+			// a duplicate rather than an internal error.
+			return 0, ErrDuplicate
+		}
 		return 0, err
 	}
 	return res.LastInsertId()
