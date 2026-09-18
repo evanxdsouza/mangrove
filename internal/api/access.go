@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -34,5 +35,8 @@ func (s *Server) setDeploymentAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Never the password itself -- just what changed.
+	s.auditCtxWorkspace(r.Context(), "set_access_control", "deployment", deploymentID,
+		fmt.Sprintf("is_public=%t password_protected=%t", req.IsPublic, req.PasswordProtected))
 	w.WriteHeader(http.StatusNoContent)
 }

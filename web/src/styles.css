@@ -858,6 +858,26 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 .log-strip-tick.danger { background: var(--red); }
 
+/* Resource-usage history: the same seismograph-strip idiom as .log-strip,
+   applied to a periodic snapshot instead of a log line -- one tick per
+   sample, height from its fraction of ceiling/total, colored by the same
+   default/warn/danger thresholds StatTile's Gauge already uses. */
+.resource-strip {
+  height: 48px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  padding: 0 4px;
+  background: var(--bg-recorder);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.resource-strip-tick {
+  flex: 1 1 0;
+  min-width: 1px;
+  border-radius: 1px 1px 0 0;
+}
+
 .log-viewer {
   background:
     repeating-linear-gradient(to bottom, transparent 0, transparent 22px, rgba(255,255,255,0.02) 22px, rgba(255,255,255,0.02) 23px),

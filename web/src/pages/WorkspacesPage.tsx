@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type WorkspaceMember, type WorkspaceRole } from "../api";
+import { api, ApiError, type AuditEvent, type WorkspaceMember, type WorkspaceRole } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
+import { AuditLogTable } from "../components/AuditLogTable";
 import { useWorkspaces } from "../workspaceContext";
-import { MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
+import { LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
 
 export function WorkspacesPage() {
   const { navigate } = useRouter();
@@ -11,6 +12,7 @@ export function WorkspacesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [membersFor, setMembersFor] = useState<{ id: number; name: string } | null>(null);
+  const [activityFor, setActivityFor] = useState<{ id: number; name: string } | null>(null);
 
   const view = (id: number) => {
     setActiveWorkspaceId(id);
@@ -78,6 +80,15 @@ export function WorkspacesPage() {
                   <td className="mono text-dim">{w.workspace.slug}</td>
                   <td className="text-dim">{w.project_count}</td>
                   <td className="text-right">
+                    {!!w.your_role && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ marginRight: 8 }}
+                        onClick={() => setActivityFor({ id: w.workspace.id, name: w.workspace.name })}
+                      >
+                        <LedgerIcon /> Activity
+                      </button>
+                    )}
                     {w.your_role === "admin" && (
                       <button
                         className="btn btn-sm"
@@ -113,7 +124,38 @@ export function WorkspacesPage() {
       {membersFor && (
         <ManageMembersModal workspaceId={membersFor.id} workspaceName={membersFor.name} onClose={() => setMembersFor(null)} />
       )}
+
+      {activityFor && <ActivityModal workspaceId={activityFor.id} workspaceName={activityFor.name} onClose={() => setActivityFor(null)} />}
     </>
+  );
+}
+
+// ActivityModal is viewer+ (any member can open it, matching the
+// GET /api/workspaces/{id}/audit-log route's own gate) -- accountability
+// for who deployed/deleted/changed access is exactly the kind of thing a
+// workspace's own members should be able to see, not just its admins.
+function ActivityModal({ workspaceId, workspaceName, onClose }: { workspaceId: number; workspaceName: string; onClose: () => void }) {
+  const requestClose = useModalClose();
+  const [events, setEvents] = useState<AuditEvent[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<AuditEvent[]>(`/api/workspaces/${workspaceId}/audit-log`)
+      .then((e) => setEvents(e ?? []))
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load activity"));
+  }, [workspaceId]);
+
+  return (
+    <Modal title={`Activity in "${workspaceName}"`} onClose={onClose}>
+      {error && <div className="error-banner">{error}</div>}
+      <AuditLogTable events={events} />
+      <div className="modal-actions">
+        <button type="button" className="btn" onClick={requestClose}>
+          Close
+        </button>
+      </div>
+    </Modal>
   );
 }
 

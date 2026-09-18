@@ -18,7 +18,7 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		"nodes", "projects", "github_pats", "project_repos", "deployments",
 		"services", "volumes", "port_registry", "deploy_history",
 		"deploy_history_artifacts", "env_vars", "webhook_events",
-		"health_checks", "notifications_log",
+		"health_checks", "notifications_log", "resource_usage_snapshots", "audit_log",
 	}
 	for _, tbl := range tables {
 		var name string
@@ -57,8 +57,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err := conn2.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if count != 12 {
-		t.Errorf("expected 12 applied migrations, got %d", count)
+	if count != 14 {
+		t.Errorf("expected 14 applied migrations, got %d", count)
 	}
 }
 

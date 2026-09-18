@@ -543,6 +543,33 @@ func (s *Store) ListPreviewDeployments(ctx context.Context, promotesToDeployment
 	return out, rows.Err()
 }
 
+// ListStalePreviewDeployments finds every PR-preview deployment across the
+// whole box with no activity (a push-triggered redeploy, or its initial
+// deploy if never redeployed since) more recent than olderThan -- the
+// scheduler.PreviewReaper's backstop for a preview whose "PR closed"
+// webhook was never delivered.
+func (s *Store) ListStalePreviewDeployments(ctx context.Context, olderThan time.Time) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments
+		 WHERE environment = 'preview' AND COALESCE(last_deployed_at, created_at) < ?`,
+		olderThan,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // GetPreviewDeployment finds the preview deployment (if any) already
 // tracking prNumber for the given production deployment -- what a
 // pull_request webhook delivery looks up before deciding whether to create

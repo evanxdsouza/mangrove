@@ -150,6 +150,29 @@ export interface WebhookEvent {
   deploy_history_id?: number;
 }
 
+export interface AuditEvent {
+  id: number;
+  actor_user_id?: number;
+  actor_email: string;
+  action: string;
+  resource_type: string;
+  resource_id?: number;
+  workspace_id?: number;
+  detail?: string;
+  created_at: string;
+}
+
+export interface ResourceUsageSnapshot {
+  id: number;
+  memory_allocated_mb: number;
+  memory_used_mb: number;
+  memory_ceiling_mb: number;
+  running_containers: number;
+  disk_total_gb: number;
+  disk_used_gb: number;
+  recorded_at: string;
+}
+
 export interface HealthCheckEntry {
   status: string;
   checked_at: string;

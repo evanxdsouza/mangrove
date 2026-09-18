@@ -147,6 +147,16 @@ func run(cfg config.Config, log *slog.Logger) error {
 	pruner := scheduler.NewPruner(st, dockerExec, log)
 	go pruner.Run(ctx)
 
+	// A stale PR preview (no push in cfg.PreviewMaxAgeHours) gets torn down
+	// even if its "PR closed" webhook delivery was missed -- see
+	// scheduler.PreviewReaper. cfg.PreviewMaxAgeHours == 0 disables it.
+	previewReaper := scheduler.NewPreviewReaper(orch, cfg.PreviewMaxAgeHours, log)
+	go previewReaper.Run(ctx)
+
+	resourceSampler := scheduler.NewResourceSampler(orch, log)
+	go resourceSampler.Run(ctx)
+	go resourceSampler.PruneOld(ctx)
+
 	// Home-server DDNS: only started when MANGROVE_DDNS_DOMAIN is set (a
 	// VPS/Nest install leaves it empty, see setup.sh's "home" vs "vps"
 	// install mode).

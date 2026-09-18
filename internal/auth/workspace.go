@@ -75,9 +75,20 @@ func RequireWorkspaceRole(st *store.Store, minRole string, resolve func(r *http.
 				writeWorkspaceRoleError(w, http.StatusForbidden, minRole+" role (in this workspace) required")
 				return
 			}
-			next.ServeHTTP(w, r)
+			// Stashed so a handler that wants to record an audit event
+			// (internal/api/audit.go) doesn't have to re-resolve the same
+			// workspace ID this middleware already looked up.
+			ctx := context.WithValue(r.Context(), workspaceIDContextKey, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// WorkspaceIDFromContext returns the workspace ID RequireWorkspaceRole
+// already resolved for this request, if any.
+func WorkspaceIDFromContext(ctx context.Context) (int64, bool) {
+	id, ok := ctx.Value(workspaceIDContextKey).(int64)
+	return id, ok
 }
 
 func writeWorkspaceRoleError(w http.ResponseWriter, status int, msg string) {

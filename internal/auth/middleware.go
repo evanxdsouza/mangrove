@@ -11,8 +11,9 @@ import (
 type contextKey string
 
 const (
-	userIDContextKey contextKey = "mangrove_user_id"
-	roleContextKey   contextKey = "mangrove_role"
+	userIDContextKey      contextKey = "mangrove_user_id"
+	roleContextKey        contextKey = "mangrove_role"
+	workspaceIDContextKey contextKey = "mangrove_workspace_id" // set by RequireWorkspaceRole, see workspace.go
 )
 
 // RequireAuth rejects any request without a valid session cookie. There is

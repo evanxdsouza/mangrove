@@ -184,6 +184,18 @@ type DeployRequest struct {
 	// them), which is fine because they're only needed at first boot (e.g.
 	// a Postgres initdb.d script).
 	Files []executor.FileMount
+
+	// ActorUserID/ActorEmail identify who triggered this deploy, for the
+	// audit log (internal/api/audit.go's auditDeploy) -- both nil/empty
+	// for an automated GitHub webhook trigger. Resolved by the caller from
+	// its own request context and passed through explicitly rather than
+	// read back from ctx inside Deploy/DeployCompose/DeployStatic,
+	// because those run under WithInflightDeploy's own detached context
+	// (context.WithCancel(context.Background()), so a deploy outlives the
+	// HTTP request that started it -- see cancel.go's BeginDeploy), which
+	// never carries the original request's auth values.
+	ActorUserID *int64
+	ActorEmail  string
 }
 
 const healthCheckPollInterval = 2 * time.Second

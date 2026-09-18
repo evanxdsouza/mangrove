@@ -126,6 +126,11 @@ func (s *Server) Router() http.Handler {
 						r.Put("/{userID}", s.setWorkspaceMemberRole)
 						r.Delete("/{userID}", s.removeWorkspaceMember)
 					})
+					// Viewer+ (not admin-only): a workspace's own history
+					// of who deployed/deleted/changed access is exactly
+					// the kind of thing any member should be able to see,
+					// not just its admins -- see docs/multi-user.md.
+					r.With(viewer(wsWS)).Get("/audit-log", s.listWorkspaceAuditLog)
 				})
 			})
 
@@ -222,6 +227,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Route("/admin", func(r chi.Router) {
 				r.Get("/resource-budget", s.getResourceBudget)
+				r.Get("/resource-history", s.getResourceHistory)
 				r.Get("/system-health", s.getSystemHealth)
 				r.Get("/nodes", s.listNodes)
 				r.Get("/notifications", s.listNotifications)
@@ -245,6 +251,7 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/sessions/{sessionID}", s.revokeSession)
 					r.Post("/prune", s.triggerPrune)
 					r.Get("/backup", s.backup)
+					r.Get("/audit-log", s.listAllAuditLog)
 
 					// User management is owner-only, top to bottom -- a
 					// member listing/inviting/removing other accounts is

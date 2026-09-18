@@ -21,16 +21,55 @@ import (
 // push, staging create, promote) calls this instead of duplicating the
 // switch, which is what let the webhook path drift out of sync and
 // silently mis-route static-strategy deployments into Deploy() (written
-// for container-based strategies) instead of DeployStatic().
+// for container-based strategies) instead of DeployStatic(). It's also,
+// consequently, the single place to record "who deployed, and when" for
+// every one of those triggers at once -- see auditDeploy. (Rollback and
+// scale bypass this switch entirely and record their own audit event.)
 func (s *Server) dispatchDeploy(ctx context.Context, dep models.Deployment, req orchestrator.DeployRequest) (int64, error) {
+	var historyID int64
+	var err error
 	switch dep.BuildStrategy {
 	case "compose":
-		return s.Orchestrator.DeployCompose(ctx, req)
+		historyID, err = s.Orchestrator.DeployCompose(ctx, req)
 	case "static":
-		return s.Orchestrator.DeployStatic(ctx, req)
+		historyID, err = s.Orchestrator.DeployStatic(ctx, req)
 	default:
-		return s.Orchestrator.Deploy(ctx, req)
+		historyID, err = s.Orchestrator.Deploy(ctx, req)
 	}
+	s.auditDeploy(ctx, dep, req, err)
+	return historyID, err
+}
+
+// auditDeploy records a deploy attempt under req.TriggeredBy's own value
+// ("manual", "redeploy", "promote", "push", ...) as the action -- already
+// a closed, meaningful vocabulary (internal/db/migrations's deploy_history
+// CHECK constraint), so it doubles as the audit action with no
+// translation needed. workspaceID is resolved fresh from dep.ProjectID
+// rather than read back from context, since an automated (webhook)
+// trigger's context never ran through RequireWorkspaceRole to stash one.
+func (s *Server) auditDeploy(ctx context.Context, dep models.Deployment, req orchestrator.DeployRequest, deployErr error) {
+	var workspaceID *int64
+	if id, err := s.Store.WorkspaceIDForProject(ctx, dep.ProjectID); err == nil {
+		workspaceID = &id
+	}
+	detail := req.GitRef
+	if req.CommitSHA != "" {
+		if detail != "" {
+			detail += " @ "
+		}
+		detail += req.CommitSHA
+	}
+	if deployErr != nil {
+		if detail != "" {
+			detail += ": "
+		}
+		detail += "failed: " + deployErr.Error()
+	}
+	action := req.TriggeredBy
+	if action == "" {
+		action = "deploy"
+	}
+	s.recordAudit(ctx, req.ActorUserID, req.ActorEmail, action, "deployment", dep.ID, workspaceID, detail)
 }
 
 func (s *Server) listDeployments(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +217,7 @@ func (s *Server) deleteDeployment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "delete", "deployment", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -241,6 +281,7 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorUserID, actorEmail := s.resolveActor(r.Context())
 	deployReq := orchestrator.DeployRequest{
 		DeploymentID:  deploymentID,
 		TriggeredBy:   "manual",
@@ -249,6 +290,8 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 		CommitSHA:     req.CommitSHA,
 		CommitMessage: req.CommitMessage,
 		AuthToken:     req.AuthToken,
+		ActorUserID:   actorUserID,
+		ActorEmail:    actorEmail,
 	}
 
 	var historyID int64
@@ -329,12 +372,14 @@ func (s *Server) triggerRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		s.auditCtxWorkspace(r.Context(), "rollback", "deployment", target.DeploymentID, fmt.Sprintf("to deploy_history %d: failed: %s", historyID, err.Error()))
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"deploy_history_id": newHistoryID,
 			"error":             err.Error(),
 		})
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "rollback", "deployment", target.DeploymentID, fmt.Sprintf("to deploy_history %d", historyID))
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": newHistoryID, "status": "success"})
 }
 
@@ -394,6 +439,7 @@ func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deployReq = buildReq
+	deployReq.ActorUserID, deployReq.ActorEmail = s.resolveActor(r.Context())
 
 	var historyID int64
 	err = s.Orchestrator.WithInflightDeploy(deploymentID, func(ctx context.Context) error {
@@ -512,12 +558,14 @@ func (s *Server) scaleDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		s.auditCtxWorkspace(r.Context(), "scale", "deployment", deploymentID, fmt.Sprintf("replicas=%d: failed: %s", req.Replicas, err.Error()))
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"deploy_history_id": historyID,
 			"error":             err.Error(),
 		})
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "scale", "deployment", deploymentID, fmt.Sprintf("replicas=%d", req.Replicas))
 	writeJSON(w, http.StatusOK, map[string]any{"deploy_history_id": historyID, "replicas": req.Replicas, "status": "success"})
 }
 
@@ -741,6 +789,7 @@ func (s *Server) createStagingDeployment(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		deployError = err.Error()
 	} else {
+		deployReq.ActorUserID, deployReq.ActorEmail = s.resolveActor(r.Context())
 		err = s.Orchestrator.WithInflightDeploy(staging.ID, func(ctx context.Context) error {
 			_, e := s.dispatchDeploy(ctx, staging, deployReq)
 			return e
@@ -821,6 +870,7 @@ func (s *Server) promoteDeployment(w http.ResponseWriter, r *http.Request) {
 	deployReq.GitRef = promoteRef
 	deployReq.CommitSHA = current.CommitSHA
 	deployReq.CommitMessage = current.CommitMessage
+	deployReq.ActorUserID, deployReq.ActorEmail = s.resolveActor(r.Context())
 
 	var historyID int64
 	err = s.Orchestrator.WithInflightDeploy(prod.ID, func(ctx context.Context) error {

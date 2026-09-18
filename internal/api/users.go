@@ -54,6 +54,7 @@ func (s *Server) createTeamUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r.Context(), "create_user", "user", id, nil, req.Email+" as "+req.Role)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "email": req.Email, "role": req.Role})
 }
 
@@ -93,5 +94,6 @@ func (s *Server) deleteTeamUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r.Context(), "delete_user", "user", id, nil, target.Email)
 	w.WriteHeader(http.StatusNoContent)
 }

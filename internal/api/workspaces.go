@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -60,6 +61,7 @@ func (s *Server) deleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "delete", "workspace", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -119,6 +121,8 @@ func (s *Server) setProjectWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r.Context(), "move_project", "project", projectID, &req.WorkspaceID,
+		fmt.Sprintf("from workspace %d to %d", currentWorkspaceID, req.WorkspaceID))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -186,6 +190,7 @@ func (s *Server) addWorkspaceMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "add_member", "workspace", workspaceID, req.Email+" as "+req.Role)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -221,6 +226,7 @@ func (s *Server) setWorkspaceMemberRole(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "set_member_role", "workspace", workspaceID, fmt.Sprintf("user %d -> %s", userID, req.Role))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -243,6 +249,7 @@ func (s *Server) removeWorkspaceMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "remove_member", "workspace", workspaceID, fmt.Sprintf("user %d", userID))
 	w.WriteHeader(http.StatusNoContent)
 }
 
