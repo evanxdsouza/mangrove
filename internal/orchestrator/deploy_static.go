@@ -48,10 +48,15 @@ func (o *Orchestrator) DeployStatic(ctx context.Context, req DeployRequest) (dep
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "building", "")
 	o.postCommitStatus(ctx, dep, req, github.StatePending, "Deploying via Mangrove")
 
+	// See the matching comment in deploy.go's Deploy(): use a cancellation-
+	// detached context for failure bookkeeping so a cancelled deploy still
+	// gets marked failed instead of stuck at "building" forever.
+	cleanupCtx := context.WithoutCancel(ctx)
+
 	fail := func(stepErr error) (int64, error) {
-		o.Store.UpdateDeployHistoryStatus(ctx, historyID, "failed", stepErr.Error())
-		o.Store.UpdateDeploymentStatus(ctx, dep.ID, "failed")
-		o.postCommitStatus(ctx, dep, req, github.StateFailure, stepErr.Error())
+		o.Store.UpdateDeployHistoryStatus(cleanupCtx, historyID, "failed", stepErr.Error())
+		o.Store.UpdateDeploymentStatus(cleanupCtx, dep.ID, "failed")
+		o.postCommitStatus(cleanupCtx, dep, req, github.StateFailure, stepErr.Error())
 		return historyID, stepErr
 	}
 

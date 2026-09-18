@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
@@ -85,6 +87,52 @@ func TestDeleteDeploymentLeavesSiblingDeploymentsIntact(t *testing.T) {
 	}
 	if _, err := st.GetDeployment(ctx, wpDepID); err != nil {
 		t.Errorf("expected wordpress deployment to survive, got err=%v", err)
+	}
+}
+
+// TestDeleteDeploymentWaitsForInflightDeploy guards against DeleteDeployment
+// racing a still-running deploy of the same deployment: without cancelling
+// and waiting for it first, delete's teardown could run before the deploy
+// finishes creating/tearing down its own containers, and anything the
+// in-flight deploy does after delete has already removed the DB rows would
+// be orphaned forever. Simulates the in-flight deploy directly via
+// BeginDeploy/EndDeploy rather than a real Deploy() call, since what's under
+// test is the ordering DeleteDeployment enforces against the inflight
+// registry, not the deploy pipeline itself.
+func TestDeleteDeploymentWaitsForInflightDeploy(t *testing.T) {
+	o, st, projectID := newTestOrchestrator(t)
+	ctx := context.Background()
+
+	result, err := o.InstallTemplate(ctx, projectID, "postgres", "mydb", nil, nil)
+	if err != nil {
+		t.Fatalf("InstallTemplate: %v", err)
+	}
+	depID := result.Deployments[0].DeploymentID
+
+	deployCtx, err := o.BeginDeploy(depID)
+	if err != nil {
+		t.Fatalf("BeginDeploy: %v", err)
+	}
+	var deployFinishedFirst atomic.Bool
+	deployDone := make(chan struct{})
+	go func() {
+		defer close(deployDone)
+		<-deployCtx.Done() // observes DeleteDeployment's cancellation
+		time.Sleep(20 * time.Millisecond)
+		deployFinishedFirst.Store(true)
+		o.EndDeploy(depID)
+	}()
+
+	if err := o.DeleteDeployment(ctx, depID); err != nil {
+		t.Fatalf("DeleteDeployment: %v", err)
+	}
+	if !deployFinishedFirst.Load() {
+		t.Fatal("DeleteDeployment's teardown ran before the in-flight deploy finished")
+	}
+	<-deployDone
+
+	if _, err := st.GetDeployment(ctx, depID); err != store.ErrNotFound {
+		t.Errorf("expected deployment row gone, got err=%v", err)
 	}
 }
 

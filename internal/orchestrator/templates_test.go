@@ -38,6 +38,8 @@ type fakeTemplateExecutor struct {
 	execCalls      []execCall           // every (ref, cmd) Exec() was called with
 	execResult     executor.ExecResult  // scripted return value for every Exec() call
 	execErr        error                // scripted error for every Exec() call
+	stopErrFor     map[string]error     // scripted Stop() error for specific container refs
+	restartErrFor  map[string]error     // scripted Restart() error for specific container refs
 }
 
 type execCall struct {
@@ -56,11 +58,11 @@ func (f *fakeTemplateExecutor) Run(ctx context.Context, spec executor.RunSpec) (
 }
 func (f *fakeTemplateExecutor) Stop(ctx context.Context, ref string, timeout time.Duration) error {
 	f.stoppedRefs = append(f.stoppedRefs, ref)
-	return nil
+	return f.stopErrFor[ref]
 }
 func (f *fakeTemplateExecutor) Restart(ctx context.Context, ref string, timeout time.Duration) error {
 	f.restartedRefs = append(f.restartedRefs, ref)
-	return nil
+	return f.restartErrFor[ref]
 }
 func (f *fakeTemplateExecutor) Exec(ctx context.Context, ref string, cmd []string) (executor.ExecResult, error) {
 	f.execCalls = append(f.execCalls, execCall{ref: ref, cmd: cmd})
