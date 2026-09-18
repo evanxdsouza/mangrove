@@ -42,6 +42,7 @@ func (s *Server) addCustomDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "add_custom_domain", "custom_domain", domain.ID, req.Hostname)
 	writeJSON(w, http.StatusCreated, domain)
 }
 
@@ -69,9 +70,14 @@ func (s *Server) deleteCustomDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid domain id")
 		return
 	}
+	hostname := "" // best-effort for the audit detail; a lookup failure shouldn't block the delete
+	if domain, err := s.Store.GetCustomDomain(r.Context(), id); err == nil {
+		hostname = domain.Hostname
+	}
 	if err := s.Orchestrator.RemoveCustomDomain(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "delete_custom_domain", "custom_domain", id, hostname)
 	w.WriteHeader(http.StatusNoContent)
 }

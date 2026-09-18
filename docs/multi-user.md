@@ -116,6 +116,45 @@ last org owner (`CountOwners`, below) -- a global owner can always still
 manage any workspace regardless of its `workspace_members` rows, so a
 workspace can never actually get stranded.
 
+## Audit log
+
+Matters more now that workspace-admins, not just global owners, can
+delete/set-secrets/change-access -- see "Workspace roles" above.
+`audit_log` (`internal/store/audit.go`) records who deployed, deleted, or
+changed access, and when, for:
+
+- **Deploy**: every trigger -- manual, redeploy, rollback, scale, promote,
+  and an automated GitHub push/PR-preview sync (recorded under the actor
+  `github-webhook`, since there's no user session behind a webhook
+  delivery) -- action name matches `deploy_history.triggered_by`'s own
+  vocabulary (`manual`, `redeploy`, `rollback`, `scale`, `promote`,
+  `push`).
+- **Delete**: project, deployment, workspace, custom domain, org user.
+- **Changed access**: deployment access control (public/private/password
+  -- never the password itself), a secret env var (never the value, just
+  which key changed), custom domain add, workspace membership add/role
+  change/remove, moving a project between workspaces, org user creation,
+  and session revocation.
+
+Each entry records `actor_email` (denormalized, so it stays readable if
+the account is later deleted), the action, the resource type/ID, the
+workspace (nil for an org-level action like user management), and a short
+detail string. **Never pruned** -- unlike `health_checks` or
+`resource_usage_snapshots`, an audit trail that quietly expires isn't one.
+
+Two read endpoints, matched to the two-axis model above:
+
+- `GET /api/workspaces/{id}/audit-log` -- viewer+ in that workspace (any
+  member, not just its admins: accountability for what happened in your
+  own workspace is exactly the kind of thing a plain member should be
+  able to see). Scoped to only that workspace's events.
+- `GET /api/admin/audit-log` -- owner-only, every event across every
+  workspace, including org-level ones with no `workspace_id` at all.
+
+GitHub PATs aren't included (see the "Known limitation" above -- the same
+reason they aren't workspace-scoped for authorization means there's no
+single workspace to attribute a PAT change to either).
+
 ## Deleting a user
 
 Two guardrails on `DELETE /api/admin/users/{id}` (owner-only to call at

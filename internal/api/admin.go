@@ -2,13 +2,14 @@ package api
 
 import (
 	"net/http"
-	"syscall"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/sysinfo"
 )
@@ -23,53 +24,47 @@ type resourceBudgetResponse struct {
 }
 
 func (s *Server) getResourceBudget(w http.ResponseWriter, r *http.Request) {
-	allocated, err := s.Store.SumConfiguredMemoryMBAll(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	running, err := s.Store.CountRunningContainers(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	resp := resourceBudgetResponse{
-		MemoryAllocatedMB: allocated,
-		MemoryCeilingMB:   s.MemoryCeilingMB,
-		RunningContainers: running,
-	}
-
-	// Actual memory usage is summed from `docker stats` over every running
-	// service's live container. Best-effort per container: a container that
-	// exited between the DB listing and the stats call is skipped rather
-	// than failing the whole dashboard (allocation figures still render).
+	// s.Orchestrator is nil in some lightweight test environments (see
+	// internal/api/roles_test.go) -- ComputeResourceBudget treats a nil
+	// executor.Executor as "skip the live docker-stats sum," matching the
+	// original behavior here.
+	var exec executor.Executor
 	if s.Orchestrator != nil {
-		containerIDs, err := s.Store.ListRunningContainerIDs(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		for _, id := range containerIDs {
-			stats, err := s.Orchestrator.Exec.Stats(r.Context(), id)
-			if err != nil {
-				continue
-			}
-			resp.MemoryUsedMB += stats.MemUsageMB
+		exec = s.Orchestrator.Exec
+	}
+	budget, err := orchestrator.ComputeResourceBudget(r.Context(), s.Store, exec, s.MemoryCeilingMB, s.DataDir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resourceBudgetResponse{
+		MemoryAllocatedMB: budget.MemoryAllocatedMB,
+		MemoryUsedMB:      budget.MemoryUsedMB,
+		MemoryCeilingMB:   budget.MemoryCeilingMB,
+		RunningContainers: budget.RunningContainers,
+		DiskTotalGB:       budget.DiskTotalGB,
+		DiskUsedGB:        budget.DiskUsedGB,
+	})
+}
+
+// getResourceHistory backs the resource page's trend view --
+// scheduler.ResourceSampler records a ResourceBudget snapshot every 5
+// minutes (see resource_budget.go), this just lists them. ?hours=N narrows
+// the window (default 24); the sampler keeps 30 days before pruning, so
+// anything longer than that returns whatever's left.
+func (s *Server) getResourceHistory(w http.ResponseWriter, r *http.Request) {
+	hours := 24
+	if h := r.URL.Query().Get("hours"); h != "" {
+		if n, err := strconv.Atoi(h); err == nil && n > 0 {
+			hours = n
 		}
 	}
-
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(s.DataDir, &stat); err == nil {
-		blockSize := float64(stat.Bsize)
-		totalBytes := float64(stat.Blocks) * blockSize
-		freeBytes := float64(stat.Bfree) * blockSize
-		const gb = 1024 * 1024 * 1024
-		resp.DiskTotalGB = totalBytes / gb
-		resp.DiskUsedGB = (totalBytes - freeBytes) / gb
+	snapshots, err := s.Store.ListResourceUsageSnapshots(r.Context(), time.Now().Add(-time.Duration(hours)*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, snapshots)
 }
 
 func (s *Server) listPorts(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +127,7 @@ func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r.Context(), "revoke_session", "session", id, nil, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

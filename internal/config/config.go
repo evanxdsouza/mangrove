@@ -110,6 +110,16 @@ type Config struct {
 	// Nest's dashboard is itself the ownership proof). See
 	// internal/orchestrator/domains.go.
 	CustomDomainMode string
+
+	// PreviewMaxAgeHours bounds how long a PR-preview deployment can sit
+	// with no new push before scheduler.PreviewReaper tears it down as a
+	// backstop to the normal "closed" webhook teardown (internal/api/webhook.go's
+	// tearDownPreview) -- a missed/never-delivered webhook, or a PR simply
+	// left open indefinitely, would otherwise leave it eating the
+	// deployment-memory admission budget forever. Defaults to a week
+	// (long enough for a normal review cycle); 0 disables the sweep for
+	// anyone who wants previews to live as long as their PR does.
+	PreviewMaxAgeHours int
 }
 
 // CustomDomainPortMode reports whether MANGROVE_CUSTOM_DOMAIN_MODE=port is
@@ -148,6 +158,7 @@ func Load() Config {
 		MountdSocket:              getEnv("MANGROVE_MOUNTD_SOCKET", "/run/mangrove-mountd.sock"),
 		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
 		CustomDomainMode:          getEnv("MANGROVE_CUSTOM_DOMAIN_MODE", "auto_tls"),
+		PreviewMaxAgeHours:        getEnvInt("MANGROVE_PREVIEW_MAX_AGE_HOURS", 168),
 	}
 }
 

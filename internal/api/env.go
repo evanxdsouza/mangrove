@@ -93,6 +93,8 @@ func (s *Server) setEnvVar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Never the value itself -- just which key changed.
+	s.audit(r.Context(), "set_secret_env_var", "service", serviceID, &workspaceID, "key: "+key)
 	w.WriteHeader(http.StatusNoContent)
 }
 

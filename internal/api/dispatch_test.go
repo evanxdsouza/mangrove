@@ -81,3 +81,86 @@ func TestDispatchDeployRoutesStaticToDeployStatic(t *testing.T) {
 		t.Errorf("expected static deploy to succeed with no container, got status=%q error=%q", history.Status, history.ErrorMessage)
 	}
 }
+
+// TestDispatchDeployAuditsTheRequestActorNotContext guards against a real
+// bug caught by manual end-to-end testing, not by any unit test: a deploy
+// runs under orchestrator.WithInflightDeploy's own detached context
+// (context.WithCancel(context.Background()), so a deploy outlives the
+// HTTP request that started it -- see cancel.go's BeginDeploy), which
+// never carries the original request's session/auth values. An audit call
+// inside dispatchDeploy that read the actor back out of ctx (auth.
+// UserIDFromContext) always saw "no user" and silently mis-attributed
+// every interactive deploy to the automated-webhook actor. The fix reads
+// DeployRequest.ActorUserID/ActorEmail, resolved by the caller from its
+// own request context *before* entering the detached one, instead.
+func TestDispatchDeployAuditsTheRequestActorNotContext(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	repoDir := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "index.html"), []byte("<h1>hi</h1>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run("init", "-q")
+	run("config", "user.email", "t@t.com")
+	run("config", "user.name", "t")
+	run("add", "index.html")
+	run("commit", "-q", "-m", "initial")
+
+	userID, err := env.store.CreateUser(ctx, "actor@example.com", "hash", "owner")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	proj, err := env.store.CreateProject(ctx, 1, "Actor Test", "actor-test", "")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	dep, err := env.store.CreateDeployment(ctx, store.CreateDeploymentParams{
+		ProjectID: proj.ID, Name: "site", Slug: "actor-test-site", BuildStrategy: "static",
+	})
+	if err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	if _, err := env.store.CreateService(ctx, store.CreateServiceParams{
+		DeploymentID: dep.ID, Name: "site", ContainerName: "mangrove-actor-test-site",
+		IsInternalOnly: true, NoContainer: true,
+	}); err != nil {
+		t.Fatalf("CreateService: %v", err)
+	}
+
+	// Mirrors what triggerDeploy/redeployDeployment/promoteDeployment/
+	// createStagingDeployment do: resolve the actor from a (simulated)
+	// request context and set it on the DeployRequest explicitly.
+	req := orchestrator.DeployRequest{
+		DeploymentID: dep.ID,
+		TriggeredBy:  "manual",
+		GitURL:       repoDir,
+		ActorUserID:  &userID,
+		ActorEmail:   "actor@example.com",
+	}
+	if _, err := env.server.dispatchDeploy(ctx, dep, req); err != nil {
+		t.Fatalf("dispatchDeploy: %v", err)
+	}
+
+	events, err := env.store.ListAuditEventsForWorkspace(ctx, 1, 10)
+	if err != nil {
+		t.Fatalf("ListAuditEventsForWorkspace: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d: %+v", len(events), events)
+	}
+	e := events[0]
+	if e.ActorEmail != "actor@example.com" {
+		t.Errorf("expected actor_email %q, got %q (the detached-context bug)", "actor@example.com", e.ActorEmail)
+	}
+	if e.ActorUserID == nil || *e.ActorUserID != userID {
+		t.Errorf("expected actor_user_id %d, got %v", userID, e.ActorUserID)
+	}
+}

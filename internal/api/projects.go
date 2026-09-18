@@ -118,5 +118,6 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditCtxWorkspace(r.Context(), "delete", "project", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError } from "../api";
+import { api, ApiError, type AuditEvent, type ResourceUsageSnapshot } from "../api";
 import { useIsOwner } from "../userContext";
 import { Gauge } from "../components/Gauge";
+import { ResourceHistoryStrip } from "../components/ResourceHistoryStrip";
+import { AuditLogTable } from "../components/AuditLogTable";
 import { DialsIcon, PlusIcon, TrashIcon } from "../icons";
 
 // A compact instrument-log timestamp -- ledger tables here pair it with an
@@ -75,12 +77,15 @@ interface TeamUserEntry {
 export function AdminPage() {
   const isOwner = useIsOwner();
   const [budget, setBudget] = useState<ResourceBudget | null>(null);
+  const [historyHours, setHistoryHours] = useState(24);
+  const [history, setHistory] = useState<ResourceUsageSnapshot[] | null>(null);
   const [ports, setPorts] = useState<PortEntry[] | null>(null);
   const [sessions, setSessions] = useState<SessionEntry[] | null>(null);
   const [nodes, setNodes] = useState<NodeEntry[] | null>(null);
   const [notifications, setNotifications] = useState<NotificationEntry[] | null>(null);
   const [pats, setPats] = useState<GithubPATEntry[] | null>(null);
   const [users, setUsers] = useState<TeamUserEntry[] | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pruneResult, setPruneResult] = useState<string | null>(null);
 
@@ -99,10 +104,18 @@ export function AdminPage() {
       api.get<PortEntry[]>("/api/admin/ports").then((p) => setPorts(p ?? [])).catch((e) => setError(errMsg(e)));
       api.get<SessionEntry[]>("/api/admin/sessions").then((s) => setSessions(s ?? [])).catch((e) => setError(errMsg(e)));
       api.get<TeamUserEntry[]>("/api/admin/users").then((u) => setUsers(u ?? [])).catch((e) => setError(errMsg(e)));
+      api.get<AuditEvent[]>("/api/admin/audit-log").then((a) => setAuditLog(a ?? [])).catch((e) => setError(errMsg(e)));
     }
   };
 
   useEffect(load, []);
+
+  useEffect(() => {
+    api
+      .get<ResourceUsageSnapshot[]>(`/api/admin/resource-history?hours=${historyHours}`)
+      .then((h) => setHistory(h ?? []))
+      .catch((e) => setError(errMsg(e)));
+  }, [historyHours]);
 
   const removeUser = async (id: number) => {
     setError(null);
@@ -185,6 +198,34 @@ export function AdminPage() {
           </div>
         ) : (
           <div className="text-dim">Loading...</div>
+        )}
+
+        {history && (
+          <div style={{ marginTop: 18 }}>
+            <div className="flex-between" style={{ marginBottom: 8 }}>
+              <div className="field-hint" style={{ margin: 0 }}>
+                Trend -- sampled every 5 minutes, kept for 30 days
+              </div>
+              <select
+                className="input"
+                style={{ width: "auto" }}
+                value={historyHours}
+                onChange={(e) => setHistoryHours(Number(e.target.value))}
+              >
+                <option value={24}>Last 24 hours</option>
+                <option value={168}>Last 7 days</option>
+                <option value={720}>Last 30 days</option>
+              </select>
+            </div>
+            <div className="field-hint" style={{ marginBottom: 4 }}>
+              Memory used
+            </div>
+            <ResourceHistoryStrip snapshots={history} metric="memory" />
+            <div className="field-hint" style={{ margin: "12px 0 4px" }}>
+              Disk used
+            </div>
+            <ResourceHistoryStrip snapshots={history} metric="disk" />
+          </div>
         )}
       </div>
 
@@ -436,6 +477,17 @@ export function AdminPage() {
           </table>
         )}
       </div>
+
+      {isOwner && (
+        <div className="card">
+          <div className="card-title">Audit log</div>
+          <p className="text-dim" style={{ marginTop: 0 }}>
+            Every deploy, delete, and access/membership change across every workspace -- see docs/multi-user.md.
+            A workspace's own members can see its own trail from the Workspaces page without needing this view.
+          </p>
+          <AuditLogTable events={auditLog} showWorkspace />
+        </div>
+      )}
     </>
   );
 }

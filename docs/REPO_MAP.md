@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-18, updated same-day after an edge-case stability pass, then backup/restore + admin RBAC, then real per-workspace roles (admin/editor/viewer) -- see the "Verified status" section below.
+Last verified: 2026-09-18, updated same-day after an edge-case stability pass, then backup/restore + admin RBAC, then real per-workspace roles (admin/editor/viewer), then an audit log + PR-preview auto-cleanup + resource-usage history -- see the "Verified status" section below.
 
 ## What this is
 
@@ -49,9 +49,9 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/github/` | GitHub OAuth, repo listing, commit-status posting, PR comment upsert. | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/templates/` | `templates.go` (loader + `validate()`, panics at `init()` on a bad template) + `data/*.json` (the templates themselves, embedded via `go:embed`). | [templates.md](templates.md) |
-| `internal/scheduler/` | Background jobs: `health.go` (deployment health polling), `prune.go` (old image cleanup), `ddns.go` (DuckDNS updater, every 5 min). | [deployment.md](deployment.md)#home-server--ddns |
+| `internal/scheduler/` | Background jobs: `health.go` (deployment health polling), `prune.go` (old image cleanup), `ddns.go` (DuckDNS updater, every 5 min), `preview_reaper.go` (tears down a PR preview with no push in `MANGROVE_PREVIEW_MAX_AGE_HOURS`, backstop for a missed "PR closed" webhook), `resource_sampler.go` (records a resource-usage snapshot every 5 min, pruned to a 30-day rolling window). | [deployment.md](deployment.md)#home-server--ddns |
 | `internal/secrets/` | Encryption at rest for secret env vars / PATs (AAD bound to the owning service/PAT row). The master key this all depends on is backed up alongside the DB by `internal/api/backup.go` -- see [backup.md](backup.md). | [backup.md](backup.md) |
-| `internal/sysinfo/` | Host/cgroup introspection for the admin resource-budget view. | — |
+| `internal/sysinfo/` | Host/cgroup introspection for the admin resource-budget view. `internal/orchestrator/resource_budget.go`'s `ComputeResourceBudget` is the actual "how much of the box is Mangrove using" computation, shared by the live endpoint and `internal/scheduler`'s periodic sampler. | — |
 | `internal/notify/` | Optional Resend email notifications on deploy result. | — |
 | `internal/models/` | Shared Go structs — what `internal/store` returns and what `internal/api` serializes. Also what `internal/apiclient` decodes into (see `docs/clients.md` for why that reuse matters). | [clients.md](clients.md) |
 | `internal/apiclient/` | Typed HTTP client shared by `mangrove-tui`/`mangrove-mcp`. Cookie-based session, `~/.mangrove/session` on disk. | [clients.md](clients.md) |
@@ -191,6 +191,25 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   `workspaces.go` for the pattern. Add coverage to
   `internal/api/workspace_roles_test.go`, following its existing
   `seedWorkspace`/`setRole` helpers.
+- **A new deploy/delete/access-change action that should show up in the
+  audit log**: call `internal/api/audit.go`'s `s.audit`/`s.auditCtxWorkspace`
+  (route already ran through `RequireWorkspaceRole`) right after the write
+  succeeds — see [multi-user.md](multi-user.md)'s "Audit log" section for
+  the full vocabulary and which existing handlers already do this as
+  examples. **If the action happens inside a deploy** (anything routed
+  through `dispatchDeploy`, or a caller of `orchestrator.WithInflightDeploy`
+  more generally), do **not** call `auth.UserIDFromContext`/`s.audit` from
+  inside that callback — its `ctx` is `WithInflightDeploy`'s own
+  `context.WithCancel(context.Background())` (deliberately detached so a
+  deploy outlives the HTTP request that started it, see `cancel.go`'s
+  `BeginDeploy`), which never carries the original request's session.
+  This exact bug shipped and was only caught by live end-to-end testing,
+  not any unit test — resolve the actor in the handler via
+  `s.resolveActor(r.Context())` and pass it through explicitly instead
+  (see `orchestrator.DeployRequest.ActorUserID`/`ActorEmail` and
+  `auditDeploy` in `internal/api/deployments.go`, and the regression test
+  `TestDispatchDeployAuditsTheRequestActorNotContext` in
+  `internal/api/dispatch_test.go`).
 
 ## Verified status (2026-09-18, updated same-day for the edge-case stability pass)
 
@@ -202,16 +221,19 @@ Two more changes landed the same day, closing gaps flagged by that pass rather t
 
 A fourth change, larger than the first three combined: **real per-workspace roles** (admin/editor/viewer, backed by `workspace_members`, which existed in the schema since day one but was never read by anything). Closes the exec/terminal gap directly (`POST /services/{id}/exec` and `GET /services/{id}/terminal` went from "any authenticated user" to editor+ in that service's own workspace) and devolves the four previously-global-owner-only actions (delete project/deployment, set secrets, access control, delete workspace) to workspace-admin, scoped to their own workspace — see [multi-user.md](multi-user.md)'s full breakdown. A migration (`0012_workspace_role_backfill.sql`) backfills every existing (workspace, user) pair on upgrade so no existing install loses access it already had. `internal/auth/workspace.go`, `internal/api/workspace_resolvers.go`, and `internal/store/workspace_roles.go` are the new backend surface; `web/src/workspaceContext.tsx`'s `useWorkspaceRole` and a new Members panel on the Workspaces page are the new frontend surface.
 
+A fifth batch, three smaller features landed together: **an audit log** (who deployed/deleted/changed access, and when — `internal/store/audit.go`, `internal/api/audit.go`, migration `0014_audit_log.sql`, never pruned, matters more now that workspace-admins have the reach the fourth change gave them — see multi-user.md's "Audit log" section); **PR-preview auto-cleanup by age** (`internal/scheduler/preview_reaper.go`, `MANGROVE_PREVIEW_MAX_AGE_HOURS`, default a week — a backstop for a missed "PR closed" webhook, which previously left a stale preview eating the deployment-memory admission budget forever); and **resource-usage history** (`internal/scheduler/resource_sampler.go` samples the same live computation the admin dashboard already did every 5 minutes into `resource_usage_snapshots`, kept 30 days — `orchestrator.ComputeResourceBudget` is now the one shared computation both the live endpoint and the sampler call, replacing a copy that used to live only in the handler). This pass also caught and fixed a real bug via live end-to-end testing that no unit test caught: an interactive deploy's audit entry was being mis-attributed to the automated-webhook actor, because `orchestrator.WithInflightDeploy` deliberately runs a deploy under its own context detached from the HTTP request (so a deploy outlives the request that started it) — see the "New deploy/delete/access-change action" bullet above for the full explanation and the regression test that now guards it.
+
 | Check | Command | Result |
 |---|---|---|
 | Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./...` | ✅ all packages pass, including new regression tests: `TestAwaitNoInflightDeployWaitsForCompletion`, `TestStopDeploymentToleratesOneFailedContainer`, `TestDeleteDeploymentWaitsForInflightDeploy` (orchestrator), webhook-dedup-race coverage in `internal/store/github_test.go`, a NAS share field-injection test in `internal/orchestrator/storage_test.go`, a port-registry note assertion in `domains_test.go`, and the workspace-roles suite: `internal/auth/workspace_test.go` (middleware thresholds/owner-bypass/resolve-errors), `internal/store/workspace_roles_test.go` (resolver + membership CRUD), `internal/db/workspace_role_backfill_test.go` (the upgrade backfill, run against the real migration file), and `internal/api/workspace_roles_test.go` (end-to-end route enforcement) |
-| Go race detector | `go test -race ./internal/orchestrator/... ./internal/store/... ./internal/mountd/... ./internal/auth/... ./internal/api/... ./internal/db/...` | ✅ clean |
+| Go tests | `go test ./...` | ✅ all packages pass, including new regression tests: `TestAwaitNoInflightDeployWaitsForCompletion`, `TestStopDeploymentToleratesOneFailedContainer`, `TestDeleteDeploymentWaitsForInflightDeploy` (orchestrator), webhook-dedup-race coverage in `internal/store/github_test.go`, a NAS share field-injection test in `internal/orchestrator/storage_test.go`, a port-registry note assertion in `domains_test.go`, the workspace-roles suite (`internal/auth/workspace_test.go`, `internal/store/workspace_roles_test.go`, `internal/db/workspace_role_backfill_test.go`, `internal/api/workspace_roles_test.go`), and the newest suite: `internal/scheduler/preview_reaper_test.go` + `resource_sampler_test.go`, `internal/store/resource_usage_test.go` + `audit_test.go`, `internal/api/audit_test.go`, and `TestDispatchDeployAuditsTheRequestActorNotContext` in `internal/api/dispatch_test.go` (the detached-context regression above) |
+| Go race detector | `go test -race ./internal/orchestrator/... ./internal/store/... ./internal/mountd/... ./internal/auth/... ./internal/api/... ./internal/db/... ./internal/scheduler/...` | ✅ clean |
 | Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
-| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass for everything that predates workspace roles; the new Members panel and role-gated controls were instead verified via the live end-to-end pass below (no updated Playwright screenshots this round) |
+| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass for everything that predates workspace roles; newer UI (Members panel, Activity/Audit-log views, resource-history strips) was instead verified via the live end-to-end passes below (no updated Playwright screenshots this round) |
 | Workspace roles end-to-end | live `mangrove` instance, real accounts/workspaces via `curl` against a scratch data dir/port | ✅ see "Workspace roles live verification" below |
+| Audit log + resource history end-to-end | live `mangrove` instance, real accounts/workspaces/deploys via `curl` against a scratch data dir/port | ✅ see "Audit log live verification" below — this is the pass that caught the actor-attribution bug |
 | E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass) |
 
 ### Workspace roles live verification (2026-09-18)
@@ -225,6 +247,15 @@ Ran a real `mangrove` instance (scratch data dir, port 17780, killed and cleaned
 - Promoted to **admin**: `POST .../access` (access control) → `204`; `DELETE` project → `204` — both real, successful, previously-global-owner-only actions, now working for a workspace-admin who is a global `member`.
 - Cross-workspace scoping: the same user, now admin of workspace 2, got `403` deleting a project that lives in workspace 1 — admin doesn't leak across workspaces.
 - Membership management: `GET /api/workspaces/2/members` correctly listed both users with their current roles; an unauthenticated request to the same endpoint got `401`.
+
+### Audit log live verification (2026-09-18)
+
+Ran a second real `mangrove` instance the same way (scratch data dir, port 17781, killed and cleaned up afterward) and drove it with `curl`:
+
+- Adding a workspace member and then deleting a project both produced real `audit_log` rows, readable via `GET /api/workspaces/{id}/audit-log`, in the right order (newest first), with the correct `actor_email`, `action`, `resource_type`/`resource_id`, and `workspace_id`.
+- `GET /api/workspaces/{id}/audit-log` returned `200` for a workspace member (viewer) reading their own workspace's log; `GET /api/admin/audit-log` correctly `403`'d that same member and `200`'d for the owner, returning every event including an org-level one (`create_user`) with no `workspace_id` at all.
+- **Caught a real bug this way that no unit test had**: the first attempt at a real interactive deploy (`POST /deployments/{id}/deploy`, authenticated as the owner) showed up in the audit log attributed to `actor_email: "github-webhook"` instead of the owner — `dispatchDeploy` runs under `orchestrator.WithInflightDeploy`'s own `context.WithCancel(context.Background())` (deliberately detached from the HTTP request so a deploy outlives it), which never carries the request's session. Fixed by resolving the actor in the handler (`s.resolveActor(r.Context())`) before entering that detached context and threading it through explicitly via new `DeployRequest.ActorUserID`/`ActorEmail` fields, rather than reading it back out of `ctx` deep inside the deploy. Re-ran the same live test after the fix: `actor_email: "owner@example.com"`, `actor_user_id: 1`, correct. Regression-tested in `internal/api/dispatch_test.go`'s `TestDispatchDeployAuditsTheRequestActorNotContext` so this can't silently reappear.
+- `GET /api/admin/resource-budget` (the refactor that extracted `orchestrator.ComputeResourceBudget` out of the handler) still returns correct live figures — a real disk-usage reading, zeroed memory/container figures on a box with nothing deployed, no regression from the extraction.
 
 ### Known issues found
 
