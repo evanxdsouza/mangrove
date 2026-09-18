@@ -35,10 +35,19 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [workspaceId, setWorkspaceId] = useState<number>(1);
 
   const load = () => {
-    api.get<Project>(`/api/projects/${projectId}`).then(setProject).catch((e) => setError(errMsg(e)));
+    api
+      .get<Project>(`/api/projects/${projectId}`)
+      .then((p) => {
+        setProject(p);
+        setError(null);
+      })
+      .catch((e) => setError(errMsg(e)));
     api
       .get<Deployment[]>(`/api/projects/${projectId}/deployments`)
-      .then((d) => setDeployments(d ?? []))
+      .then((d) => {
+        setDeployments(d ?? []);
+        setError(null);
+      })
       .catch((e) => setError(errMsg(e)));
     api
       .get<ProjectRepoInfo>(`/api/projects/${projectId}/repo`)

@@ -26,6 +26,7 @@ export function ProjectsPage() {
       .then((p) => {
         const list = p ?? [];
         setProjects(list);
+        setError(null);
         // One request per project, same pattern SimpleAppsPage already uses
         // to flatten every deployment -- the ledger's status beacon is a
         // real read of what's actually deployed, not decoration.

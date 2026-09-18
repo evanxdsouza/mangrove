@@ -50,10 +50,20 @@ func (o *Orchestrator) StopDeployment(ctx context.Context, deploymentID int64) e
 			// never successfully deployed -- nothing to stop.
 			continue
 		}
+		// Best-effort per container: one flaky/already-gone container (e.g.
+		// a replica someone already `docker rm`'d by hand) must not abort
+		// the whole call and leave every other service -- and every other
+		// container of a replicated service -- untouched and still routed.
+		svcStopped := false
 		for _, id := range ids {
 			if err := o.Exec.Stop(ctx, id, 10*time.Second); err != nil {
-				return fmt.Errorf("stop service %q: %w", svc.Name, err)
+				o.Log.Warn("stop deployment: stop container failed", "service_id", svc.ID, "container_id", id, "error", err)
+				continue
 			}
+			svcStopped = true
+		}
+		if !svcStopped {
+			continue
 		}
 		stoppedAny = true
 
@@ -100,10 +110,19 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 		if len(ids) == 0 {
 			continue
 		}
+		// Best-effort per container -- see the matching comment in
+		// StopDeployment: one flaky replica must not abort restarting every
+		// other service/replica in the deployment.
+		svcRestarted := false
 		for _, id := range ids {
 			if err := o.Exec.Restart(ctx, id, 10*time.Second); err != nil {
-				return fmt.Errorf("restart service %q: %w", svc.Name, err)
+				o.Log.Warn("restart deployment: restart container failed", "service_id", svc.ID, "container_id", id, "error", err)
+				continue
 			}
+			svcRestarted = true
+		}
+		if !svcRestarted {
+			continue
 		}
 		restartedAny = true
 		if err := o.Store.UpdateServiceStatus(ctx, svc.ID, "running"); err != nil {
