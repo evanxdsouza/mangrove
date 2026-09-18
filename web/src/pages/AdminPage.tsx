@@ -86,15 +86,18 @@ export function AdminPage() {
 
   const load = () => {
     api.get<ResourceBudget>("/api/admin/resource-budget").then(setBudget).catch((e) => setError(errMsg(e)));
-    api.get<PortEntry[]>("/api/admin/ports").then((p) => setPorts(p ?? [])).catch((e) => setError(errMsg(e)));
-    api.get<SessionEntry[]>("/api/admin/sessions").then((s) => setSessions(s ?? [])).catch((e) => setError(errMsg(e)));
     api.get<NodeEntry[]>("/api/admin/nodes").then((n) => setNodes(n ?? [])).catch((e) => setError(errMsg(e)));
     api
       .get<NotificationEntry[]>("/api/admin/notifications")
       .then((n) => setNotifications(n ?? []))
       .catch((e) => setError(errMsg(e)));
     api.get<GithubPATEntry[]>("/api/github/pats").then((p) => setPats(p ?? [])).catch((e) => setError(errMsg(e)));
+    // Ports, sessions, and users are all owner-only server-side (see
+    // docs/multi-user.md) -- fetching them as a member would just 403 and
+    // surface a spurious error banner on a page they can otherwise use.
     if (isOwner) {
+      api.get<PortEntry[]>("/api/admin/ports").then((p) => setPorts(p ?? [])).catch((e) => setError(errMsg(e)));
+      api.get<SessionEntry[]>("/api/admin/sessions").then((s) => setSessions(s ?? [])).catch((e) => setError(errMsg(e)));
       api.get<TeamUserEntry[]>("/api/admin/users").then((u) => setUsers(u ?? [])).catch((e) => setError(errMsg(e)));
     }
   };
@@ -188,81 +191,88 @@ export function AdminPage() {
       {/* Port registry and Active sessions each hold a 4-column table plus
           a row action button -- a side-by-side grid-2 halves their width
           and pushes the action button past the card's edge on anything
-          short of a very wide screen, so each gets the full row instead. */}
-      <div className="card">
-        <div className="flex-between" style={{ marginBottom: 14 }}>
-          <div className="card-title" style={{ margin: 0 }}>
-            Port registry
-          </div>
-        </div>
-        {ports === null ? (
-            <div className="text-dim">Loading...</div>
-          ) : ports.length === 0 ? (
-            <div className="text-dim">No ports allocated yet.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Port</th>
-                  <th>Type</th>
-                  <th>Note</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {ports.map((p) => (
-                  <tr key={p.id}>
-                    <td className="mono">{p.port}</td>
-                    <td className="text-dim">{p.allocation_type}</td>
-                    <td className="text-dim">{p.note || "—"}</td>
-                    <td>
-                      {p.allocation_type !== "system" && (
-                        <button className="btn btn-sm btn-danger" onClick={() => releasePort(p.port)}>
-                          <TrashIcon /> Release
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <ReservePortForm onReserved={load} />
-        </div>
-
+          short of a very wide screen, so each gets the full row instead.
+          Both are owner-only server-side (see docs/multi-user.md), so both
+          are owner-only here too -- a member showing them would just hit
+          403s on every action button. */}
+      {isOwner && (
         <div className="card">
-          <div className="card-title">Active sessions</div>
-          {sessions === null ? (
-            <div className="text-dim">Loading...</div>
-          ) : sessions.length === 0 ? (
-            <div className="text-dim">No active sessions.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>IP</th>
-                  <th>Created</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.user_email}</td>
-                    <td className="mono text-dim">{s.ip_address}</td>
-                    <td className="text-dim">{fmtWhen(s.created_at)}</td>
-                    <td>
-                      <button className="btn btn-sm btn-danger" onClick={() => revokeSession(s.id)}>
-                        <TrashIcon /> Revoke
-                      </button>
-                    </td>
+          <div className="flex-between" style={{ marginBottom: 14 }}>
+            <div className="card-title" style={{ margin: 0 }}>
+              Port registry
+            </div>
+          </div>
+          {ports === null ? (
+              <div className="text-dim">Loading...</div>
+            ) : ports.length === 0 ? (
+              <div className="text-dim">No ports allocated yet.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Port</th>
+                    <th>Type</th>
+                    <th>Note</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {ports.map((p) => (
+                    <tr key={p.id}>
+                      <td className="mono">{p.port}</td>
+                      <td className="text-dim">{p.allocation_type}</td>
+                      <td className="text-dim">{p.note || "—"}</td>
+                      <td>
+                        {p.allocation_type !== "system" && (
+                          <button className="btn btn-sm btn-danger" onClick={() => releasePort(p.port)}>
+                            <TrashIcon /> Release
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <ReservePortForm onReserved={load} />
+          </div>
+        )}
+
+        {isOwner && (
+          <div className="card">
+            <div className="card-title">Active sessions</div>
+            {sessions === null ? (
+              <div className="text-dim">Loading...</div>
+            ) : sessions.length === 0 ? (
+              <div className="text-dim">No active sessions.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>IP</th>
+                    <th>Created</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.user_email}</td>
+                      <td className="mono text-dim">{s.ip_address}</td>
+                      <td className="text-dim">{fmtWhen(s.created_at)}</td>
+                      <td>
+                        <button className="btn btn-sm btn-danger" onClick={() => revokeSession(s.id)}>
+                          <TrashIcon /> Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
       <div className="grid grid-2">
         <div className="card">
@@ -301,16 +311,18 @@ export function AdminPage() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-title">Image / build cache pruning</div>
-          <p className="text-dim" style={{ marginTop: 0 }}>
-            Runs automatically on a schedule; trigger it manually here too.
-          </p>
-          <button className="btn" onClick={runPrune}>
-            Prune now
-          </button>
-          {pruneResult && <div className="field-hint">{pruneResult}</div>}
-        </div>
+        {isOwner && (
+          <div className="card">
+            <div className="card-title">Image / build cache pruning</div>
+            <p className="text-dim" style={{ marginTop: 0 }}>
+              Runs automatically on a schedule; trigger it manually here too.
+            </p>
+            <button className="btn" onClick={runPrune}>
+              Prune now
+            </button>
+            {pruneResult && <div className="field-hint">{pruneResult}</div>}
+          </div>
+        )}
       </div>
 
       {isOwner && (

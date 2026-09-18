@@ -32,7 +32,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | Path | What it is | Depth doc |
 |---|---|---|
 | `cmd/mangrove/` | The control plane binary — `main.go` wires config, DB, router, scheduler, and starts the HTTP server. Everything else in `internal/` is a library this imports. | [architecture.md](architecture.md) |
-| `cmd/mangrovectl/` | Scriptable CLI, predates `internal/apiclient`, has its own hand-rolled HTTP client (`map[string]any`, not typed). | [clients.md](clients.md) |
+| `cmd/mangrovectl/` | Scriptable CLI, predates `internal/apiclient`, has its own hand-rolled HTTP client (`map[string]any`, not typed). Also the `backup` command (streams `GET /api/admin/backup` to a local file). | [clients.md](clients.md), [backup.md](backup.md) |
 | `cmd/mangrove-tui/` | Full-screen terminal dashboard (bubbletea). Shares `internal/apiclient`. | [clients.md](clients.md) |
 | `cmd/mangrove-mcp/` | MCP server exposing a curated operations subset as tools for an LLM agent. Shares `internal/apiclient`. | [clients.md](clients.md) |
 | `cmd/mangrove-mountd/` | Privileged helper for the storage/NAS feature — mounts/unmounts removable drives so `cmd/mangrove` itself never needs mount capabilities. Separate binary, separate systemd unit, talks to the main process only over a local Unix socket. | [storage.md](storage.md) |
@@ -50,7 +50,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/templates/` | `templates.go` (loader + `validate()`, panics at `init()` on a bad template) + `data/*.json` (the templates themselves, embedded via `go:embed`). | [templates.md](templates.md) |
 | `internal/scheduler/` | Background jobs: `health.go` (deployment health polling), `prune.go` (old image cleanup), `ddns.go` (DuckDNS updater, every 5 min). | [deployment.md](deployment.md)#home-server--ddns |
-| `internal/secrets/` | Encryption at rest for secret env vars / PATs (AAD bound to the owning service/PAT row). | — |
+| `internal/secrets/` | Encryption at rest for secret env vars / PATs (AAD bound to the owning service/PAT row). The master key this all depends on is backed up alongside the DB by `internal/api/backup.go` -- see [backup.md](backup.md). | [backup.md](backup.md) |
 | `internal/sysinfo/` | Host/cgroup introspection for the admin resource-budget view. | — |
 | `internal/notify/` | Optional Resend email notifications on deploy result. | — |
 | `internal/models/` | Shared Go structs — what `internal/store` returns and what `internal/api` serializes. Also what `internal/apiclient` decodes into (see `docs/clients.md` for why that reuse matters). | [clients.md](clients.md) |
@@ -160,12 +160,31 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   to use, since it's never reachable on `:80`/`:443` directly. Read
   [deployment.md](deployment.md#custom-domains) first, specifically the
   "Custom domains on Nest" subsection for the `port` mode.
+- **Backup/restore**: `internal/api/backup.go` (`GET /api/admin/backup`,
+  owner-only — a WAL-consistent DB snapshot via `VACUUM INTO` plus
+  `master.key`, tar+gzipped and streamed) and `cmd/mangrovectl`'s `backup`
+  subcommand (streams it to a local file). Read [backup.md](backup.md)
+  first — it also covers the restore path and, importantly, what a backup
+  does *not* cover (running containers, app data volumes, Caddy's live
+  route config).
+- **New owner-only route**: wrap it in the `auth.RequireOwner`-gated
+  `chi.Router` group inside `/api/admin` in `internal/api/router.go` (or
+  add `.With(auth.RequireOwner)` inline for a route that lives elsewhere,
+  same pattern as `/deployments/{id}/access` or `/domains/{id}`) — then add
+  it to `internal/api/roles_test.go`'s `TestMemberForbiddenFromOwnerOnlyRoutes`
+  table and to [multi-user.md](multi-user.md)'s numbered list. Don't assume
+  a `/admin/*` route is safe for members by default: `/admin/sessions`,
+  `/admin/ports`, and `/admin/prune` were unscoped, system-wide operations
+  that sat open to any member until a 2026-09-18 pass closed that gap — see
+  multi-user.md for why each one needed it.
 
 ## Verified status (2026-09-18, updated same-day for the edge-case stability pass)
 
 Everything below was actually run on this box, not inferred from reading code. The Playwright/manual-QA and e2e rows are carried over unchanged from the 2026-09-07 dashboard-redesign pass (not re-run this time — this pass touches backend logic and status-display fixes, not those page flows); the Go/frontend build+test rows and a new race-detector pass were re-run fresh against this session's fixes.
 
 This pass found and fixed real bugs in production code paths, not just added coverage: a deploy-cancellation bug that leaked containers and stuck deployments at "building"/"healthchecking" forever (`internal/orchestrator/cancel.go`/`deploy.go`/`compose_deploy.go`/`deploy_static.go`), stop/restart aborting on the first failed container instead of best-effort (`internal/orchestrator/lifecycle.go`), a delete-vs-in-flight-deploy race that could orphan a container and proxy route (`internal/orchestrator/delete.go`), a GitHub webhook delivery-dedup TOCTOU that surfaced a raw 500 (prompting needless GitHub retries) instead of an idempotent 200 (`internal/api/webhook.go`, `internal/store/github.go`), an unserialized mountd mount/unmount race (`internal/mountd/server.go`), a `;`-field-injection gap in NAS share creation (`internal/orchestrator/storage.go`), a misleading port-registry note key and an unvalidated `MANGROVE_CUSTOM_DOMAIN_MODE` typo that silently reproduces the "domain pending forever" bug (`internal/portregistry/portregistry.go`, `cmd/mangrove/main.go`), and a stale-error-banner bug in the PR #24 status polling that pinned a transient network error on screen forever (`web/src/pages/*.tsx`).
+
+Two more changes landed the same day, closing gaps flagged by that pass rather than found by it: **backup/restore** went from "no code path at all" to a working `mangrovectl backup` (`internal/api/backup.go` + [backup.md](backup.md)) — verified end-to-end on this box, not just unit-tested: took a live backup, extracted it into an empty scratch data dir, started a second `mangrove` instance against it on a different port, and logged in with the original owner credentials against the restored database. And the **admin RBAC gap** flagged in multi-user.md's own spirit (destructive/system-wide operations should be owner-only) but not actually enforced for three routes is closed: `/admin/sessions`, `/admin/ports`, and `/admin/prune` are now behind `RequireOwner`, matching `/admin/users`, with the dashboard's AdminPage updated to match (no more fetching/rendering those sections, or the prune button, as a member — they'd only 403).
 
 | Check | Command | Result |
 |---|---|---|

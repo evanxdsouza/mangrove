@@ -94,6 +94,12 @@ func TestMemberForbiddenFromOwnerOnlyRoutes(t *testing.T) {
 		{"create user", http.MethodPost, "/api/admin/users", map[string]any{"email": "x@example.com", "password": "password123", "role": "member"}},
 		{"delete user", http.MethodDelete, "/api/admin/users/999", nil},
 		{"set secret env var", http.MethodPut, "/api/services/1/env/API_KEY", map[string]any{"value": "x", "is_secret": true}},
+		{"list sessions", http.MethodGet, "/api/admin/sessions", nil},
+		{"revoke session", http.MethodDelete, "/api/admin/sessions/999", nil},
+		{"list ports", http.MethodGet, "/api/admin/ports", nil},
+		{"reserve port", http.MethodPost, "/api/admin/ports", map[string]any{"port": 12345, "note": "test"}},
+		{"release port", http.MethodDelete, "/api/admin/ports/12345", nil},
+		{"trigger prune", http.MethodPost, "/api/admin/prune", nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -126,6 +132,31 @@ func TestOwnerCanManageUsers(t *testing.T) {
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 creating user as owner, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestOwnerCanManageSessionsAndPorts(t *testing.T) {
+	env := newRoleTestEnv(t)
+	ownerCookie, _ := env.cookieFor(t, "owner@example.com", "owner")
+
+	rec := env.do(http.MethodGet, "/api/admin/sessions", ownerCookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 listing sessions as owner, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = env.do(http.MethodGet, "/api/admin/ports", ownerCookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 listing ports as owner, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = env.do(http.MethodPost, "/api/admin/ports", ownerCookie, map[string]any{"port": 23456, "note": "test"})
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 reserving a port as owner, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = env.do(http.MethodDelete, "/api/admin/ports/23456", ownerCookie, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 releasing a port as owner, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

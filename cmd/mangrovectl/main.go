@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,6 +49,8 @@ func main() {
 		err = rollbackCmd(c, args)
 	case "services":
 		err = servicesCmd(c, args)
+	case "backup":
+		err = backupCmd(c, args)
 	default:
 		usage()
 		os.Exit(1)
@@ -77,7 +80,8 @@ Commands:
   deploy --deployment ID [--git-url URL] [--git-ref REF] [--commit-sha SHA] [--commit-message MSG]
   history --deployment ID
   rollback --history-id ID
-  services --deployment ID`)
+  services --deployment ID
+  backup [--out PATH]                        (owner only -- see docs/backup.md)`)
 }
 
 // ---- HTTP client ----
@@ -139,6 +143,66 @@ func (c *client) do(method, path string, body any, out any) error {
 		return json.Unmarshal(respBody, out)
 	}
 	return nil
+}
+
+// download performs a GET and streams the raw response body to a local
+// file, for endpoints like /api/admin/backup that return a binary payload
+// rather than JSON. outPath == "" uses the filename the server suggests via
+// Content-Disposition, falling back to a generic name if that's absent.
+// Refuses to overwrite an existing file -- silently clobbering a previous
+// backup isn't a mistake this command should make on the caller's behalf.
+func (c *client) download(path, outPath string) (savedPath string, err error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return "", err
+	}
+	if token, err := os.ReadFile(c.sessionPath); err == nil {
+		req.AddCookie(&http.Cookie{Name: "mangrove_session", Value: string(token)})
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request to mangrove API failed (is `mangrove` running?): %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("not authenticated -- run `mangrovectl login` first")
+	}
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GET %s: %s: %s", path, resp.Status, string(body))
+	}
+
+	if outPath == "" {
+		outPath = filenameFromContentDisposition(resp.Header.Get("Content-Disposition"))
+		if outPath == "" {
+			outPath = "mangrove-backup.tar.gz"
+		}
+	}
+
+	f, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+	if err != nil {
+		return "", fmt.Errorf("create output file %s (pass --out to choose a different path): %w", outPath, err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		os.Remove(outPath)
+		return "", fmt.Errorf("write output file: %w", err)
+	}
+	return outPath, nil
+}
+
+func filenameFromContentDisposition(cd string) string {
+	if cd == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(cd)
+	if err != nil {
+		return ""
+	}
+	return params["filename"]
 }
 
 func (c *client) saveSession(token string) {
@@ -370,6 +434,22 @@ func servicesCmd(c *client, args []string) error {
 		return err
 	}
 	return printJSON(out)
+}
+
+// ---- backup ----
+
+func backupCmd(c *client, args []string) error {
+	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	out := fs.String("out", "", "output file path (default: the server-suggested mangrove-backup-<timestamp>.tar.gz in the current directory)")
+	fs.Parse(args)
+
+	saved, err := c.download("/api/admin/backup", *out)
+	if err != nil {
+		return err
+	}
+	fmt.Println("backup written to", saved)
+	fmt.Println("this archive contains your master encryption key -- store it somewhere safe and access-controlled (not a public bucket or shared drive); losing it makes every secret in the database permanently unrecoverable even with the database intact")
+	return nil
 }
 
 func printJSON(v any) error {
