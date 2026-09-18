@@ -53,9 +53,20 @@ type Orchestrator struct {
 	// inflight tracks deploys currently running, keyed by deployment ID, so
 	// a concurrent deploy is refused and an in-flight one can be cancelled
 	// (see BeginDeploy/CancelDeploy). Guards against double-deploying the
-	// same deployment and backs the POST .../cancel endpoint.
+	// same deployment and backs the POST .../cancel endpoint. It also lets
+	// DeleteDeployment/DeleteProject (delete.go) cancel and wait for an
+	// in-flight deploy to actually finish before tearing down containers,
+	// instead of racing it -- see awaitNoInflightDeploy.
 	inflightMu sync.Mutex
-	inflight   map[int64]context.CancelFunc
+	inflight   map[int64]*inflightDeploy
+}
+
+// inflightDeploy is the bookkeeping BeginDeploy stores per running deploy:
+// cancel aborts it, done is closed by EndDeploy once the deploy function has
+// actually returned (not just been asked to stop).
+type inflightDeploy struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // postCommitStatus sets a GitHub commit status for a deploy, best-effort.
@@ -217,10 +228,21 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	o.Store.UpdateDeployHistoryStatus(ctx, historyID, "building", "")
 	o.postCommitStatus(ctx, dep, req, github.StatePending, "Deploying via Mangrove")
 
+	// cleanupCtx is deliberately detached from ctx's cancellation (but keeps
+	// no deadline of its own) so that a cancelled deploy still gets its
+	// failure recorded and its freshly-started containers torn down. ctx is
+	// cancelled by CancelDeploy (see cancel.go) precisely during the
+	// long-running build/health-check window this function spends most of
+	// its time in -- if cleanup used the same cancelled ctx, every Store
+	// write and `docker stop`/`docker rm` below would fail immediately
+	// (context canceled), leaving deploy_history/deployment status stuck at
+	// "building"/"healthchecking" forever and leaking the new containers.
+	cleanupCtx := context.WithoutCancel(ctx)
+
 	fail := func(stepErr error) (int64, error) {
-		o.Store.UpdateDeployHistoryStatus(ctx, historyID, "failed", stepErr.Error())
-		o.Store.UpdateDeploymentStatus(ctx, dep.ID, "failed")
-		o.postCommitStatus(ctx, dep, req, github.StateFailure, stepErr.Error())
+		o.Store.UpdateDeployHistoryStatus(cleanupCtx, historyID, "failed", stepErr.Error())
+		o.Store.UpdateDeploymentStatus(cleanupCtx, dep.ID, "failed")
+		o.postCommitStatus(cleanupCtx, dep, req, github.StateFailure, stepErr.Error())
 		return historyID, stepErr
 	}
 
@@ -361,7 +383,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 
 	healthy := o.waitHealthy(ctx, newContainerName, svc)
 	if !healthy {
-		o.teardownContainers(ctx, newContainerIDs)
+		o.teardownContainers(cleanupCtx, newContainerIDs)
 		return fail(fmt.Errorf("new containers failed health check within %s; old set (if any) left running", healthCheckSwapTimeout))
 	}
 
@@ -380,7 +402,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 			routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
 		}
 		if err := o.Proxy.PutRouteMulti(ctx, *registeredPort, upstreams, routeOpts); err != nil {
-			o.teardownContainers(ctx, newContainerIDs)
+			o.teardownContainers(cleanupCtx, newContainerIDs)
 			return fail(fmt.Errorf("update proxy route: %w", err))
 		}
 	}
@@ -391,7 +413,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 	if svc.ContainerIDCurrent != "" {
 		oldIDs = append(oldIDs, svc.ContainerIDCurrent)
 	}
-	o.teardownContainers(ctx, oldIDs)
+	o.teardownContainers(cleanupCtx, oldIDs)
 
 	if err := o.Store.CreateDeployArtifact(ctx, historyID, svc.ID, imageTag, imageID, "", ""); err != nil {
 		o.Log.Warn("failed to record deploy artifact", "error", err)

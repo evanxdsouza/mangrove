@@ -24,6 +24,7 @@ func (o *Orchestrator) DeleteProject(ctx context.Context, projectID int64) error
 	}
 
 	for _, dep := range deployments {
+		o.awaitNoInflightDeploy(dep.ID)
 		services, err := o.Store.ListServices(ctx, dep.ID)
 		if err != nil {
 			o.Log.Warn("delete project: failed to list services", "deployment_id", dep.ID, "error", err)
@@ -40,6 +41,7 @@ func (o *Orchestrator) DeleteProject(ctx context.Context, projectID int64) error
 // before removing its DB rows via Store.DeleteDeployment. Mirrors
 // DeleteProject's teardown, just scoped to a single deployment.
 func (o *Orchestrator) DeleteDeployment(ctx context.Context, deploymentID int64) error {
+	o.awaitNoInflightDeploy(deploymentID)
 	services, err := o.Store.ListServices(ctx, deploymentID)
 	if err != nil {
 		return fmt.Errorf("load services: %w", err)
