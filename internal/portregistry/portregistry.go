@@ -63,9 +63,11 @@ func AllocateForService(ctx context.Context, db *sql.DB, serviceID int64, minPor
 // maxPort] for a "port"-mode custom domain (see config.Config's
 // CustomDomainMode doc comment) -- unlike AllocateForService, this doesn't
 // touch services.host_port; the port belongs to the domain row, not a
-// service, and note records which domain so the admin port-registry view
-// can explain it.
-func AllocateForCustomDomain(ctx context.Context, db *sql.DB, domainID int64, minPort, maxPort int) (int, error) {
+// service. note records hostname (rather than the domain's row ID) because
+// the port is allocated before the domain row exists -- AddCustomDomain
+// needs the port to create that row -- so no domain ID is available yet;
+// hostname is what the admin port-registry view can actually show back.
+func AllocateForCustomDomain(ctx context.Context, db *sql.DB, hostname string, minPort, maxPort int) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -79,7 +81,7 @@ func AllocateForCustomDomain(ctx context.Context, db *sql.DB, domainID int64, mi
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO port_registry (port, status, allocation_type, note) VALUES (?, 'allocated', 'custom_domain_port', ?)`,
-		port, fmt.Sprintf("custom_domain:%d", domainID),
+		port, fmt.Sprintf("custom_domain:%s", hostname),
 	); err != nil {
 		return 0, fmt.Errorf("insert port_registry row: %w", err)
 	}
