@@ -1,0 +1,50 @@
+## Install: copy to /etc/systemd/system/mangrove-mcp.service, create the
+## mangrove-mcp system user, place MANGROVE_MCP_URL_TOKEN and the owner's
+## MANGROVE_EMAIL/MANGROVE_PASSWORD in /etc/mangrove/mangrove-mcp.env (0600,
+## root-owned, separate from mangrove.env), then:
+##   systemctl daemon-reload && systemctl enable --now mangrove-mcp
+##
+## This is the *remote* (Streamable HTTP) transport for cmd/mangrove-mcp --
+## see docs/clients.md. It runs as its own unprivileged user, deliberately
+## not `mangrove`: unlike mangrove.service, this process is reachable from
+## the internet (via a reverse-proxied port, see docs/clients.md), and it
+## has no need for docker-group access at all, so it gets no host
+## privileges beyond calling Mangrove's own loopback API like any other
+## apiclient consumer.
+
+[Unit]
+Description=Mangrove MCP server (remote/HTTP transport)
+After=network-online.target mangrove.service
+Wants=network-online.target
+Requires=mangrove.service
+
+[Service]
+Type=simple
+Slice=mangrove.slice
+ExecStart=/usr/local/bin/mangrove-mcp
+Restart=on-failure
+RestartSec=2
+
+# Secrets (MANGROVE_MCP_URL_TOKEN, MANGROVE_EMAIL/MANGROVE_PASSWORD) live
+# here, never in this unit file or in git. File is required in practice --
+# main.go fails fast without a token -- but marked optional ('-') so a
+# missing file surfaces as mangrove-mcp's own clear startup error instead
+# of a silent unit-file-parse skip.
+EnvironmentFile=-/etc/mangrove/mangrove-mcp.env
+Environment=MANGROVE_MCP_TRANSPORT=http
+Environment=MANGROVE_API_URL=http://127.0.0.1:7777
+
+User=mangrove-mcp
+Group=mangrove-mcp
+
+# Fully read-only: http mode always re-authenticates from
+# MANGROVE_EMAIL/MANGROVE_PASSWORD at startup (see main.go), so unlike
+# mangrove.service there's no local state this process must be able to
+# write for correct operation.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

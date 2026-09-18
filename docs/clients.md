@@ -94,6 +94,16 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
 MANGROVE_EMAIL=you@example.com MANGROVE_PASSWORD='...' ./mangrove-mcp
 ```
 
+Two transports, selected by `MANGROVE_MCP_TRANSPORT` (default `stdio`):
+
+- **stdio** -- a locally-spawned process, for Claude Code/Desktop. This is
+  the mode below.
+- **http** -- a long-running server for remote clients that can't spawn a
+  local process, namely claude.ai's web app. See "Remote access (http
+  transport)" below.
+
+### stdio transport (local clients)
+
 Runs over stdio (the standard MCP transport for a locally-spawned server).
 To wire it into an MCP client, point it at the built binary, e.g. for
 Claude Code (`.mcp.json` or `claude mcp add`) or Claude Desktop's config:
@@ -131,3 +141,52 @@ tool: unlike `mangrove-tui`'s shell view, an MCP tool call is
 request/response, not a persistent stream, so `run_command` (one-off,
 buffered, `docker exec`) is the model-facing equivalent -- the same
 endpoint `RunCommandCard` and `POST /api/services/{id}/exec` use.
+
+### Remote access (http transport)
+
+claude.ai's web app can't spawn a local stdio process, so reaching it from
+there needs an HTTPS endpoint instead. `mangrove-mcp` supports this as a
+second transport, backed by `mcp.NewStreamableHTTPHandler` from the SDK
+(`cmd/mangrove-mcp/http.go`) -- no protocol code of our own.
+
+**Auth is a token in the URL, not OAuth.** claude.ai's remote-connector
+client only starts an OAuth 2.1 + dynamic-client-registration flow if the
+server ever answers with a 401 and a `WWW-Authenticate` challenge; if it
+never does, the client just connects. Standing up a real OAuth
+authorization server (token/code endpoints, `redirect_uri` validation,
+dynamic client registration) is real attack surface for a tool only one
+person will ever use, so instead the auth secret lives in the URL path
+itself: only `/mcp/<token>` is live, everything else (including a wrong
+token) gets a plain 404 -- indistinguishable from the path not existing.
+Rotating access means changing `MANGROVE_MCP_URL_TOKEN` and restarting the
+service, then updating the connector's URL in claude.ai; there's no
+per-request revocation, an acceptable tradeoff for a single shared secret
+guarding a single owner's own box. Treat the full URL like a password --
+whoever has it can trigger everything in the tool list above, including
+`redeploy`/`rollback`/`run_command`.
+
+The SDK's DNS-rebinding guard (403 for a non-localhost `Host` header on a
+loopback listener) is disabled in `http.go`, since every request behind the
+reverse proxy arrives that way; the URL token is the gate instead.
+
+Env vars (http mode only):
+
+| Var | Required | Default | Purpose |
+|---|---|---|---|
+| `MANGROVE_MCP_TRANSPORT` | for http mode | `stdio` | Set to `http` to enable this transport. |
+| `MANGROVE_MCP_URL_TOKEN` | yes | -- | High-entropy path token (`openssl rand -hex 32`). Startup fails fast without one. |
+| `MANGROVE_MCP_LISTEN_ADDR` | no | `127.0.0.1:7778` | Loopback by default -- a reverse proxy is what actually faces the internet. |
+| `MANGROVE_EMAIL` / `MANGROVE_PASSWORD` | yes | -- | Required in http mode (not just a `~/.mangrove/session` fallback) -- a long-running service re-authenticates every 24h on its own (`keepSessionAlive` in `main.go`) so it never goes stale between restarts, well inside the 30-day session TTL (`internal/auth.SessionTTL`). |
+
+Run it as `deploy/systemd/mangrove-mcp.service` (its own doc comment has
+the install steps) alongside the main `mangrove.service`. It listens only
+on loopback -- getting it onto the internet is an operator step outside
+Mangrove's own dynamic Caddy code (`internal/proxy/caddy.go` only manages
+per-deployment routes): reverse-proxy a port to
+`MANGROVE_MCP_LISTEN_ADDR` the same way you already expose the dashboard
+itself (e.g. one more block in a hand-maintained Caddyfile, or a port
+registered against a hostname in Nest's dashboard on a Nest-style install
+-- see `docs/deployment.md`'s port-mode section).
+
+Once `https://<your-host>/mcp/<token>` resolves, add it in claude.ai under
+Settings -> Connectors -> Add custom connector.
