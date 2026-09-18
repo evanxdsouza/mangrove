@@ -83,6 +83,12 @@ func TestAddCustomDomainPortModeIsLiveImmediately(t *testing.T) {
 			if e.AllocationType != "custom_domain_port" {
 				t.Errorf("expected allocation_type 'custom_domain_port', got %q", e.AllocationType)
 			}
+			// The port is allocated before the domain row exists (its ID
+			// isn't known yet), so the note must reference the hostname,
+			// not a stale/wrong ID -- see portregistry.AllocateForCustomDomain.
+			if want := "custom_domain:app.example.com"; e.Note != want {
+				t.Errorf("expected note %q, got %q", want, e.Note)
+			}
 		}
 	}
 	if !found {

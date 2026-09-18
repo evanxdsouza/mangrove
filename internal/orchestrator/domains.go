@@ -48,7 +48,7 @@ func (o *Orchestrator) AddCustomDomain(ctx context.Context, deploymentID int64, 
 }
 
 func (o *Orchestrator) addCustomDomainPortMode(ctx context.Context, deploymentID int64, hostname string) (models.CustomDomain, error) {
-	port, err := portregistry.AllocateForCustomDomain(ctx, o.Store.DB, deploymentID, o.Config.PortRangeMin, o.Config.PortRangeMax)
+	port, err := portregistry.AllocateForCustomDomain(ctx, o.Store.DB, hostname, o.Config.PortRangeMin, o.Config.PortRangeMax)
 	if err != nil {
 		return models.CustomDomain{}, fmt.Errorf("allocate port: %w", err)
 	}

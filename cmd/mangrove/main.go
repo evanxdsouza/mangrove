@@ -57,6 +57,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Warn("resource-floor protection may not be active", "reason", err)
 	}
 
+	if cfg.CustomDomainMode != "auto_tls" && cfg.CustomDomainMode != "port" {
+		log.Warn("MANGROVE_CUSTOM_DOMAIN_MODE is set to an unrecognized value; falling back to auto_tls (DNS-verified) custom domains -- if you meant Nest-style port routing, set it to exactly \"port\"", "value", cfg.CustomDomainMode)
+	}
+
 	db, err := mangrovedb.Open(cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
