@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-18, updated same-day after an edge-case stability pass across deploy orchestration, status polling, custom domains/ports, and privileged/security paths (mountd, webhook, storage) -- see the "Verified status" section below.
+Last verified: 2026-09-18, updated same-day after an edge-case stability pass, then backup/restore + admin RBAC, then real per-workspace roles (admin/editor/viewer) -- see the "Verified status" section below.
 
 ## What this is
 
@@ -44,7 +44,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/store/` | SQLite reads/writes — the source of truth. `store.go` is the bulk of it. | [db/migrations](../internal/db/migrations) |
 | `internal/db/` | `db.go` (connection, WAL, migration runner) + `migrations/*.sql` (numbered, forward-only). | — |
 | `internal/portregistry/` | Allocates/releases host ports for public deployments from `MANGROVE_PORT_RANGE_MIN/_MAX`. | [architecture.md](architecture.md) |
-| `internal/auth/` | Password hashing (bcrypt), session cookie issuing/validation, role middleware (`RequireAuth`/`RequireOwner`). | [multi-user.md](multi-user.md) |
+| `internal/auth/` | Password hashing (bcrypt), session cookie issuing/validation, global-role middleware (`RequireAuth`/`RequireOwner`), and per-workspace role middleware (`workspace.go`'s `RequireWorkspaceRole`/`HasWorkspaceRole` — admin/editor/viewer, backed by `workspace_members`). | [multi-user.md](multi-user.md) |
 | `internal/gateauth/` | Signed, tamper-evident tokens (sealed under the same master key as `internal/secrets`) backing a password-protected deployment's gate cookie and its cross-domain "continue with your Mangrove account" handoff -- no new DB table. | [protected-deployments.md](protected-deployments.md) |
 | `internal/github/` | GitHub OAuth, repo listing, commit-status posting, PR comment upsert. | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
@@ -167,16 +167,30 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
   first — it also covers the restore path and, importantly, what a backup
   does *not* cover (running containers, app data volumes, Caddy's live
   route config).
-- **New owner-only route**: wrap it in the `auth.RequireOwner`-gated
-  `chi.Router` group inside `/api/admin` in `internal/api/router.go` (or
-  add `.With(auth.RequireOwner)` inline for a route that lives elsewhere,
-  same pattern as `/deployments/{id}/access` or `/domains/{id}`) — then add
-  it to `internal/api/roles_test.go`'s `TestMemberForbiddenFromOwnerOnlyRoutes`
+- **New owner-only route** (host-level, no per-project meaning — user
+  accounts, `/admin/*`, `/storage/*`): wrap it in the `auth.RequireOwner`-gated
+  group inside `/api/admin` in `internal/api/router.go`, then add it to
+  `internal/api/roles_test.go`'s `TestMemberForbiddenFromOwnerOnlyRoutes`
   table and to [multi-user.md](multi-user.md)'s numbered list. Don't assume
-  a `/admin/*` route is safe for members by default: `/admin/sessions`,
-  `/admin/ports`, and `/admin/prune` were unscoped, system-wide operations
-  that sat open to any member until a 2026-09-18 pass closed that gap — see
-  multi-user.md for why each one needed it.
+  a `/admin/*` route is safe for members by default — see multi-user.md for
+  the history here (three routes sat open to any member until a
+  2026-09-18 pass closed that gap).
+- **New workspace-scoped route** (anything that acts on a project,
+  deployment, service, custom domain, or deploy-history entry): wrap it
+  with `auth.RequireWorkspaceRole(s.Store, minRole, resolve)` in
+  `internal/api/router.go`, using (or adding, if it doesn't exist yet) a
+  resolver from `internal/api/workspace_resolvers.go`. Pick `minRole` by
+  what the action actually is, not by copying a neighboring route —
+  viewer for any GET, editor for anything that deploys/writes non-secret
+  state/execs into a container, admin for delete/secrets/access-control
+  (see [multi-user.md](multi-user.md)'s "Workspace roles" section for the
+  full breakdown and rationale). A route with no single resource ID to
+  resolve (e.g. list/create, or one touching two different workspaces at
+  once) calls `auth.HasWorkspaceRole` inline instead — see `listProjects`/
+  `createProject`/`setProjectWorkspace` in `internal/api/projects.go`/
+  `workspaces.go` for the pattern. Add coverage to
+  `internal/api/workspace_roles_test.go`, following its existing
+  `seedWorkspace`/`setRole` helpers.
 
 ## Verified status (2026-09-18, updated same-day for the edge-case stability pass)
 
@@ -186,16 +200,31 @@ This pass found and fixed real bugs in production code paths, not just added cov
 
 Two more changes landed the same day, closing gaps flagged by that pass rather than found by it: **backup/restore** went from "no code path at all" to a working `mangrovectl backup` (`internal/api/backup.go` + [backup.md](backup.md)) — verified end-to-end on this box, not just unit-tested: took a live backup, extracted it into an empty scratch data dir, started a second `mangrove` instance against it on a different port, and logged in with the original owner credentials against the restored database. And the **admin RBAC gap** flagged in multi-user.md's own spirit (destructive/system-wide operations should be owner-only) but not actually enforced for three routes is closed: `/admin/sessions`, `/admin/ports`, and `/admin/prune` are now behind `RequireOwner`, matching `/admin/users`, with the dashboard's AdminPage updated to match (no more fetching/rendering those sections, or the prune button, as a member — they'd only 403).
 
+A fourth change, larger than the first three combined: **real per-workspace roles** (admin/editor/viewer, backed by `workspace_members`, which existed in the schema since day one but was never read by anything). Closes the exec/terminal gap directly (`POST /services/{id}/exec` and `GET /services/{id}/terminal` went from "any authenticated user" to editor+ in that service's own workspace) and devolves the four previously-global-owner-only actions (delete project/deployment, set secrets, access control, delete workspace) to workspace-admin, scoped to their own workspace — see [multi-user.md](multi-user.md)'s full breakdown. A migration (`0012_workspace_role_backfill.sql`) backfills every existing (workspace, user) pair on upgrade so no existing install loses access it already had. `internal/auth/workspace.go`, `internal/api/workspace_resolvers.go`, and `internal/store/workspace_roles.go` are the new backend surface; `web/src/workspaceContext.tsx`'s `useWorkspaceRole` and a new Members panel on the Workspaces page are the new frontend surface.
+
 | Check | Command | Result |
 |---|---|---|
 | Go build | `go build ./...` | ✅ clean, all of `cmd/` + `internal/` |
 | Go vet | `go vet ./...` | ✅ clean |
-| Go tests | `go test ./...` | ✅ all packages pass, including new regression tests: `TestAwaitNoInflightDeployWaitsForCompletion`, `TestStopDeploymentToleratesOneFailedContainer`, `TestDeleteDeploymentWaitsForInflightDeploy` (orchestrator), webhook-dedup-race coverage in `internal/store/github_test.go`, a NAS share field-injection test in `internal/orchestrator/storage_test.go`, and a port-registry note assertion in `domains_test.go` |
-| Go race detector | `go test -race ./internal/orchestrator/... ./internal/store/... ./internal/mountd/...` | ✅ clean — the three packages touched by this pass's concurrency fixes |
+| Go tests | `go test ./...` | ✅ all packages pass, including new regression tests: `TestAwaitNoInflightDeployWaitsForCompletion`, `TestStopDeploymentToleratesOneFailedContainer`, `TestDeleteDeploymentWaitsForInflightDeploy` (orchestrator), webhook-dedup-race coverage in `internal/store/github_test.go`, a NAS share field-injection test in `internal/orchestrator/storage_test.go`, a port-registry note assertion in `domains_test.go`, and the workspace-roles suite: `internal/auth/workspace_test.go` (middleware thresholds/owner-bypass/resolve-errors), `internal/store/workspace_roles_test.go` (resolver + membership CRUD), `internal/db/workspace_role_backfill_test.go` (the upgrade backfill, run against the real migration file), and `internal/api/workspace_roles_test.go` (end-to-end route enforcement) |
+| Go race detector | `go test -race ./internal/orchestrator/... ./internal/store/... ./internal/mountd/... ./internal/auth/... ./internal/api/... ./internal/db/...` | ✅ clean |
 | Frontend typecheck + build | `cd web && npm run build` | ✅ `tsc -b` clean, `vite build` succeeds |
 | Frontend lint | `cd web && npm run lint` (oxlint) | ✅ clean (only the same pre-existing warnings as before — see "Known issues") |
-| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass, unchanged by this session — see "Not verified" below for what *this* change specifically hasn't been through a real browser for |
+| Manual QA | throwaway instance (`MANGROVE_DATA_DIR`/`MANGROVE_PORT` against a scratch dir, admin account + sample workspaces/projects/deployments via the API), Playwright screenshots at desktop (1440×900) and mobile (390×844) across every technical- and simple-mode page | ✅ from the 2026-09-07 pass for everything that predates workspace roles; the new Members panel and role-gated controls were instead verified via the live end-to-end pass below (no updated Playwright screenshots this round) |
+| Workspace roles end-to-end | live `mangrove` instance, real accounts/workspaces via `curl` against a scratch data dir/port | ✅ see "Workspace roles live verification" below |
 | E2E suite | `./e2e/run.sh` | ❌ fails on test 1 of 6, **not an app bug** — see "Known issues" (unchanged from the prior pass) |
+
+### Workspace roles live verification (2026-09-18)
+
+Ran a real `mangrove` instance (scratch data dir, port 17780, killed and cleaned up afterward) and drove it with `curl`, not mocked:
+
+- Set up an owner, then an owner-created member account, then a second workspace (`Acme`) — confirmed the owner shows `your_role: "admin"` on *both* workspaces in `GET /api/workspaces` without an explicit `workspace_members` row needed for the one they didn't create (the global-owner bypass).
+- Seeded a project/deployment/service in the new workspace as owner, then confirmed the member — who has no membership in that workspace at all — gets `403` on `GET` the project, `GET` the deployment, and **`POST .../exec`** (the headline gap this pass closed).
+- Added the member as **viewer**: `GET` project → `200`; `POST .../exec` → `403`; `DELETE` project → `403`.
+- Promoted to **editor**: `POST .../exec` → `422` (the role check passed and the request reached the real handler, which correctly rejected it for having no running container to exec into — not a `403`); `DELETE` project → `403`; setting a secret env var → `403`.
+- Promoted to **admin**: `POST .../access` (access control) → `204`; `DELETE` project → `204` — both real, successful, previously-global-owner-only actions, now working for a workspace-admin who is a global `member`.
+- Cross-workspace scoping: the same user, now admin of workspace 2, got `403` deleting a project that lives in workspace 1 — admin doesn't leak across workspaces.
+- Membership management: `GET /api/workspaces/2/members` correctly listed both users with their current roles; an unauthenticated request to the same endpoint got `401`.
 
 ### Known issues found
 

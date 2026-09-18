@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type CustomDomain } from "../api";
-import { useIsOwner } from "../userContext";
 import { EmptyLedgerIcon, GlobeIcon, PlusIcon, TrashIcon } from "../icons";
 
 function errMsg(e: unknown): string {
@@ -16,8 +15,10 @@ function errMsg(e: unknown): string {
 // an external domain->port dashboard (e.g. Hack Club Nest) themselves. See
 // internal/proxy/caddy.go's PutDomainRoute/PutRoute and
 // internal/orchestrator/domains.go.
-export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
-  const isOwner = useIsOwner();
+// canEdit (editor+) gates verifying a pending domain; isAdmin (admin+)
+// gates adding/removing one entirely, matching the server-side split in
+// internal/api/router.go's /domains routes.
+export function DomainsPanel({ deploymentId, canEdit, isAdmin }: { deploymentId: number; canEdit: boolean; isAdmin: boolean }) {
   const [domains, setDomains] = useState<CustomDomain[] | null>(null);
   const [hostname, setHostname] = useState("");
   const [adding, setAdding] = useState(false);
@@ -92,7 +93,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
             <tr>
               <th>Hostname</th>
               <th>Status</th>
-              {isOwner && <th />}
+              {isAdmin && <th />}
             </tr>
           </thead>
           <tbody>
@@ -127,7 +128,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
                         <br />
                         <code>mangrove-domain-verification={d.verification_token}</code>
                       </div>
-                      {isOwner && (
+                      {canEdit && (
                         <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => verify(d.id)} disabled={verifyingId === d.id}>
                           {verifyingId === d.id ? "Verifying..." : "Verify"}
                         </button>
@@ -135,7 +136,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
                     </div>
                   )}
                 </td>
-                {isOwner && (
+                {isAdmin && (
                   <td>
                     <button className="btn btn-sm btn-danger" onClick={() => remove(d.id)} disabled={removingId === d.id}>
                       <TrashIcon /> {removingId === d.id ? "Removing..." : "Remove"}
@@ -154,7 +155,7 @@ export function DomainsPanel({ deploymentId }: { deploymentId: number }) {
         </div>
       )}
 
-      {isOwner && (
+      {isAdmin && (
         <div className="field" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <div style={{ flex: 1 }}>
             <label htmlFor="add-domain-hostname">Add a domain</label>

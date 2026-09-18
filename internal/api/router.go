@@ -58,6 +58,26 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Minute)) // generous; build/deploy calls can run long
 
+	// Shorthand for the three per-workspace role thresholds, each paired
+	// with which resource-ID URL param resolves to a workspace (see
+	// workspace_resolvers.go). A global owner bypasses all of these --
+	// see auth.HasWorkspaceRole.
+	viewer := func(resolve func(*http.Request) (int64, error)) func(http.Handler) http.Handler {
+		return auth.RequireWorkspaceRole(s.Store, "viewer", resolve)
+	}
+	editor := func(resolve func(*http.Request) (int64, error)) func(http.Handler) http.Handler {
+		return auth.RequireWorkspaceRole(s.Store, "editor", resolve)
+	}
+	admin := func(resolve func(*http.Request) (int64, error)) func(http.Handler) http.Handler {
+		return auth.RequireWorkspaceRole(s.Store, "admin", resolve)
+	}
+	projWS := s.resolveProjectWorkspace
+	depWS := s.resolveDeploymentWorkspace
+	svcWS := s.resolveServiceWorkspace
+	domWS := s.resolveDomainWorkspace
+	histWS := s.resolveDeployHistoryWorkspace
+	wsWS := s.resolveWorkspaceIDParam
+
 	// Intercepts every request Caddy forwards for a password-protected
 	// deployment (see internal/proxy/caddy.go's gateHandler) before any
 	// other routing happens -- those requests carry arbitrary paths (the
@@ -89,59 +109,81 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/templates", s.listTemplates)
 
+			// list/create have no single resource ID to resolve a
+			// workspace from (list spans every workspace; create's
+			// target workspace is in the JSON body) -- both check role
+			// inline (see workspaces.go). Delete and membership
+			// management require admin+ in the workspace itself.
 			r.Route("/workspaces", func(r chi.Router) {
 				r.Get("/", s.listWorkspaces)
 				r.Post("/", s.createWorkspace)
 				r.Route("/{workspaceID}", func(r chi.Router) {
-					r.Delete("/", s.deleteWorkspace)
+					r.With(admin(wsWS)).Delete("/", s.deleteWorkspace)
+					r.Route("/members", func(r chi.Router) {
+						r.Use(admin(wsWS))
+						r.Get("/", s.listWorkspaceMembers)
+						r.Post("/", s.addWorkspaceMember)
+						r.Put("/{userID}", s.setWorkspaceMemberRole)
+						r.Delete("/{userID}", s.removeWorkspaceMember)
+					})
 				})
 			})
 
 			r.Route("/projects", func(r chi.Router) {
+				// list/create check role inline (list has no single
+				// resource ID; create's workspace_id is in the body).
 				r.Get("/", s.listProjects)
 				r.Post("/", s.createProject)
 				r.Route("/{projectID}", func(r chi.Router) {
-					r.Get("/", s.getProject)
-					r.With(auth.RequireOwner).Delete("/", s.deleteProject)
+					r.With(viewer(projWS)).Get("/", s.getProject)
+					r.With(admin(projWS)).Delete("/", s.deleteProject)
+					// setProjectWorkspace checks admin+ in *both* the
+					// source and destination workspace inline, since two
+					// different workspace IDs are involved.
 					r.Post("/workspace", s.setProjectWorkspace)
-					r.Get("/deployments", s.listDeployments)
-					r.Post("/deployments", s.createDeployment)
-					r.Get("/repo", s.getProjectRepo)
-					r.Post("/repo", s.linkProjectRepo)
-					r.Get("/repo/webhook-instructions", s.getProjectRepoWebhookInstructions)
-					r.Post("/repo/resync-webhook", s.resyncProjectRepoWebhook)
-					r.Get("/repo/webhook-events", s.listProjectRepoWebhookEvents)
-					r.Post("/templates/{templateKey}/install", s.installTemplate)
+					r.With(viewer(projWS)).Get("/deployments", s.listDeployments)
+					r.With(editor(projWS)).Post("/deployments", s.createDeployment)
+					r.With(viewer(projWS)).Get("/repo", s.getProjectRepo)
+					r.With(editor(projWS)).Post("/repo", s.linkProjectRepo)
+					r.With(viewer(projWS)).Get("/repo/webhook-instructions", s.getProjectRepoWebhookInstructions)
+					r.With(editor(projWS)).Post("/repo/resync-webhook", s.resyncProjectRepoWebhook)
+					r.With(viewer(projWS)).Get("/repo/webhook-events", s.listProjectRepoWebhookEvents)
+					r.With(editor(projWS)).Post("/templates/{templateKey}/install", s.installTemplate)
 				})
 			})
 
 			r.Route("/deployments/{deploymentID}", func(r chi.Router) {
-				r.Get("/", s.getDeployment)
-				r.With(auth.RequireOwner).Delete("/", s.deleteDeployment)
-				r.Get("/services", s.listServices)
-				r.Get("/history", s.listDeployHistory)
-				r.Post("/deploy", s.triggerDeploy)
-				r.Post("/redeploy", s.redeployDeployment)
-				r.Post("/scale", s.scaleDeployment)
-				r.Post("/cancel", s.cancelDeployment)
-				r.Post("/stop", s.stopDeployment)
-				r.Post("/restart", s.restartDeployment)
-				r.Post("/repo", s.setDeploymentRepo)
-				r.With(auth.RequireOwner).Post("/access", s.setDeploymentAccess)
-				r.Get("/staging", s.listStagingDeployments)
-				r.Post("/staging", s.createStagingDeployment)
-				r.Post("/promote", s.promoteDeployment)
-				r.Get("/previews", s.listPreviewDeployments)
-				r.Post("/pr-previews", s.setPRPreviews)
-				r.Get("/domains", s.listCustomDomains)
-				r.With(auth.RequireOwner).Post("/domains", s.addCustomDomain)
+				r.With(viewer(depWS)).Get("/", s.getDeployment)
+				r.With(admin(depWS)).Delete("/", s.deleteDeployment)
+				r.With(viewer(depWS)).Get("/services", s.listServices)
+				r.With(viewer(depWS)).Get("/history", s.listDeployHistory)
+				r.With(editor(depWS)).Post("/deploy", s.triggerDeploy)
+				r.With(editor(depWS)).Post("/redeploy", s.redeployDeployment)
+				r.With(editor(depWS)).Post("/scale", s.scaleDeployment)
+				r.With(editor(depWS)).Post("/cancel", s.cancelDeployment)
+				r.With(editor(depWS)).Post("/stop", s.stopDeployment)
+				r.With(editor(depWS)).Post("/restart", s.restartDeployment)
+				r.With(editor(depWS)).Post("/repo", s.setDeploymentRepo)
+				r.With(admin(depWS)).Post("/access", s.setDeploymentAccess)
+				r.With(viewer(depWS)).Get("/staging", s.listStagingDeployments)
+				r.With(editor(depWS)).Post("/staging", s.createStagingDeployment)
+				r.With(editor(depWS)).Post("/promote", s.promoteDeployment)
+				r.With(viewer(depWS)).Get("/previews", s.listPreviewDeployments)
+				r.With(editor(depWS)).Post("/pr-previews", s.setPRPreviews)
+				r.With(viewer(depWS)).Get("/domains", s.listCustomDomains)
+				r.With(admin(depWS)).Post("/domains", s.addCustomDomain)
 			})
 
 			r.Route("/domains/{domainID}", func(r chi.Router) {
-				r.Post("/verify", s.verifyCustomDomain)
-				r.With(auth.RequireOwner).Delete("/", s.deleteCustomDomain)
+				r.With(editor(domWS)).Post("/verify", s.verifyCustomDomain)
+				r.With(admin(domWS)).Delete("/", s.deleteCustomDomain)
 			})
 
+			// Unchanged by workspace roles: github_pats is org_id-scoped,
+			// not workspace-scoped -- a PAT can back repos across
+			// multiple workspaces via project_repos.github_pat_id, so
+			// there's no single workspace to resolve it against without a
+			// schema change. See docs/multi-user.md.
 			r.Route("/github/pats", func(r chi.Router) {
 				r.Get("/", s.listGithubPATs)
 				r.Post("/", s.createGithubPAT)
@@ -159,18 +201,23 @@ func (s *Server) Router() http.Handler {
 			r.Post("/github/detect", s.detectGithubRepo)
 
 			r.Route("/deploy-history/{historyID}", func(r chi.Router) {
-				r.Post("/rollback", s.triggerRollback)
+				r.With(editor(histWS)).Post("/rollback", s.triggerRollback)
 			})
 
 			r.Route("/services/{serviceID}", func(r chi.Router) {
-				r.Get("/", s.getService)
-				r.Get("/env", s.listEnvVars)
-				r.Put("/env/{key}", s.setEnvVar)
-				r.Delete("/env/{key}", s.deleteEnvVar)
-				r.Get("/health", s.getServiceHealth)
-				r.Get("/logs/stream", s.streamServiceLogs)
-				r.Post("/exec", s.execServiceCommand)
-				r.Get("/terminal", s.serviceTerminal)
+				r.With(viewer(svcWS)).Get("/", s.getService)
+				r.With(viewer(svcWS)).Get("/env", s.listEnvVars)
+				// editor+ gets in the door; setEnvVar itself additionally
+				// requires admin+ inline for is_secret:true (env.go).
+				r.With(editor(svcWS)).Put("/env/{key}", s.setEnvVar)
+				r.With(editor(svcWS)).Delete("/env/{key}", s.deleteEnvVar)
+				r.With(viewer(svcWS)).Get("/health", s.getServiceHealth)
+				r.With(viewer(svcWS)).Get("/logs/stream", s.streamServiceLogs)
+				// The headline fix: exec/terminal (arbitrary command
+				// execution / interactive shell in a live container) were
+				// open to any authenticated user regardless of workspace.
+				r.With(editor(svcWS)).Post("/exec", s.execServiceCommand)
+				r.With(editor(svcWS)).Get("/terminal", s.serviceTerminal)
 			})
 
 			r.Route("/admin", func(r chi.Router) {

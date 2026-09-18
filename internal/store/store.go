@@ -50,8 +50,18 @@ func isUniqueConstraintErr(err error) bool {
 // it, so these methods hardcode org_id = 1 rather than threading an org
 // through callers that have no concept of one.
 
-func (s *Store) CreateWorkspace(ctx context.Context, name, slug string) (models.Workspace, error) {
-	res, err := s.DB.ExecContext(ctx,
+// CreateWorkspace creates a workspace and, in the same transaction, makes
+// creatorUserID its admin -- otherwise a freshly created workspace would
+// have zero members able to manage it (short of a global owner's implicit
+// bypass).
+func (s *Store) CreateWorkspace(ctx context.Context, name, slug string, creatorUserID int64) (models.Workspace, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return models.Workspace{}, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
 		`INSERT INTO workspaces (org_id, name, slug) VALUES (1, ?, ?)`,
 		name, slug,
 	)
@@ -59,6 +69,15 @@ func (s *Store) CreateWorkspace(ctx context.Context, name, slug string) (models.
 		return models.Workspace{}, err
 	}
 	id, _ := res.LastInsertId()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, 'admin')`,
+		id, creatorUserID,
+	); err != nil {
+		return models.Workspace{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return models.Workspace{}, err
+	}
 	return s.GetWorkspace(ctx, id)
 }
 
@@ -97,13 +116,25 @@ func (s *Store) ListWorkspaces(ctx context.Context) ([]models.Workspace, error) 
 type WorkspaceProjectCount struct {
 	Workspace    models.Workspace `json:"workspace"`
 	ProjectCount int              `json:"project_count"`
+	// YourRole is the caller's role in this workspace: "admin" for a
+	// global owner (implicit, no workspace_members row needed), otherwise
+	// their explicit workspace_members role, or "" if they have none.
+	YourRole string `json:"your_role,omitempty"`
 }
 
-func (s *Store) ListWorkspaceProjectCounts(ctx context.Context) ([]WorkspaceProjectCount, error) {
+// ListWorkspaceProjectCountsForUser lists every workspace (a global owner
+// sees the caller's role as "admin" everywhere, implicit; anyone else gets
+// their actual workspace_members role, or "" if they're not a member) --
+// still every workspace, not just ones the caller belongs to, since
+// workspace existence/name/project-count itself isn't sensitive and the
+// station switcher needs to show what's out there. Per-resource access
+// (projects, deployments, ...) is what's actually gated by role.
+func (s *Store) ListWorkspaceProjectCountsForUser(ctx context.Context, userID int64, isOwner bool) ([]WorkspaceProjectCount, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT w.id, w.org_id, w.name, w.slug, w.created_at,
-		       (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = w.id)
-		FROM workspaces w ORDER BY w.id`)
+		       (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = w.id),
+		       COALESCE((SELECT role FROM workspace_members wm WHERE wm.workspace_id = w.id AND wm.user_id = ?), '')
+		FROM workspaces w ORDER BY w.id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,10 +144,14 @@ func (s *Store) ListWorkspaceProjectCounts(ctx context.Context) ([]WorkspaceProj
 	for rows.Next() {
 		var w models.Workspace
 		var n int
-		if err := rows.Scan(&w.ID, &w.OrgID, &w.Name, &w.Slug, &w.CreatedAt, &n); err != nil {
+		var role string
+		if err := rows.Scan(&w.ID, &w.OrgID, &w.Name, &w.Slug, &w.CreatedAt, &n, &role); err != nil {
 			return nil, err
 		}
-		out = append(out, WorkspaceProjectCount{Workspace: w, ProjectCount: n})
+		if isOwner {
+			role = "admin"
+		}
+		out = append(out, WorkspaceProjectCount{Workspace: w, ProjectCount: n, YourRole: role})
 	}
 	return out, rows.Err()
 }
@@ -197,12 +232,22 @@ type ProjectWithWorkspace struct {
 	WorkspaceSlug string `json:"workspace_slug"`
 }
 
-func (s *Store) ListProjects(ctx context.Context) ([]ProjectWithWorkspace, error) {
-	rows, err := s.DB.QueryContext(ctx, `
+// ListProjectsForUser lists every project a global owner can see (isOwner
+// true, unfiltered) or, for anyone else, only projects in workspaces they
+// have an explicit workspace_members row in.
+func (s *Store) ListProjectsForUser(ctx context.Context, userID int64, isOwner bool) ([]ProjectWithWorkspace, error) {
+	query := `
 		SELECT p.id, p.workspace_id, p.name, p.slug, COALESCE(p.description,''), p.created_at, p.updated_at,
 		       w.name, w.slug
-		FROM projects p JOIN workspaces w ON w.id = p.workspace_id
-		ORDER BY p.created_at DESC`)
+		FROM projects p JOIN workspaces w ON w.id = p.workspace_id`
+	args := []any{}
+	if !isOwner {
+		query += ` JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?`
+		args = append(args, userID)
+	}
+	query += ` ORDER BY p.created_at DESC`
+
+	rows, err := s.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1374,10 +1419,15 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string
 	if err != nil {
 		return 0, err
 	}
-	// Every user is, for now, a member of the single default workspace --
-	// the multi-tenancy stub this exists for isn't wired up until org/team
-	// support is built.
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (1, ?, ?)`, id, role); err != nil {
+	// Every new user auto-joins the default workspace as editor -- not a
+	// mirror of their global role -- so the common single-workspace
+	// install keeps working immediately ("create an account, start
+	// deploying") without an owner having to also separately grant
+	// workspace membership. Wider access (workspace-admin, or membership
+	// in additional workspaces) is granted explicitly afterward via the
+	// workspace Members panel; a global owner already bypasses
+	// workspace_members entirely (see internal/auth.RequireWorkspaceRole).
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (1, ?, 'editor')`, id); err != nil {
 		return 0, err
 	}
 	return id, nil

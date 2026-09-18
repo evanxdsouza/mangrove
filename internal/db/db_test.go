@@ -57,8 +57,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err := conn2.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if count != 11 {
-		t.Errorf("expected 11 applied migrations, got %d", count)
+	if count != 12 {
+		t.Errorf("expected 12 applied migrations, got %d", count)
 	}
 }
 

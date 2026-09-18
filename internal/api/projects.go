@@ -5,22 +5,41 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/store"
 )
 
+// listProjects has no single resource ID to hang auth.RequireWorkspaceRole
+// off (it can list across every workspace at once), so it checks role
+// inline: with a workspace_id filter, viewer+ in that one workspace; with
+// none, every project across every workspace the caller has any role in
+// (a global owner still sees everything, unfiltered).
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
-	workspaceID := r.URL.Query().Get("workspace_id")
+	userID, _ := auth.UserIDFromContext(r.Context())
+	role, _ := auth.RoleFromContext(r.Context())
+	isOwner := role == "owner"
+
+	workspaceIDParam := r.URL.Query().Get("workspace_id")
 	var projects []store.ProjectWithWorkspace
 	var err error
-	if workspaceID != "" {
+	if workspaceIDParam != "" {
 		var id int64
-		if id, err = parseID(workspaceID); err != nil {
+		if id, err = parseID(workspaceIDParam); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid workspace_id")
+			return
+		}
+		ok, rerr := auth.HasWorkspaceRole(r.Context(), s.Store, "viewer", id)
+		if rerr != nil {
+			writeError(w, http.StatusInternalServerError, rerr.Error())
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusForbidden, "viewer role (in this workspace) required")
 			return
 		}
 		projects, err = s.Store.ListProjectsByWorkspace(r.Context(), id)
 	} else {
-		projects, err = s.Store.ListProjects(r.Context())
+		projects, err = s.Store.ListProjectsForUser(r.Context(), userID, isOwner)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -51,6 +70,16 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	workspaceID := req.WorkspaceID
 	if workspaceID < 1 {
 		workspaceID = 1
+	}
+
+	ok, err := auth.HasWorkspaceRole(r.Context(), s.Store, "editor", workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusForbidden, "editor role (in this workspace) required")
+		return
 	}
 
 	p, err := s.Store.CreateProject(r.Context(), workspaceID, req.Name, req.Slug, req.Description)

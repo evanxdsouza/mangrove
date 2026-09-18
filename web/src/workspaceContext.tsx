@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, type WorkspaceProjectCount } from "./api";
+import { api, type WorkspaceProjectCount, type WorkspaceRole } from "./api";
 
 // The active workspace is ambient context for the whole technical-mode
 // dashboard, not a one-off filter on the Projects page's URL -- selecting
@@ -71,4 +71,19 @@ export function useWorkspaces(): WorkspaceState {
   const ctx = useContext(WorkspaceContext);
   if (!ctx) throw new Error("useWorkspaces must be used within a WorkspaceProvider");
   return ctx;
+}
+
+// useWorkspaceRole reads the caller's role in a specific workspace (not
+// necessarily the active/switcher one -- e.g. a project/deployment detail
+// page cares about the workspace *that resource* lives in) from the
+// already-loaded workspace list, so callers never need their own fetch.
+// "" covers both "no membership" and workspaceId not yet known (null) --
+// callers gate UI on `=== "admin"` etc., so both cases fail closed the
+// same way the API would. This is cosmetic only, same as useIsOwner: the
+// real boundary is server-side (auth.RequireWorkspaceRole).
+export function useWorkspaceRole(workspaceId: number | null | undefined): WorkspaceRole | "" {
+  const { workspaces } = useWorkspaces();
+  if (workspaceId == null) return "";
+  const found = workspaces.find((w) => w.workspace.id === workspaceId);
+  return (found?.your_role as WorkspaceRole) || "";
 }
