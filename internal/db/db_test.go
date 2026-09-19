@@ -220,3 +220,45 @@ func TestStagingMigration(t *testing.T) {
 		t.Error("expected webhook_registered to default to false")
 	}
 }
+
+// TestMigrationToleratesPreExistingFKViolation guards the prod incident where
+// one orphaned services.host_port row (written outside a migration) made
+// every pending migration fail its foreign_key_check and crash-loop the
+// service. A pre-existing violation must not block a migration, but one the
+// migration itself introduces must still be fatal.
+func TestMigrationToleratesPreExistingFKViolation(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "mangrove.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	// Seed an orphan the way it happened in prod: a services row whose
+	// host_port has no port_registry row (FK enforcement off for the insert).
+	c, err := conn.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for _, q := range []string{
+		`PRAGMA foreign_keys=OFF`,
+		`INSERT INTO projects (workspace_id, name, slug) VALUES (1, 'p', 'p')`,
+		`INSERT INTO deployments (project_id, name, slug, build_strategy) VALUES (1, 'd', 'd', 'dockerfile')`,
+		`INSERT INTO services (deployment_id, name, container_name, host_port) VALUES (1, 'web', 'mangrove-d-web', 3100)`,
+		`PRAGMA foreign_keys=ON`,
+	} {
+		if _, err := c.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+
+	if err := applyMigration(conn, "9998_noop.sql", `SELECT 1;`); err != nil {
+		t.Errorf("a migration must tolerate a pre-existing FK violation, got: %v", err)
+	}
+
+	err = applyMigration(conn, "9999_bad.sql",
+		`PRAGMA foreign_keys=OFF; INSERT INTO services (deployment_id, name, container_name, host_port) VALUES (1, 'web2', 'mangrove-d-web2', 4200);`)
+	if err == nil {
+		t.Error("a migration that introduces a new FK violation must still fail")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -113,6 +114,15 @@ func applyMigration(db *sql.DB, name, sqlText string) (err error) {
 	if err != nil {
 		return err
 	}
+	// Snapshot violations that already exist before this migration touches
+	// anything: a long-lived database can carry an orphaned row from an old
+	// bug, and that is not this migration's doing (or its to fix). Only
+	// violations the migration *introduces* are fatal.
+	before, err := fkViolations(ctx, tx)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("run foreign_key_check before migration %s: %w", name, err)
+	}
 	if _, err := tx.ExecContext(ctx, sqlText); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("apply %s: %w", name, err)
@@ -125,16 +135,41 @@ func applyMigration(db *sql.DB, name, sqlText string) (err error) {
 	// error -- with foreign_keys temporarily off during a rebuild, this is
 	// the only thing standing between a migration and silently orphaning a
 	// reference, so it's checked explicitly rather than trusted to error out.
-	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	after, err := fkViolations(ctx, tx)
 	if err != nil {
 		tx.Rollback()
 		return fmt.Errorf("run foreign_key_check after migration %s: %w", name, err)
 	}
-	hasViolation := rows.Next()
-	rows.Close()
-	if hasViolation {
-		tx.Rollback()
-		return fmt.Errorf("migration %s left dangling foreign key references", name)
+	for v := range after {
+		if !before[v] {
+			tx.Rollback()
+			return fmt.Errorf("migration %s left dangling foreign key references (%s)", name, v)
+		}
+	}
+	if len(before) > 0 {
+		slog.Warn("database has pre-existing dangling foreign key references (not caused by this migration, left as-is)",
+			"migration", name, "count", len(before))
 	}
 	return tx.Commit()
+}
+
+// fkViolations returns the current PRAGMA foreign_key_check result as a set
+// keyed "table rowid=N -> parent (fk #M)".
+func fkViolations(ctx context.Context, tx *sql.Tx) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var fkid int
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			return nil, err
+		}
+		out[fmt.Sprintf("%s rowid=%d -> %s (fk #%d)", table, rowid.Int64, parent, fkid)] = true
+	}
+	return out, rows.Err()
 }
