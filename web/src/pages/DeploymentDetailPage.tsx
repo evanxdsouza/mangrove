@@ -349,6 +349,7 @@ function AccessControlCard({
   const [isPublic, setIsPublic] = useState(false);
   const [passwordProtected, setPasswordProtected] = useState(false);
   const [password, setPassword] = useState("");
+  const [publicPaths, setPublicPaths] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -357,6 +358,7 @@ function AccessControlCard({
     if (deployment) {
       setIsPublic(deployment.is_public);
       setPasswordProtected(deployment.password_protected);
+      setPublicPaths((deployment.public_paths ?? []).join("\n"));
     }
   }, [deployment]);
 
@@ -369,6 +371,7 @@ function AccessControlCard({
         is_public: isPublic,
         password_protected: passwordProtected,
         password,
+        public_paths: publicPaths.split("\n").map((p) => p.trim()).filter(Boolean),
       });
       setPassword("");
       setSaved(true);
@@ -414,8 +417,28 @@ function AccessControlCard({
                 disabled={!isAdmin}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={deployment?.password_protected ? "Enter a new password to change it" : ""}
+                placeholder={deployment?.password_protected ? "Leave blank to keep the current password" : ""}
               />
+            </div>
+          )}
+          {passwordProtected && (
+            <div className="field">
+              <label htmlFor="access-public-paths">Unprotected pages</label>
+              <textarea
+                id="access-public-paths"
+                className="input"
+                rows={4}
+                disabled={!isAdmin}
+                value={publicPaths}
+                onChange={(e) => setPublicPaths(e.target.value)}
+                placeholder={"/pricing\n/docs/*"}
+                spellCheck={false}
+              />
+              <div className="field-hint">
+                One path per line. These skip the password gate; everything else stays protected.
+                A trailing * matches everything under that prefix (/docs/* ). A page's own
+                CSS/JS/images need their paths listed too (e.g. /assets/*).
+              </div>
             </div>
           )}
         </>

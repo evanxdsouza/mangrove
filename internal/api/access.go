@@ -11,6 +11,9 @@ type setAccessRequest struct {
 	IsPublic          bool   `json:"is_public"`
 	PasswordProtected bool   `json:"password_protected"`
 	Password          string `json:"password"`
+	// PublicPaths skip the password gate: exact paths, or a prefix with a
+	// trailing "*". Ignored unless password_protected.
+	PublicPaths []string `json:"public_paths"`
 }
 
 // setDeploymentAccess is the per-deployment public/internal-only and
@@ -31,12 +34,12 @@ func (s *Server) setDeploymentAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Orchestrator.SetAccessControl(r.Context(), deploymentID, req.IsPublic, req.PasswordProtected, req.Password); err != nil {
+	if err := s.Orchestrator.SetAccessControl(r.Context(), deploymentID, req.IsPublic, req.PasswordProtected, req.Password, req.PublicPaths); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Never the password itself -- just what changed.
 	s.auditCtxWorkspace(r.Context(), "set_access_control", "deployment", deploymentID,
-		fmt.Sprintf("is_public=%t password_protected=%t", req.IsPublic, req.PasswordProtected))
+		fmt.Sprintf("is_public=%t password_protected=%t public_paths=%d", req.IsPublic, req.PasswordProtected, len(req.PublicPaths)))
 	w.WriteHeader(http.StatusNoContent)
 }

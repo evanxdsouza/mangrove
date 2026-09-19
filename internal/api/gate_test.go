@@ -38,7 +38,7 @@ func seedGatedDeployment(t *testing.T, env *testEnv, password string) int64 {
 	if err != nil {
 		t.Fatalf("HashPasswordBcrypt: %v", err)
 	}
-	if err := env.store.SetDeploymentAccessControl(ctx, dep.ID, true, true, hash); err != nil {
+	if err := env.store.SetDeploymentAccessControl(ctx, dep.ID, true, true, hash, nil); err != nil {
 		t.Fatalf("SetDeploymentAccessControl: %v", err)
 	}
 	return dep.ID
@@ -227,5 +227,35 @@ func TestGateAuthHandoffAndCallback(t *testing.T) {
 	cookies := w4.Result().Cookies()
 	if len(cookies) != 1 || cookies[0].Name != gateauth.CookieName {
 		t.Fatalf("expected the gate cookie to be set by the callback, got %v", cookies)
+	}
+}
+
+func TestGatePublicPathsSkipGate(t *testing.T) {
+	env := newTestEnv(t)
+	depID := seedGatedDeployment(t, env, "sesame")
+	hash, _ := env.store.GetDeploymentPasswordHash(t.Context(), depID)
+	if err := env.store.SetDeploymentAccessControl(t.Context(), depID, true, true, hash, []string{"/pricing", "/docs/*"}); err != nil {
+		t.Fatal(err)
+	}
+	h := env.server.gateIntercept(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	// Public paths get past the gate with no cookie. There is no running
+	// container in this test, so getting as far as resolving one (502) is the
+	// proof the gate let the request through, as in TestGatePasswordWrongThenRight.
+	for _, p := range []string{"/pricing", "/docs/a/b"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, gatedRequest(http.MethodGet, p, depID, nil))
+		if w.Code != http.StatusBadGateway || strings.Contains(w.Body.String(), "This deployment is protected") {
+			t.Errorf("%s: status %d, want 502 past the gate; body: %s", p, w.Code, w.Body.String())
+		}
+	}
+
+	// Everything else -- including traversal out of a public prefix -- stays gated.
+	for _, p := range []string{"/", "/admin", "/pricing/", "/docs/../admin"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, gatedRequest(http.MethodGet, p, depID, nil))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "This deployment is protected") {
+			t.Errorf("%s: expected the gate page, got %d", p, w.Code)
+		}
 	}
 }
