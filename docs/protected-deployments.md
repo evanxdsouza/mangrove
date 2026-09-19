@@ -32,6 +32,8 @@ loopback-only, so this header can be trusted). `internal/api/gate.go`'s
 every request carrying that header and handles it entirely on its own --
 it never reaches `/api`, `/healthz`, or the dashboard SPA:
 
+- No valid `mangrove_gate` cookie, but the request path matches one of the
+  deployment's **public paths** (below) -> proxy straight through.
 - No valid `mangrove_gate` cookie yet -> render the gate page.
 - `POST /__mangrove_gate__/password` -> check the deployment's stored
   bcrypt hash (`Store.GetDeploymentPasswordHash`) directly; on success, set
@@ -42,6 +44,28 @@ it never reaches `/api`, `/healthz`, or the dashboard SPA:
   app actually is (a running container's address, or a static build's
   output directory) and Mangrove reverse-proxies the request through
   itself (`gateProxyThrough`).
+
+### Unprotected pages (public paths)
+
+An owner can leave chosen pages open on an otherwise-protected deployment
+(a landing page, a pricing page, a health endpoint). The Access control
+card's "Unprotected pages" box (or `public_paths` in
+`POST /api/deployments/{id}/access`) takes one pattern per line, stored
+newline-separated in `deployments.public_paths` (migration 0015):
+
+- `/pricing` -- exactly that path (so `/pricing/` is *not* covered).
+- `/docs/*` -- a prefix: everything under `/docs/`. `/assets*` is a prefix
+  without the slash boundary.
+
+Rules live in `internal/gatepaths` (`Normalize` validates on save, `Match`
+runs per request in `handleGatedRequest`, after the cookie check so a signed-in
+visitor is never affected). A request path that isn't already canonical
+(`..`, `//`, `/./`, backslashes) never matches, so `/docs/../admin` can't
+ride a `/docs/*` rule past the gate. Query strings are ignored for matching.
+Only the path is checked -- a public page's own CSS/JS/API calls need their
+own entries (`/assets/*`), or they'll hit the gate. The list is cleared when
+password protection is turned off. Re-saving while already protected with a
+blank password keeps the existing password, so the list can be edited alone.
 
 ### The account handoff
 

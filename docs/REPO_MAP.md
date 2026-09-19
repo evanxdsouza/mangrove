@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-18, updated same-day after an edge-case stability pass, then backup/restore + admin RBAC, then real per-workspace roles (admin/editor/viewer), then an audit log + PR-preview auto-cleanup + resource-usage history -- see the "Verified status" section below.
+Last verified: 2026-09-19 (`go vet ./...`, `go test ./...`, `npm run build`/`lint` re-run clean after adding protected-deployment public paths -- unit/integration only, not clicked through in a browser); prior snapshot 2026-09-18, updated same-day after an edge-case stability pass, then backup/restore + admin RBAC, then real per-workspace roles (admin/editor/viewer), then an audit log + PR-preview auto-cleanup + resource-usage history -- see the "Verified status" section below.
 
 ## What this is
 
@@ -46,6 +46,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/portregistry/` | Allocates/releases host ports for public deployments from `MANGROVE_PORT_RANGE_MIN/_MAX`. | [architecture.md](architecture.md) |
 | `internal/auth/` | Password hashing (bcrypt), session cookie issuing/validation, global-role middleware (`RequireAuth`/`RequireOwner`), and per-workspace role middleware (`workspace.go`'s `RequireWorkspaceRole`/`HasWorkspaceRole` — admin/editor/viewer, backed by `workspace_members`). | [multi-user.md](multi-user.md) |
 | `internal/gateauth/` | Signed, tamper-evident tokens (sealed under the same master key as `internal/secrets`) backing a password-protected deployment's gate cookie and its cross-domain "continue with your Mangrove account" handoff -- no new DB table. | [protected-deployments.md](protected-deployments.md) |
+| `internal/gatepaths/` | Validation + matching for a protected deployment's "unprotected pages" (public paths that skip the gate). Rejects non-canonical request paths so `..` can't escape a public prefix. | [protected-deployments.md](protected-deployments.md) |
 | `internal/github/` | GitHub OAuth, repo listing, commit-status posting, PR comment upsert. | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/templates/` | `templates.go` (loader + `validate()`, panics at `init()` on a bad template) + `data/*.json` (the templates themselves, embedded via `go:embed`). | [templates.md](templates.md) |
@@ -137,7 +138,7 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
 - **Protected deployments (the password/account gate page)**:
   `internal/api/gate.go` + `gate_templates.go` (the gate/handoff/login HTTP
   handlers and their standalone HTML), `internal/gateauth/` (the signed
-  tokens), `internal/proxy/caddy.go`'s `gateHandler` (how Caddy routes a
+  tokens), `internal/gatepaths/` (which paths bypass the gate), `internal/proxy/caddy.go`'s `gateHandler` (how Caddy routes a
   protected deployment there instead of straight to the app),
   `internal/orchestrator/access.go`'s `GateUpstreams` (how Mangrove finds
   the real app once a visitor is let through). Read
