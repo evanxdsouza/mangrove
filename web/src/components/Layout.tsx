@@ -20,7 +20,10 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
   const { path } = useRouter();
   const { mode, setMode } = useUiMode();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const onAdmin = path === "/admin" || path === "/server-health";
+  // Explicit membership, not "everything else" -- the old inverse check
+  // (any path that isn't one of the other known pages) meant an unmatched
+  // path, e.g. a 404, still lit up "Projects" as the active nav item.
+  const onProjects = path === "/" || path.startsWith("/projects/");
   const simple = mode === "simple";
   const isOwner = user.role === "owner";
   const critical = useHostCritical(isOwner);
@@ -53,7 +56,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         <div className="sidebar-body">
           {!simple && <StationSwitcher />}
 
-          <Link to="/" className={`nav-link ${!onAdmin && path !== "/workspaces" && path !== "/storage" && path !== "/settings" ? "active" : ""}`}>
+          <Link to="/" className={`nav-link ${onProjects ? "active" : ""}`}>
             <LedgerIcon />
             {simple ? "Your apps" : "Projects"}
           </Link>
@@ -127,10 +130,15 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
 }
 
 // The sidebar mark reacts to real host state instead of being a static
-// mark: an owner-only, lightweight poll of the same resource budget Admin
-// already shows, tinting the mark to signal "something needs you" without
+// mark: an owner-only poll of the same resource budget Admin already
+// shows, tinting the mark to signal "something needs you" without
 // requiring a visit to Admin first. Members never see this (the endpoint
 // is owner-only server-side anyway -- see docs/multi-user.md).
+// A 5-minute interval, not a tight poll: ComputeResourceBudget's disk-usage
+// scan is genuinely expensive (observed ~7s on a modestly-sized data dir in
+// manual testing), so this mirrors the backend's own resource_sampler
+// cadence rather than adding a second, more frequent caller of the same
+// costly endpoint from every page in the app.
 function useHostCritical(isOwner: boolean): boolean {
   const [critical, setCritical] = useState(false);
 
@@ -151,7 +159,7 @@ function useHostCritical(isOwner: boolean): boolean {
         .catch(() => {});
     };
     check();
-    const interval = setInterval(check, 30_000);
+    const interval = setInterval(check, 300_000);
     return () => {
       cancelled = true;
       clearInterval(interval);

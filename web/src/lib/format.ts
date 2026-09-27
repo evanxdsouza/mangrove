@@ -55,26 +55,38 @@ const LABELS: Record<string, string> = {
   system: "System",
   service_public: "Public service port",
   custom_domain_port: "Custom domain port",
-  // Audit log actions (internal/store/audit.go)
-  create_user: "Created user",
-  delete_user: "Deleted user",
-  create_project: "Created project",
-  delete_project: "Deleted project",
-  delete_deployment: "Deleted deployment",
+  // Audit log actions -- deploy triggers (deploy_history.triggered_by,
+  // reused as-is for the audit action -- see auditDeploy in
+  // internal/api/deployments.go)
+  manual: "Deployed (manual)",
+  redeploy: "Redeployed",
+  promote: "Promoted",
+  push: "Deployed (push)",
   deploy: "Deployed",
+  // Audit log actions -- everything else (internal/api/*.go's s.audit /
+  // s.auditCtxWorkspace call sites)
+  delete: "Deleted",
   rollback: "Rolled back",
-  set_secret: "Set secret",
-  set_access: "Changed access control",
+  scale: "Scaled",
+  set_access_control: "Changed access control",
+  set_secret_env_var: "Set secret",
+  add_custom_domain: "Added custom domain",
+  delete_custom_domain: "Removed custom domain",
+  move_project: "Moved project",
   add_member: "Added member",
   remove_member: "Removed member",
-  change_member_role: "Changed member role",
-  delete_workspace: "Deleted workspace",
+  set_member_role: "Changed member role",
+  create_user: "Created user",
+  delete_user: "Deleted user",
+  revoke_session: "Revoked session",
   // Audit log resource types
   project: "Project",
   deployment: "Deployment",
   workspace: "Workspace",
   user: "User",
   service: "Service",
+  session: "Session",
+  custom_domain: "Custom domain",
 };
 
 export function humanLabel(value: string | null | undefined): string {

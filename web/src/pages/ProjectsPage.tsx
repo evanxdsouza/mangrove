@@ -130,20 +130,24 @@ export function ProjectsPage() {
                         ? "no deployments yet"
                         : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
                   </span>
-                  {p.workspace_name && (
-                    <a
-                      href="/"
-                      className="project-card-workspace"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveWorkspaceId(p.workspace_id);
-                      }}
-                    >
-                      {p.workspace_name}
-                    </a>
-                  )}
-                  <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
+                  <div className="project-card-footer-meta">
+                    {p.workspace_name ? (
+                      <a
+                        href="/"
+                        className="project-card-workspace"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveWorkspaceId(p.workspace_id);
+                        }}
+                      >
+                        {p.workspace_name}
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                    <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
+                  </div>
                 </div>
               </div>
             );

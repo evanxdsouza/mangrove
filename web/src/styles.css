@@ -529,13 +529,6 @@ button, input, select, textarea {
   gap: 10px;
 }
 
-.project-card-icon, .deployment-card-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  color: var(--brass-dim);
-}
-
 .project-card-heading {
   flex: 1;
   min-width: 0;
@@ -568,15 +561,20 @@ button, input, select, textarea {
 
 .project-card-footer {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   font-size: 12px;
   color: var(--text-dim);
-  flex-wrap: wrap;
 }
-.project-card-rollup { flex: 1; min-width: 0; }
+.project-card-rollup {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-card-footer-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.project-card-workspace { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-card-workspace:hover { color: var(--brass-bright); }
-.project-card-created { font-family: var(--mono); font-size: 11.5px; }
+.project-card-created { font-family: var(--mono); font-size: 11.5px; flex-shrink: 0; }
 
 .deployment-card-meta {
   display: flex;
@@ -1021,6 +1019,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
   height: 48px;
   display: flex;
   align-items: flex-end;
+  justify-content: flex-start;
   gap: 1px;
   padding: 0 4px;
   background: var(--bg-recorder);
@@ -1028,8 +1027,12 @@ tr.row-link:hover { background: var(--bg-elevated); }
   overflow: hidden;
 }
 .resource-strip-tick {
-  flex: 1 1 0;
-  min-width: 1px;
+  /* A fresh instance with only a handful of 5-minute samples should still
+     read as "a few real readings," not one bar stretched to fill the
+     whole width like a decorative fill -- capped growth instead of
+     flex:1 1 0's unconditional stretch. */
+  flex: 0 1 10px;
+  min-width: 2px;
   border-radius: 1px 1px 0 0;
 }
 
