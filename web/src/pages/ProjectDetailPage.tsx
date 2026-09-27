@@ -8,7 +8,7 @@ import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
-import { BranchIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon } from "../icons";
 import { PlantGlyph } from "../components/PlantGlyph";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_DEPLOYMENTS } from "../lib/copy";
@@ -108,26 +108,34 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       <div className="breadcrumb">
         <Link to="/">Projects</Link> / {project?.name ?? "..."}
       </div>
-      <div className="page-header">
-        <div>
-          <h1>{project?.name ?? "Loading..."}</h1>
-          {project?.description && <p>{project.description}</p>}
-        </div>
-        <div className="flex gap-8">
-          <button className="btn" onClick={() => setShowTemplates(true)}>
-            <LedgerIcon /> Deploy from template
-          </button>
-          <button className="btn" onClick={() => setShowGithubWizard(true)}>
-            <BranchIcon /> Deploy from GitHub
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            <PlusIcon /> New deployment
-          </button>
-          {isAdmin && (
-            <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-              <TrashIcon /> Delete project
+
+      {/* A decorative banner behind the project identity -- art, not data,
+          per DESIGN.md's color rules: it carries no status/health signal of
+          its own, so it's the one place a large field of accent color is
+          fine (a faint watermark, not a wash standing in for state). */}
+      <div className="project-hero">
+        <MangroveIcon className="project-hero-motif" />
+        <div className="page-header">
+          <div>
+            <h1>{project?.name ?? "Loading..."}</h1>
+            {project?.description && <p>{project.description}</p>}
+          </div>
+          <div className="flex gap-8">
+            <button className="btn" onClick={() => setShowTemplates(true)}>
+              <LedgerIcon /> Deploy from template
             </button>
-          )}
+            <button className="btn" onClick={() => setShowGithubWizard(true)}>
+              <BranchIcon /> Deploy from GitHub
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+              <PlusIcon /> New deployment
+            </button>
+            {isAdmin && (
+              <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+                <TrashIcon /> Delete project
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -168,6 +176,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               </div>
             )}
           </div>
+          <div className="card-title">Deployments</div>
           <div className="deployment-grid">
             {deployments.map((d) => (
               <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">

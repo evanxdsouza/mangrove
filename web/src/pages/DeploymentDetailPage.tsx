@@ -249,6 +249,17 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
 
       {error && <div className="error-banner">{error}</div>}
 
+      {/* The resource-detail stat row: a plain, borderless-between-numbers
+          readout of what this deployment actually is (image/port/resources/
+          replicas/health), directly under the header and above the tabs --
+          not a card, and not duplicated inside Overview once shown here.
+          Only meaningful for the common single-service case; a compose
+          deployment has no one canonical service, so it keeps its per-service
+          cards inside the Overview tab instead (see OverviewTab below). */}
+      {services.length === 1 && (
+        <ServiceStatRow service={services[0]} isStatic={deployment?.build_strategy === "static"} />
+      )}
+
       <div className="tabs">
         {/* A static site has no container to stream logs from --
             Caddy serves the built files directly. */}
@@ -898,11 +909,18 @@ function OverviewTab({
   }
   return (
     <>
-      <div className="grid grid-2">
-        {services.map((s) => (
-          <ServiceCard key={s.id} service={s} isStatic={isStatic} />
-        ))}
-      </div>
+      {/* A single service's stat card is already shown as the page-level
+          stat row above the tabs (see ServiceStatRow) -- repeating it here
+          would be the exact "same content, two treatments" anti-pattern.
+          A compose deployment has no one canonical service, so each gets
+          its own card here instead. */}
+      {services.length > 1 && (
+        <div className="grid grid-2">
+          {services.map((s) => (
+            <ServiceCard key={s.id} service={s} isStatic={isStatic} />
+          ))}
+        </div>
+      )}
       {deployment && <ScaleCard deploymentId={deployment.id} deployment={deployment} />}
       {/* Running a command in a live container is an editor+ action
           server-side (the headline fix this pass closed -- see
@@ -970,22 +988,111 @@ function ScaleCard({ deploymentId, deployment }: { deploymentId: number; deploym
   );
 }
 
-function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolean }) {
+// Shared by ServiceCard and ServiceStatRow so a service's latest health
+// reading is polled the same way regardless of which layout shows it.
+function useLatestHealth(serviceId: number, isStatic: boolean): HealthCheckEntry | null {
   const [health, setHealth] = useState<HealthCheckEntry[] | null>(null);
 
   useEffect(() => {
     if (isStatic) return; // no container, no health checks to fetch
     const loadHealth = () =>
       api
-        .get<HealthCheckEntry[]>(`/api/services/${service.id}/health?limit=1`)
+        .get<HealthCheckEntry[]>(`/api/services/${serviceId}/health?limit=1`)
         .then((h) => setHealth(h ?? []))
         .catch(() => setHealth([]));
     loadHealth();
     const interval = setInterval(loadHealth, 4000);
     return () => clearInterval(interval);
-  }, [service.id, isStatic]);
+  }, [serviceId, isStatic]);
 
-  const latestHealth = health && health.length > 0 ? health[0] : null;
+  return health && health.length > 0 ? health[0] : null;
+}
+
+// The page-level stat row for the resource-detail layout: plain labeled
+// values divided by hairlines, no card, no per-number border -- see
+// DESIGN.md's "resource detail page" pattern. Mirrors the fields
+// ServiceCard shows for the compose (multi-service) case, so the two never
+// drift apart on what a service's vitals actually are.
+function ServiceStatRow({ service, isStatic }: { service: Service; isStatic: boolean }) {
+  const latestHealth = useLatestHealth(service.id, isStatic);
+
+  return (
+    <div className="instrument-row deployment-stat-row">
+      {isStatic ? (
+        <div className="instrument-cell">
+          <div className="stat-tile">
+            <div className="stat-value" style={{ fontSize: 15 }}>
+              Caddy (file_server)
+            </div>
+            <div className="stat-label">Served by</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="instrument-cell">
+            <div className="stat-tile">
+              <div className="stat-value mono" style={{ fontSize: 15 }}>
+                {service.image_tag_current ?? "—"}
+              </div>
+              <div className="stat-label">Image</div>
+            </div>
+          </div>
+          <div className="instrument-cell">
+            <div className="stat-tile">
+              <div className="stat-value mono" style={{ fontSize: 15 }}>
+                {service.internal_port || "—"}
+              </div>
+              <div className="stat-label">Internal port</div>
+            </div>
+          </div>
+          <div className="instrument-cell">
+            <div className="stat-tile">
+              <div className="stat-value" style={{ fontSize: 15 }}>
+                {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
+              </div>
+              <div className="stat-label">Resources</div>
+            </div>
+          </div>
+          <div className="instrument-cell">
+            <div className="stat-tile">
+              <div className="stat-value" style={{ fontSize: 15 }}>
+                {(service.replica_container_ids?.length ?? 1) || 1}
+              </div>
+              <div className="stat-label">Replicas</div>
+            </div>
+          </div>
+        </>
+      )}
+      <div className="instrument-cell">
+        <div className="stat-tile">
+          <div className="stat-value mono" style={{ fontSize: 15 }}>
+            {service.host_port ?? (service.is_internal_only ? "internal only" : "not yet assigned")}
+          </div>
+          <div className="stat-label">Host port</div>
+        </div>
+      </div>
+      {!isStatic && (
+        <div className="instrument-cell">
+          <div className="stat-tile">
+            <div className="stat-value" style={{ fontSize: 15 }}>
+              {latestHealth ? (
+                <>
+                  <StatusPill status={latestHealth.status} /> <span className="text-dim">{latestHealth.response_time_ms}ms</span>
+                </>
+              ) : (
+                <span className="text-faint">no checks yet</span>
+              )}
+            </div>
+            <div className="stat-label">Health</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolean }) {
+  const latestHealth = useLatestHealth(service.id, isStatic);
 
   return (
     <div className="card">

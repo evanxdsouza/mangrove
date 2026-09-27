@@ -456,6 +456,35 @@ button, input, select, textarea {
 .page-header h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
 .page-header p { color: var(--text-dim); margin: 5px 0 0; font-size: 13.5px; }
 
+/* A project/group page's own hero: a full-width decorative band behind the
+   name -- art, not data, per DESIGN.md's color rules. The gradient and
+   watermark carry no status of their own, so they're the one place a large
+   field of accent color is fine on this page. */
+.project-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+  padding: 28px 32px;
+  margin-bottom: 22px;
+}
+.project-hero .page-header { margin-bottom: 0; position: relative; z-index: 1; }
+.project-hero-motif {
+  position: absolute;
+  top: 50%;
+  right: -32px;
+  transform: translateY(-50%);
+  width: 220px;
+  height: 220px;
+  color: var(--leaf-dim);
+  opacity: 0.16;
+  pointer-events: none;
+}
+@media (max-width: 760px) {
+  .project-hero-motif { display: none; }
+}
+
 .breadcrumb {
   color: var(--text-faint);
   font-size: 12.5px;
@@ -920,6 +949,11 @@ tr.row-link:hover { background: var(--bg-elevated); }
    single instrument strip instead of a same-size icon/number/label card
    grid (the exact generic-SaaS scaffold this world refuses). */
 .instrument-row { display: flex; flex-wrap: wrap; }
+
+/* The resource-detail page's own stat row sits directly on the page
+   background (not inside a card) between the header and the tab bar --
+   see DeploymentDetailPage's ServiceStatRow. */
+.deployment-stat-row { margin: 2px 0 22px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
 .instrument-cell {
   display: flex;
   align-items: center;
