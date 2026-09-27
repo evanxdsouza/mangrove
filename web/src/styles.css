@@ -260,7 +260,12 @@ button, input, select, textarea {
   height: 24px;
   flex-shrink: 0;
   color: var(--leaf);
+  transition: color 0.3s var(--ease-standard);
 }
+/* The mark wilts to a warning color when the host's own resources are
+   critical -- real state, not a static logo, per DESIGN.md's "let the
+   mascot react" rule. */
+.sidebar-brand-mark-critical { color: var(--red); }
 
 /* ---- Station switcher: the fix for "workspaces isn't where it's
    supposed to be" -- ambient scoping context pinned at the top of the
@@ -593,6 +598,8 @@ button, input, select, textarea {
   flex-direction: column;
   gap: 6px;
 }
+.template-card-top { display: flex; align-items: center; gap: 9px; }
+.template-card-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--brass-dim); }
 .template-card-description {
   margin: 0;
   font-size: 13px;
@@ -774,6 +781,27 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 
 .mono { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Plant glyph -- the living face on a project/deployment card
+   ========================================================================== */
+
+.plant-glyph {
+  display: inline-flex;
+  flex-shrink: 0;
+  transform-origin: 50% 100%;
+}
+.plant-glyph-sway path {
+  animation: plant-sway 2.4s ease-in-out infinite;
+  transform-origin: 12px 20px;
+}
+@keyframes plant-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plant-glyph-sway path { animation: none; }
+}
 
 .empty-state {
   text-align: center;
@@ -1121,6 +1149,36 @@ tr.row-link:hover { background: var(--bg-elevated); }
   display: flex; align-items: center; justify-content: center;
   min-height: 200px;
 }
+.center-loading-labeled { flex-direction: column; gap: 10px; font-size: 13px; }
+
+/* ==========================================================================
+   Milestone toasts
+   ========================================================================== */
+
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 60;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--leaf-dim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 12px 16px;
+  font-size: 13.5px;
+  max-width: 300px;
+  pointer-events: auto;
+}
+.toast-icon { width: 18px; height: 18px; flex-shrink: 0; color: var(--leaf-bright); }
 
 .text-dim { color: var(--text-dim); }
 .text-faint { color: var(--text-faint); }

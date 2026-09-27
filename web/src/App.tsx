@@ -14,10 +14,12 @@ import { ServerHealthPage } from "./pages/ServerHealthPage";
 import { StoragePage } from "./pages/StoragePage";
 import { SimpleAppsPage } from "./pages/simple/SimpleAppsPage";
 import { SimpleAppDetailPage } from "./pages/simple/SimpleAppDetailPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { UserProvider } from "./userContext";
 import { UiModeProvider, useUiMode } from "./uiMode";
 import { WorkspaceProvider } from "./workspaceContext";
 import { ThemeProvider } from "./theme";
+import { ToastProvider } from "./components/Toast";
 
 type AuthState =
   | { kind: "loading" }
@@ -103,8 +105,14 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
     // Account settings (change password) are relevant regardless of mode
     // or role -- every user has an account and a password to rotate.
     body = <SettingsPage />;
-  } else {
+  } else if (path === "/") {
     body = mode === "simple" ? <SimpleAppsPage /> : <ProjectsPage />;
+  } else {
+    // Anything else is a genuinely unmatched path -- this used to fall
+    // through to the Projects/Your-apps list unconditionally, which made
+    // a bad link (a stale bookmark, a typo, a removed route) look like it
+    // silently worked instead of saying it didn't.
+    body = <NotFoundPage path={path} />;
   }
 
   return (
@@ -149,9 +157,11 @@ export default function App() {
   return (
     <Router>
       <ThemeProvider>
-        <UiModeProvider>
-          <AppInner />
-        </UiModeProvider>
+        <ToastProvider>
+          <UiModeProvider>
+            <AppInner />
+          </UiModeProvider>
+        </ToastProvider>
       </ThemeProvider>
     </Router>
   );

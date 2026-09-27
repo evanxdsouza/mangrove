@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type Project, type TemplateInstallResult, type TemplateSummary } from "../../api";
 import { Modal, useModalClose } from "../Modal";
+import { CenterLoading } from "../CenterLoading";
 import { SIMPLE_TEMPLATES } from "../../pages/simple/plainCopy";
+import { TemplateIcon } from "../../templateIcons";
 
 // Simple mode's "add an app" flow collapses Mangrove's two-step technical
 // flow (create a project, then install a template into it) into one
@@ -83,9 +85,7 @@ export function AddAppModal({ onClose, onAdded }: { onClose: () => void; onAdded
     <Modal title="Add an app" onClose={onClose} size="lg">
       {error && <div className="error-banner">{error}</div>}
       {templates === null ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : (
         <div className="template-grid">
           {templates.map((t) => {
@@ -97,8 +97,11 @@ export function AddAppModal({ onClose, onAdded }: { onClose: () => void; onAdded
                 style={{ opacity: installing && installing !== t.key ? 0.5 : 1 }}
                 onClick={() => !installing && install(t)}
               >
-                <div className="card-title" style={{ margin: 0 }}>
-                  {copy.label}
+                <div className="template-card-top">
+                  <TemplateIcon templateKey={t.key} category={t.category} className="template-card-icon" />
+                  <div className="card-title" style={{ margin: 0 }}>
+                    {copy.label}
+                  </div>
                 </div>
                 <p className="text-dim template-card-description">
                   {installing === t.key ? "Setting it up..." : copy.blurb}

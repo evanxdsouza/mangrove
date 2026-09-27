@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, type Deployment, type Project, type Workspace } from "../api";
 import { Link } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
@@ -8,8 +8,11 @@ import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
-import { BranchIcon, DeployIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
+import { PlantGlyph } from "../components/PlantGlyph";
 import { fmtWhen } from "../lib/format";
+import { EMPTY_DEPLOYMENTS } from "../lib/copy";
+import { CenterLoading } from "../components/CenterLoading";
 
 interface ProjectRepoInfo {
   id: number;
@@ -33,6 +36,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [showDelete, setShowDelete] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState<number>(1);
+  // Tracks each deployment's previous status so a fresh transition into
+  // "running" can trigger that card's plant-glyph growth burst -- real
+  // feedback from a real state change, not decoration on a timer.
+  const prevStatuses = useRef<Map<number, string>>(new Map());
+  const [burstKeys, setBurstKeys] = useState<Map<number, number>>(new Map());
 
   const load = () => {
     api
@@ -45,7 +53,18 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     api
       .get<Deployment[]>(`/api/projects/${projectId}/deployments`)
       .then((d) => {
-        setDeployments(d ?? []);
+        const list = d ?? [];
+        const prev = prevStatuses.current;
+        const justStarted = list.filter((dep) => dep.status === "running" && prev.get(dep.id) != null && prev.get(dep.id) !== "running");
+        if (justStarted.length > 0) {
+          setBurstKeys((m) => {
+            const next = new Map(m);
+            for (const dep of justStarted) next.set(dep.id, Date.now());
+            return next;
+          });
+        }
+        prevStatuses.current = new Map(list.map((dep) => [dep.id, dep.status]));
+        setDeployments(list);
         setError(null);
       })
       .catch((e) => setError(errMsg(e)));
@@ -115,13 +134,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       {error && <div className="error-banner">{error}</div>}
 
       {deployments === null ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : deployments.length === 0 ? (
         <div className="card empty-state">
           <EmptyLedgerIcon />
-          <p>No deployments yet in this project.</p>
+          <p>{EMPTY_DEPLOYMENTS}</p>
           <div className="field-hint">
             A deployment is one running thing -- an app built from a repo, an image, or a template. Deploy from
             GitHub, from a template, or configure one by hand above.
@@ -155,7 +172,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
             {deployments.map((d) => (
               <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
                 <div className="deployment-card-top">
-                  <DeployIcon className="deployment-card-icon" />
+                  <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
                   <span className="deployment-card-name">{d.name}</span>
                   <StatusPill status={d.status} />
                 </div>

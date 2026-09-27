@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter } from "../router";
-import type { CurrentUser } from "../api";
+import { api, type CurrentUser } from "../api";
 import { useUiMode } from "../uiMode";
 import { useWorkspaces } from "../workspaceContext";
 import {
@@ -23,6 +23,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
   const onAdmin = path === "/admin" || path === "/server-health";
   const simple = mode === "simple";
   const isOwner = user.role === "owner";
+  const critical = useHostCritical(isOwner);
 
   // A navigation closes the mobile drawer it was reached through, same as
   // any mobile off-canvas menu.
@@ -33,7 +34,9 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-topbar">
           <div className="sidebar-brand">
-            <MangroveIcon className="sidebar-brand-mark" />
+            <span style={{ display: "inline-flex" }} title={critical ? "Host resources critical -- see Admin" : undefined}>
+              <MangroveIcon className={`sidebar-brand-mark ${critical ? "sidebar-brand-mark-critical" : ""}`} />
+            </span>
             Mangrove
           </div>
           <button
@@ -121,6 +124,41 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
       <main className="main">{children}</main>
     </div>
   );
+}
+
+// The sidebar mark reacts to real host state instead of being a static
+// mark: an owner-only, lightweight poll of the same resource budget Admin
+// already shows, tinting the mark to signal "something needs you" without
+// requiring a visit to Admin first. Members never see this (the endpoint
+// is owner-only server-side anyway -- see docs/multi-user.md).
+function useHostCritical(isOwner: boolean): boolean {
+  const [critical, setCritical] = useState(false);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    let cancelled = false;
+    const check = () => {
+      api
+        .get<{ memory_used_mb: number; memory_ceiling_mb: number; disk_used_gb: number; disk_total_gb: number }>(
+          "/api/admin/resource-budget",
+        )
+        .then((b) => {
+          if (cancelled) return;
+          const memFrac = b.memory_used_mb / Math.max(b.memory_ceiling_mb, 1);
+          const diskFrac = b.disk_total_gb > 0 ? b.disk_used_gb / Math.max(b.disk_total_gb, 1) : 0;
+          setCritical(memFrac > 0.9 || diskFrac > 0.9);
+        })
+        .catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isOwner]);
+
+  return critical;
 }
 
 // The station switcher fixes "workspaces isn't where it's supposed to

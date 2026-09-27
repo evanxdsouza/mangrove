@@ -2,10 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
+import { CenterLoading } from "../components/CenterLoading";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
-import { EmptyLedgerIcon, LedgerIcon, PlusIcon } from "../icons";
+import { PlantGlyph } from "../components/PlantGlyph";
+import { EmptyLedgerIcon, PlusIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
+import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
 
 interface ProjectStatus {
   worst: string | null;
@@ -89,13 +92,11 @@ export function ProjectsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {projects === null ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : projects.length === 0 ? (
         <div className="card empty-state">
           <EmptyLedgerIcon />
-          <p>{activeWorkspaceId != null ? "No projects in this workspace yet." : "No projects yet."}</p>
+          <p>{activeWorkspaceId != null ? EMPTY_PROJECTS_WORKSPACE : EMPTY_PROJECTS}</p>
           <div className="field-hint">Create one to deploy your first app.</div>
         </div>
       ) : (
@@ -105,7 +106,7 @@ export function ProjectsPage() {
             return (
               <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                 <div className="project-card-top">
-                  <LedgerIcon className="project-card-icon" />
+                  <PlantGlyph status={s?.worst} size={20} />
                   <div className="project-card-heading">
                     <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
                       {p.name}

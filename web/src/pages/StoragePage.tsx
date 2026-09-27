@@ -3,6 +3,7 @@ import { api, ApiError, type Drive, type DrivesResponse, type NASShareInfo } fro
 import { useIsOwner } from "../userContext";
 import { Link } from "../router";
 import { Modal } from "../components/Modal";
+import { CenterLoading } from "../components/CenterLoading";
 import { slugify } from "./ProjectsPage";
 import { AlertIcon, CabinetIcon, EmptyLedgerIcon } from "../icons";
 
@@ -88,11 +89,7 @@ function StoragePageInner() {
   };
 
   if (drivesResp === null || shares === null) {
-    return (
-      <div className="center-loading">
-        <div className="spinner" />
-      </div>
-    );
+    return <CenterLoading />;
   }
 
   return (

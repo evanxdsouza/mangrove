@@ -9,6 +9,7 @@ import {
   type Project,
 } from "../api";
 import { Modal, useModalClose } from "./Modal";
+import { CenterLoading } from "./CenterLoading";
 import { slugify } from "../pages/ProjectsPage";
 import { BranchIcon, EmptyLedgerIcon } from "../icons";
 
@@ -168,9 +169,7 @@ export function GithubDeployWizard({
             />
           </div>
           {repos === null ? (
-            <div className="center-loading">
-              <div className="spinner" />
-            </div>
+            <CenterLoading />
           ) : filteredRepos.length === 0 ? (
             <div className="card empty-state">
               <EmptyLedgerIcon />

@@ -4,7 +4,10 @@ import { useRouter } from "../../router";
 import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill";
 import { AddAppModal } from "../../components/simple/AddAppModal";
 import { GithubDeployWizard } from "../../components/GithubDeployWizard";
+import { CenterLoading } from "../../components/CenterLoading";
+import { PlantGlyph } from "../../components/PlantGlyph";
 import { plainStatus } from "./plainCopy";
+import { EMPTY_APPS } from "../../lib/copy";
 import { BranchIcon, EmptyLedgerIcon, PlusIcon } from "../../icons";
 
 interface FlatApp {
@@ -66,14 +69,12 @@ export function SimpleAppsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {apps === null ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : apps.length === 0 ? (
         <div className="card empty-state">
           <EmptyLedgerIcon />
-          <p>You haven't added an app yet.</p>
-          <div className="field-hint">Add one to get started.</div>
+          <p>{EMPTY_APPS}</p>
+          <div className="field-hint">Add one to get started -- pick a template or connect a GitHub repo above.</div>
         </div>
       ) : (
         <div className="grid grid-2">
@@ -83,10 +84,13 @@ export function SimpleAppsPage() {
               className="card card-clickable"
               onClick={() => navigate(`/projects/${projectId}/deployments/${deployment.id}`)}
             >
-              <div className="flex-between" style={{ marginBottom: 0 }}>
-                <div className="card-title" style={{ margin: 0 }}>
-                  {deployment.name}
-                </div>
+              <div className="flex-between" style={{ marginBottom: 0, gap: 10 }}>
+                <span className="flex gap-8" style={{ alignItems: "center", minWidth: 0 }}>
+                  <PlantGlyph status={deployment.status} size={18} />
+                  <span className="card-title" style={{ margin: 0 }}>
+                    {deployment.name}
+                  </span>
+                </span>
                 <span className={`pill pill-${STATUS_COLORS[deployment.status] ?? "gray"}`}>
                   <span className={`pill-dot ${IN_PROGRESS_STATUSES.has(deployment.status) ? "beacon-live" : ""}`} />
                   {plainStatus(deployment.status)}

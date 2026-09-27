@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type AuditEvent, type WorkspaceMember, type WorkspaceRole } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
+import { CenterLoading } from "../components/CenterLoading";
 import { AuditLogTable } from "../components/AuditLogTable";
 import { useWorkspaces } from "../workspaceContext";
 import { LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
@@ -47,9 +48,7 @@ export function WorkspacesPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {workspaces.length === 0 ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : (
         <div className="card">
           <table>

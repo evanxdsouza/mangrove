@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ReactElement, type SVGProps } from "react";
 import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEntry, type Service, type WebhookEvent } from "../api";
 import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
@@ -11,6 +11,9 @@ import { DomainsPanel } from "../components/DomainsPanel";
 import { useWorkspaceRole } from "../workspaceContext";
 import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, StripChartIcon, TrashIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
+import { useToast } from "../components/Toast";
+import { firstTime } from "../lib/milestones";
+import { PlantGlyph } from "../components/PlantGlyph";
 
 type Tab = "overview" | "history" | "logs" | "env";
 
@@ -40,11 +43,24 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   const [rollbackBusyId, setRollbackBusyId] = useState<number | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [showDelete, setShowDelete] = useState(false);
+  const [burstKey, setBurstKey] = useState<number | undefined>(undefined);
+  const prevStatus = useRef<string | null>(null);
+  const { showToast } = useToast();
 
   const load = () => {
     api
       .get<Deployment>(`/api/deployments/${deploymentId}`)
       .then((d) => {
+        // A fresh transition into "running" is real, observable feedback --
+        // the deployment card gets a growth-burst, and (once, ever, per
+        // browser) the very first one anywhere gets a milestone toast.
+        if (d.status === "running" && prevStatus.current != null && prevStatus.current !== "running") {
+          setBurstKey(Date.now());
+          if (firstTime("first-deploy")) {
+            showToast("First deploy live. This is the start of something growing.");
+          }
+        }
+        prevStatus.current = d.status;
         setDeployment(d);
         setError(null);
       })
@@ -154,6 +170,9 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
     setError(null);
     try {
       await api.post(`/api/deploy-history/${historyId}/rollback`, {});
+      if (firstTime("first-rollback")) {
+        showToast("First rollback complete. Good instinct, keeping a healthy version one click away.");
+      }
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -168,7 +187,9 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> / {deployment?.name ?? "..."}
       </div>
       <div className="page-header">
-        <div>
+        <div className="flex gap-8" style={{ alignItems: "flex-start" }}>
+          <PlantGlyph status={deployment?.status} size={26} burstKey={burstKey} />
+          <div>
           <h1>{deployment?.name ?? "Loading..."}</h1>
           {deployment && (
             <p className="flex gap-8" style={{ alignItems: "center" }}>
@@ -180,6 +201,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
               )}
             </p>
           )}
+          </div>
         </div>
         <div className="flex gap-8">
           {deployment?.status === "building" || deployment?.status === "pending" ? (

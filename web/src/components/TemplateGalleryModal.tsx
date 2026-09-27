@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type TemplateInstallResult, type TemplateSummary } from "../api";
 import { Modal } from "./Modal";
+import { CenterLoading } from "./CenterLoading";
 import { Link } from "../router";
 import { slugify } from "../pages/ProjectsPage";
 import { DeployIcon } from "../icons";
+import { TemplateIcon } from "../templateIcons";
 
 export function TemplateGalleryModal({
   projectId,
@@ -46,15 +48,16 @@ export function TemplateGalleryModal({
     <Modal title="Deploy from template" onClose={onClose} size="lg">
       {error && <div className="error-banner">{error}</div>}
       {templates === null ? (
-        <div className="center-loading">
-          <div className="spinner" />
-        </div>
+        <CenterLoading />
       ) : (
         <div className="template-grid">
           {templates.map((t) => (
             <div key={t.key} className="card card-clickable template-card" onClick={() => setSelected(t)}>
-              <div className="card-title" style={{ margin: 0 }}>
-                {t.name}
+              <div className="template-card-top">
+                <TemplateIcon templateKey={t.key} category={t.category} className="template-card-icon" />
+                <div className="card-title" style={{ margin: 0 }}>
+                  {t.name}
+                </div>
               </div>
               <p className="text-dim template-card-description">{t.description}</p>
               <div className="text-faint" style={{ fontSize: 12 }}>
