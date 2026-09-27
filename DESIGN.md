@@ -1,18 +1,21 @@
 ---
 name: Mangrove
-description: A self-hosted PaaS dashboard styled as a field station's instrument room monitoring a living system.
+description: A self-hosted PaaS dashboard styled as a field station's instrument room monitoring a living mangrove system.
 colors:
-  bg: "#14100a"
-  bg-elevated: "#1c160e"
-  bg-card: "#201911"
-  bg-inset: "#0f0b07"
-  bg-recorder: "#0c0906"
+  bg: "#0a0f0b"
+  bg-elevated: "#121a15"
+  bg-card: "#1b2620"
+  bg-inset: "#070a08"
+  bg-recorder: "#050805"
   border: "#362a1a"
   border-hover: "#4d3c25"
   border-strong: "#5e4a2d"
   text: "#ece3d2"
   text-dim: "#a99b83"
   text-faint: "#6f6250"
+  leaf: "#4fae42"
+  leaf-bright: "#6fcf5c"
+  leaf-dim: "#35692e"
   brass: "#caa057"
   brass-bright: "#e2bd76"
   brass-dim: "#7a6236"
@@ -59,12 +62,12 @@ spacing:
   8: "2rem"
 components:
   button-primary:
-    backgroundColor: "{colors.brass}"
-    textColor: "#211705"
+    backgroundColor: "{colors.leaf}"
+    textColor: "#0c1509"
     rounded: "{rounded.sm}"
     padding: "8px 14px"
   button-primary-hover:
-    backgroundColor: "{colors.brass-bright}"
+    backgroundColor: "{colors.leaf-bright}"
   button-danger:
     backgroundColor: "transparent"
     textColor: "{colors.red-bright}"
@@ -84,47 +87,53 @@ components:
 
 ## Overview
 
-**Creative North Star: "Field Station / Instrument Room"**
+**Creative North Star: "Field Station / Instrument Room," now with something alive in it**
 
-Mangrove's dashboard reads as the instrument room of a field station monitoring a living system: an operator's own infrastructure, glanced at through gauges, ledgers, and beacons rather than through a generic SaaS admin shell. The system was chosen through Impeccable's forced concept-seed roll specifically to refuse the category default for self-hosted ops tools — a navy-blue-on-near-black panel with a stock blue accent, cards-with-icons, and a kicker over every heading. Nothing here pretends to be a *physical* instrument (no fake bevels, no stamped-metal CSS, no faux-brass gradients standing in for the real material) — the instrument-room feeling comes from vocabulary and structure: gauge dials for resource readings, ruled-ledger tables for what's deployed, engraved-plaque uppercase labels for section titles, and a strip-chart trace for live logs, all rendered as flat, legible, digital instrumentation.
+Mangrove's dashboard reads as the instrument room of a field station monitoring a living system: an operator's own infrastructure, glanced at through gauges, ledgers, beacons, and living resource cards rather than through a generic SaaS admin shell. The system refuses the category default for self-hosted ops tools — a navy-blue-on-near-black panel with a stock blue accent, cards-with-icons, and a kicker over every heading. Nothing here pretends to be a *physical* instrument (no fake bevels, no stamped-metal CSS, no faux-brass gradients standing in for the real material) — the instrument-room feeling comes from vocabulary and structure: gauge dials for resource readings, ruled-ledger tables for what's deployed, engraved-plaque uppercase labels for section titles, and a strip-chart trace for live logs, all rendered as flat, legible, digital instrumentation.
 
-The palette is warm and near-black rather than blue-black — "instrument room at night," lit by one brass accent rather than a cool screen-glow blue. Two audiences (a technical operator's full dashboard, and a plain-language "Simple mode" for someone who just wants an app running) share the exact same system at two different densities, never two different skins.
+This is a from-a-real-critique revision of that original system: the first version leaned entirely on brass-as-hero and read as low-contrast and funereal rather than alive, internal enum values leaked into copy, the same content type (raw failure output) got two different treatments in two different tabs, and project/deployment pages were mostly dead space below a few small cards. This pass keeps the concept — swamp/field-station, self-hosted, built by a teenager, not an enterprise SaaS vendor — but promotes a real, living leaf green to the accent that actually carries the brand, widens the gap between surfaces so the screen has real depth, and gives every resource (project, deployment) a face instead of a table row.
+
+The ground is now a cooler "swamp water at night" near-black-green rather than a warm brown-black, lit by brass-trimmed instrumentation — a deliberate warm-metal-in-a-cool-swamp duality — with real separation between page, sidebar, card, and border. Two audiences (a technical operator's full dashboard, and a plain-language "Simple mode" for someone who just wants an app running) still share the exact same system at two different densities, never two different skins.
 
 **Key Characteristics:**
-- Warm near-black grounds, never navy or pure black.
-- One interactive accent color (brass), used sparingly, not scattered.
-- Real gauges, real ledgers, real beacons — always paired with the actual number/word they represent, never standing in for it.
+- A cool, near-black "swamp at night" ground, never navy or pure black, with brass-tinted borders/dividers as the warm counterpoint.
+- One living/primary accent (leaf green), used for every primary action and active state; brass is the secondary structural metal — see the Two-Accent Rule below.
+- Real gauges, real ledgers, real beacons, real plant glyphs — always paired with the actual number/word/status they represent, never standing in for it.
 - No card-in-a-card nesting; a sub-panel living inside a card is visually distinct (recessed inset, not a second bordered box).
 - The workspace/"station" switcher is pinned ambient context at the top of the sidebar, not a page you navigate away to.
+- A resource (project, deployment) is a card with an identity — a plant glyph, a name, a status — not a row in a table; a project rolls up its deployments' counts rather than making you drill in to see how many are healthy.
 
 ## Colors
 
-Warm, low-saturation, instrument-panel colors on a near-black ground — nothing in the palette is a pure hue; every color is slightly toasted, as if lit by a warm bulb rather than a cool monitor backlight.
+Two families now carry the palette: a living leaf green (the one primary accent) and brass (the secondary structural metal), both sitting on a cool, low-saturation near-black ground.
 
 ### Primary
-- **Brass** (`#caa057`, bright state `#e2bd76`): the one interactive accent — primary buttons, the active nav item, the station switcher's icon and active state, focus rings, chart-record ticks, gauge fill for values in the normal range. Used on interactive elements only, never as a large background field.
+- **Leaf** (`#4fae42`, bright `#6fcf5c`, dim `#35692e`): the one living/primary accent — primary buttons, active nav/tab, the station mark's icon and active state, focus rings, the default (healthy-range) gauge fill, hover feedback on a clickable card. Deliberately hued toward grass/lime rather than verdigris's teal-green, so a status beacon sitting right next to it never blends in. Used on interactive/primary elements only, never as a large background field.
+
+### Secondary
+- **Brass** (`#caa057`, bright `#e2bd76`, dim `#7a6236`): the secondary metallic accent — borders, dividers, `.card-title` "engraved plaque" labels, page-identifier icons, the log/resource strip-chart trace, texture. Never used for a primary call-to-action; if something needs a second interactive emphasis, it's a leaf variant (wash/dim/bright), not brass promoted back to primary. Settings > Theme still lets an operator swap which metal plays this role (Copper/Iron/Silver/Indigo) — see Instrument Metal Themes below.
 
 ### Neutral
-- **Instrument Black** (`#14100a`): the page ground.
-- **Panel** (`#1c160e`): the sidebar/elevated surface.
-- **Card** (`#201911`): card backgrounds.
-- **Inset** (`#0f0b07`): recessed surfaces set *into* a card — form inputs, gauge sockets, the log/terminal recorder body.
-- **Recorder Black** (`#0c0906`): the darkest surface, reserved for the log viewer and terminal, evoking a sealed instrument bay.
+- **Swamp Black** (`#0a0f0b`): the page ground — cooler and darker than the sidebar/card surfaces above it.
+- **Panel** (`#121a15`): the sidebar/elevated surface.
+- **Card** (`#1b2620`): card backgrounds — a clear, deliberate step up from the sidebar, not a few percent of lightness apart.
+- **Inset** (`#070a08`): recessed surfaces set *into* a card — form inputs, gauge sockets, the log/terminal recorder body — darker than the page ground itself.
+- **Recorder Black** (`#050805`): the darkest surface, reserved for the log viewer, terminal, and `CodeBlock`, evoking a sealed instrument bay.
 - **Parchment** (`#ece3d2`): primary text.
 - **Dim Parchment** (`#a99b83`): secondary text, table body copy.
 - **Faint Parchment** (`#6f6250`): placeholder text, disabled/faint labels.
-- **Border** (`#362a1a`, hover `#4d3c25`, strong `#5e4a2d`): all hairline dividers and default borders.
+- **Border** (`#362a1a`, hover `#4d3c25`, strong `#5e4a2d`): all hairline dividers and default borders — kept warm/brass-tinted against the now-cooler ground on purpose.
 
 ### Semantic
-- **Verdigris** (`#55a087`, bright `#6dbb9e`): success/healthy/running — an oxidized-copper green, deliberately not a generic "success green," chosen to echo the world's material vocabulary (copper, brass, aged metal) rather than a stock traffic-light hue.
+- **Verdigris** (`#55a087`, bright `#6dbb9e`): success/healthy/running — an oxidized-copper teal-green, deliberately hued away from both brass *and* the new leaf primary so a status pill always reads as its own signal rather than blending into either accent.
 - **Sealing-Wax Red** (`#cc5c53`, bright `#e0776c`): failed/danger/error.
-- **Ochre** (`#c98a3d`, bright `#dca158`): building/pending/in-progress/warning — visually distinct from brass (more orange, less yellow) so an in-progress beacon never reads as a call-to-action.
+- **Ochre** (`#c98a3d`, bright `#dca158`): building/pending/in-progress/warning — visually distinct from both brass and leaf so an in-progress beacon never reads as a call-to-action.
 
 ### Named Rules
-**The One Accent Rule.** Brass is the only color used for interactive/primary emphasis. Verdigris, red, and ochre are exclusively status semantics (health/success/danger/in-progress) and are never repurposed as a second "brand" accent.
+**The Two-Accent Rule.** Leaf is the one living/primary accent — reserved for primary actions and active/selected state, used consistently everywhere across the app. Brass is the one secondary/structural accent — chrome, borders, plaque labels, never a call-to-action. Verdigris, red, and ochre are exclusively status semantics and are never repurposed as either accent. This replaces the original single-accent system's "One Accent Rule": there are now exactly two accent roles, each with exactly one color at a time, never three, and never the same color playing both roles.
 
-### Instrument Accent Themes
-Settings > Theme (`web/src/theme.tsx`) lets an operator swap which single color plays the accent role — Brass (default), Copper, Iron, Silver, or Indigo — persisted to `localStorage` and applied by overriding just `--brass`/`--brass-bright`/`--brass-dim`/`--brass-wash`/`--brass-wash-strong` per `[data-theme="..."]` in `styles.css`. Surfaces (`--bg`/`--border`/`--text` tokens) and the semantic colors (verdigris/red/ochre) stay fixed across every theme. This doesn't loosen the One Accent Rule — it still holds at every instant a theme is active, since switching themes replaces which single accent is live rather than adding a second one alongside brass. The station/workspace mark (`MangroveIcon` in `src/icons.tsx`) and the browser-tab favicon both read the active accent (via `currentColor`/`var(--brass-dim)`, and a regenerated data: URI respectively), so they re-color with the chosen theme automatically.
+### Instrument Metal Themes
+Settings > "Instrument metal" (`web/src/theme.tsx`) lets an operator swap which single metal plays the *secondary* role — Brass (default), Copper, Iron, Silver, or Indigo — persisted to `localStorage` and applied by overriding just `--brass`/`--brass-bright`/`--brass-dim`/`--brass-wash`/`--brass-wash-strong` per `[data-theme="..."]` in `styles.css`. The living `--leaf*` primary and the semantic colors (verdigris/red/ochre) stay fixed across every theme — switching metals never touches the primary accent. This keeps the Two-Accent Rule true at every instant: exactly one metal is ever live in the secondary role, and leaf never stops being the primary one. The theme-swatch preview itself (`.theme-swatch`) is the one place a swatch's own color is read as a scoped inline `--brass`, not the globally active theme, so each swatch always previews in its own metal.
 
 ## Typography
 
@@ -136,45 +145,54 @@ Settings > Theme (`web/src/theme.tsx`) lets an operator swap which single color 
 ### Hierarchy
 - **Display** (600, 22px, -0.02em): page `<h1>` titles (`.page-header h1`).
 - **Title** (600, 16.5px, -0.015em): modal titles, card section headers rendered as body-weight text.
-- **Label** (600, 11–12px, 0.05–0.09em, uppercase): `.card-title`, table `<th>`, `.nav-section-label`, `.station-switcher-eyebrow` — the "engraved plaque" voice.
+- **Label** (600, 11–12px, 0.05–0.09em, uppercase): `.card-title`, table `<th>`, `.nav-section-label`, `.station-switcher-eyebrow` — the "engraved plaque" voice, always brass, never the primary leaf accent.
 - **Body** (400, 13.5–14px, -0.006em): running copy, table cells, form labels' companion text.
 - **Mono/Readout** (400–600, 11–13px, tabular-nums): every numeric or log/code value, via `.mono`, `.stat-value`, `.gauge-readout .n`, `.pill` text, `.kv-key`/`.kv-value`.
 
 ### Named Rules
 **The Mono-Means-Measured Rule.** Monospace is reserved for values that are actually data (slugs, ports, hashes, timestamps, log/terminal output, numeric readouts). It is never applied to prose or labels purely to look "technical."
 
+## Copy
+
+**The swamp voice.** A handful of secondary-surface strings (loading, empty states) speak in the world's own voice instead of generic system text — `web/src/lib/copy.ts` is the one place these live (`"Still growing roots…"` for loading, `"Nothing planted here yet"` for an empty project list, etc.), used via the shared `CenterLoading` component and inline in empty-state copy. This is deliberately confined to secondary surfaces: error banners, failure detail, and anything an operator needs to act on fast stay in plain, direct language — see the Do/Don't list.
+
+**Internal values never leak verbatim.** `web/src/lib/format.ts`'s `humanLabel()` maps a backend enum/DB value (port allocation type, audit-log action/resource type) to a real label, falling back to a generic snake_case→Title Case transform for anything not explicitly listed, so a future value never regresses to raw `snake_case` in the UI. `fmtWhen()`/`fmtWhenFull()` are the one date formatter used everywhere a timestamp renders — no inline `.toLocaleString()` variant per file.
+
 ## Layout
 
 Sidebar (240px, fixed) + fluid main content (`max-width: 1120px`, `padding: 32px 40px`). The sidebar is a two-part flex column: a `sidebar-topbar` (brand mark + a mobile-only menu toggle) and a `sidebar-body` (station switcher, primary nav, mode toggle, user, settings, log out) — on screens ≤760px the body collapses behind the toggle into an off-canvas drawer rather than wrapping into an unreadable row of nav links.
 
-Cards stack with a consistent 16px gap. A card whose only content is a table (`.card:has(> table)`) loses its own padding and gains a faint vertical rule near the left edge (`background-image` gradient at 40–41px) so the table itself reads as a ruled ledger page, plus `overflow-x: auto` so a table wider than its card (an admin panel with several data columns and a row-action button) scrolls instead of clipping the last column.
+Cards stack with a consistent 16px gap. A card whose only content is a table (`.card:has(> table)`) loses its own padding and gains a faint vertical rule near the left edge (`background-image` gradient at 40–41px) so the table itself reads as a ruled ledger page, plus `overflow-x: auto` so a table wider than its card scrolls instead of clipping the last column.
 
-A grid of readouts that would otherwise repeat as identical bordered tiles (resource gauges, in particular) is instead laid out as `.instrument-row`/`.instrument-cell`: one shared panel, cells divided by a hairline `border-right` (stacking to `border-bottom` on mobile), never N separate same-size cards — this is a deliberate refusal of the generic "icon + number + label card grid" admin-panel default.
+A grid of readouts that would otherwise repeat as identical bordered tiles (resource gauges, in particular) is instead laid out as `.instrument-row`/`.instrument-cell`: one shared panel, cells divided by a hairline `border-right` (stacking to `border-bottom` on mobile), never N separate same-size cards.
+
+**Resource cards, not tables.** Projects (`.project-grid`/`.project-card`) and a project's own deployments (`.deployment-grid`/`.deployment-card`) render as a card grid (`auto-fill, minmax(260px, 1fr)`), not a ledger table — each card carries a `PlantGlyph` (status-reflecting glyph), name, slug, status pill, and a rollup line (`"2 of 3 deployments running"` at the project level). A project/deployment page's own detail view leads with an `.instrument-row` rollup (deployment count, running count, staging/preview count) before the card grid, so the page never opens onto dead space below a couple of small cards. `WorkspacesPage` stays a table — a workspace is an admin-list concept, not a living resource, and forcing every list into a card grid regardless of what it lists is exactly the kind of uniform-default this system otherwise refuses.
 
 ### Named Rules
 **The One Panel Rule.** A row of related instrument readings (CPU/memory/disk/load, memory budget, etc.) lives in one shared panel divided by hairlines, never as a repeated grid of identically-bordered tiles.
+**The Living-Resource Rule.** A project or a deployment is a card with a plant glyph and a rollup, never a bare table row — reserve tables for genuinely list-shaped, non-"alive" data (ports, sessions, team members, audit log, workspaces).
 
 ## Elevation & Depth
 
-Mostly flat. Cards and inputs sit on a single hairline border (`--border`), not a shadow — this is a screen full of instruments set into one panel, not a stack of floating material cards. Depth exists only where something is genuinely lifted off the surface behind it: modals (`--shadow-lg`, real offset + blur, never a flat colored halo) and the station-switcher dropdown panel (`--shadow-lg`). Hover/active feedback on buttons and clickable cards is a border-color and background shift, not a shadow.
+Mostly flat. Cards and inputs sit on a single hairline border (`--border`), not a shadow — this is a screen full of instruments set into one panel, not a stack of floating material cards. Depth exists only where something is genuinely lifted off the surface behind it: modals (`--shadow-lg`, real offset + blur, never a flat colored halo), the station-switcher dropdown panel (`--shadow-lg`), and milestone toasts (`--shadow-md`). Hover/active feedback on buttons and clickable cards is a border-color and background shift, not a shadow.
 
 ### Shadow Vocabulary
 - **sm** (`0 1px 2px rgba(0,0,0,0.4)`): minor separation, rarely used directly.
-- **md** (`0 10px 28px rgba(0,0,0,0.45)`): hover state on a clickable card.
+- **md** (`0 10px 28px rgba(0,0,0,0.45)`): hover state on a clickable card, milestone toasts.
 - **lg** (`0 28px 72px rgba(0,0,0,0.55)`): modals, the station-switcher dropdown — anything genuinely floating above the page.
 
 ### Named Rules
-**The Flat-Panel Rule.** Nothing on the page is a floating card by default. Elevation is reserved for content that is genuinely temporary/overlaid (modals, dropdowns).
+**The Flat-Panel Rule.** Nothing on the page is a floating card by default. Elevation is reserved for content that is genuinely temporary/overlaid (modals, dropdowns, toasts).
 
 ## Shapes
 
-Small, consistent corner radii throughout: 5px (`sm` — buttons, inputs, pills-as-rectangles), 8px (`md` — cards, the log/terminal frame), 12px (`lg` — modals), and a full pill radius for status beacons and the mode toggle. Nothing sharp-cornered, nothing heavily rounded — the radius scale itself reads as machined rather than soft. Icons (see `src/icons.tsx`) are a single authored line-icon set at 1.7px stroke weight, round caps/joins, drawn in the world's own grammar (a compass rose, a ruled ledger, a half-circle gauge, a stacked-drawer cabinet) rather than a generic icon-font import.
+Small, consistent corner radii throughout: 5px (`sm` — buttons, inputs, pills-as-rectangles), 8px (`md` — cards, the log/terminal frame), 12px (`lg` — modals), and a full pill radius for status beacons and the mode toggle. Nothing sharp-cornered, nothing heavily rounded — the radius scale itself reads as machined rather than soft. Icons (see `src/icons.tsx`) are a single authored line-icon set at 1.7px stroke weight, round caps/joins, drawn in the world's own grammar (a mangrove's prop roots, a ruled ledger, a half-circle gauge, a stacked-drawer cabinet) rather than a generic icon-font import. Per-template icons (`src/templateIcons.tsx`) extend the same grammar with one recognizable glyph per template (Ghost's ghost, Postgres' elephant, Redis's cube stack, Gitea's teacup, Supabase's bolt, MongoDB's leaf, …), falling back to a category icon so a future template never regresses to plain text.
 
 ## Components
 
 ### Buttons
 - **Shape:** 5px radius, 8px 14px padding (`.btn-sm`: 5px 10px).
-- **Primary:** solid brass fill, near-black text (`#211705`) for contrast, 600 weight — the only solid-fill button on the page, reserved for the one primary action per view.
+- **Primary:** solid leaf fill, near-black text (`#0c1509`) for contrast, 600 weight — the only solid-fill button on the page, reserved for the one primary action per view.
 - **Danger:** transparent fill, red-bright text, red border on hover/wash background — never solid red at rest.
 - **Default/Secondary:** `bg-elevated` fill, border, text color; border brightens on hover.
 - **Hover/Active:** border-color shift + subtle background shift; `transform: scale(0.97)` on press (skipped entirely under `prefers-reduced-motion`).
@@ -183,39 +201,58 @@ Small, consistent corner radii throughout: 5px (`sm` — buttons, inputs, pills-
 - **Style:** full-radius pill, a small solid dot + uppercase mono label, background at ~14% tint of the semantic color.
 - **In-progress state:** the dot gets a `beacon-live` pulsing ring (`box-shadow`-free, pure `border` + `opacity`/`scale` keyframe) — the one authored motion moment for status, exempted from `prefers-reduced-motion` the same way a spinner is, since it is the only signal of ongoing activity.
 
+### Plant Glyph (`src/components/PlantGlyph.tsx`)
+A small root-and-sprout SVG whose posture reflects real status, reusing `StatusPill`'s own green/yellow/red/gray classification so a card's glyph and its pill always agree: upright and full (leaf-bright) when healthy, still uncurling with a gentle sway animation (ochre) while building, drooping (red) on failure, a bare stem (text-faint) when stopped. Sits on every project/deployment card and the deployment-detail header. A fresh transition into "running" triggers a one-shot spring-driven scale pop (`lib/spring.ts`, not a CSS keyframe, so it can be interrupted/retargeted the same way `Modal`'s open/close already is) — a real growth burst tied to a real state change, never a decoration on a timer.
+
 ### Gauges (`src/components/Gauge.tsx`)
 - **Style:** a 250°-sweep SVG arc (track + value stroke) with quarter-turn tick marks and a centered numeric readout — never a full circle (which would read as a generic "progress ring"), and always rendered beside its actual value/label text, never replacing it.
-- **Tone:** brass at rest, ochre >70%, red >90%.
+- **Tone:** leaf at rest (the default/healthy range), ochre >70%, red >90%.
 
 ### Cards / Containers
 - **Corner:** 8px radius.
-- **Background:** `bg-card` on `bg`; a nested "instrument socket" (`.gauge-tile`-style recess, now folded into `.instrument-cell`) uses `bg-inset` instead of stacking another bordered card.
-- **Border:** 1px `--border`, no shadow at rest.
+- **Background:** `bg-card` on `bg`; a nested "instrument socket" (folded into `.instrument-cell`) uses `bg-inset` instead of stacking another bordered card.
+- **Border:** 1px `--border`, no shadow at rest; `--leaf-dim` on hover for a clickable card (`.card-clickable`).
 - **Padding:** 20px (0 when the card's sole content is a table).
+- **Resource cards** (`.project-card`/`.deployment-card`): see Layout's "Resource cards, not tables" above.
+
+### CodeBlock (`src/components/CodeBlock.tsx`)
+The one component for a finished block of raw machine output an operator might need to read closely — a build failure, a run-command result — rendered in the same `bg-recorder` terminal-box treatment `LogViewer` uses for a *live* stream. `LogViewer` owns the live-tail case (its strip-chart + recorder status only make sense for an active connection); `CodeBlock` is the static counterpart, so a finished error dump and a live log tail never diverge into two different visual treatments for the same kind of content again (this was a real defect in the previous pass — History's build-failure text was bare red paragraph text next to Logs' proper terminal box).
 
 ### Inputs / Fields
 - **Style:** `bg-inset` fill, 1px border, 5px radius, 8px 11px padding.
-- **Focus:** border shifts to brass; global `:focus-visible` also gets a 2px brass outline with offset, for keyboard navigation everywhere (not just inputs).
+- **Focus:** border shifts to leaf; global `:focus-visible` also gets a 2px leaf-bright outline with offset, for keyboard navigation everywhere (not just inputs).
 
 ### Navigation
-- **Sidebar nav-link:** icon + label, 8px radius, brass-wash background + brass-bright text when active.
-- **Station switcher:** pinned above the nav list — eyebrow label ("Station") + current workspace name + chevron, opening a dropdown listing every workspace with its project count, a "Manage workspaces" exit, and re-affirming the active selection with a filled brass dot. This is the direct structural fix for workspace management previously living as an orphaned, disconnected nav item.
+- **Sidebar nav-link:** icon + label, 8px radius, leaf-wash background + leaf-bright text when active. Active-state membership is explicit (`path === "/"` or a `/projects/...` prefix for "Projects", etc.) rather than an inverse "not one of the other pages" check, so an unmatched path never lights up a nav item by accident.
+- **Station switcher:** pinned above the nav list — eyebrow label ("Station") + current workspace name + chevron, opening a dropdown listing every workspace with its project count, a "Manage workspaces" exit, and re-affirming the active selection with a filled leaf dot.
 - **Mobile:** the whole nav collapses behind a top-bar hamburger toggle into a full-width drawer, rather than wrapping into a multi-row jumble.
+- **Sidebar mark reacts to real state:** an owner-only poll of the same resource budget Admin shows (every 5 minutes — that endpoint's own disk scan is expensive, so this deliberately doesn't poll faster than the backend's own resource-sampler cadence) tints the mark to the danger color when memory or disk is critical, instead of it being a static logo.
+
+### Modal (`src/components/Modal.tsx`)
+Spring-driven open/close (`lib/spring.ts`, critically damped) with two widths: `size="md"` (460px, the default, for a form) and `size="lg"` (720px, `.modal-lg`) for anything that lays out a card grid inside itself — the template gallery and GitHub repo picker used to squeeze a `grid-2` into a 460px modal, which is what clipped template descriptions mid-sentence and forced a horizontal scroll on a popup.
+
+### Toast (`src/components/Toast.tsx`)
+Rare, on-brand milestone moments (first deploy ever, first rollback ever — gated by a one-time `localStorage` flag via `lib/milestones.ts` so they stay genuinely rare) surface as a small spring-animated toast, bottom-right, `--leaf-dim` bordered. Never used for routine status or errors — those stay in an `.error-banner` or a status pill, read instantly, no animation to wait out.
 
 ### Log Viewer / Strip-Chart (`src/components/LogViewer.tsx`)
-A signature component: live logs render inside a `log-viewer-frame` with a `log-strip` above the text — one thin vertical tick per received line (height derived from that line's length, a taller red tick when the line matches an error/fail/panic pattern), scrolling right-aligned like a seismograph drum. This is a real reading of the actual stream, not decorative — the amplitude and color both come from real log content.
+A signature component: live logs render inside a `log-viewer-frame` with a `log-strip` above the text — one thin vertical tick per received line (height derived from that line's length, a taller red tick when the line matches an error/fail/panic pattern), scrolling right-aligned like a seismograph drum. `ResourceHistoryStrip` reuses the same idiom for periodic resource snapshots, with a `.chart-legend` explaining its tone colors and a capped per-tick width (`flex: 0 1 10px`) so a fresh instance with only one or two samples reads as "a few real readings," not one bar stretched to fill the whole strip like a decorative fill.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** pair every gauge/beacon with its real numeric or word value in text — the visualization augments the content, it never replaces it.
+- **Do** pair every gauge/beacon/plant-glyph with its real numeric or word value in text — the visualization augments the content, it never replaces it.
 - **Do** use `.instrument-row`/`.instrument-cell` (a divided panel) for any new row of related readouts, not a grid of separate bordered tiles.
+- **Do** render a project or deployment as a card with a `PlantGlyph` and a rollup, not a bare table row (the Living-Resource Rule) — reserve tables for genuinely list-shaped data.
 - **Do** keep the station/workspace switcher as ambient, always-visible sidebar context — never move workspace management back to a flat top-level nav item.
-- **Do** use the authored icon set in `src/icons.tsx` for any new icon; extend it in the same 1.7px stroke/round-cap grammar rather than importing an icon font.
+- **Do** use the authored icon set in `src/icons.tsx` (or `src/templateIcons.tsx` for a template) for any new icon; extend it in the same 1.7px stroke/round-cap grammar rather than importing an icon font.
 - **Do** reserve monospace for genuinely measured/logged values.
+- **Do** route any internal enum/DB value through `humanLabel()` and any timestamp through `fmtWhen()`/`fmtWhenFull()` before it reaches JSX.
+- **Do** keep swamp-voice copy confined to loading/empty states (`lib/copy.ts`) — errors and anything an operator must act on stay plain and legible first.
 
 ### Don't:
-- **Don't** introduce a second "brand" accent color alongside brass — new emphasis needs are a brass variant (wash/dim/bright), not a new hue.
+- **Don't** use brass for a primary call-to-action, or leaf for structural chrome (borders, plaque labels, dividers) — the Two-Accent Rule is directional, not just "don't add a third color."
 - **Don't** fake physical material (embossing, stamped-metal gradients, skeuomorphic bevels) — the instrument-room feeling comes from vocabulary and structure, not costume CSS.
 - **Don't** add a kicker/eyebrow label above a page or card heading purely for decoration (the `station-switcher-eyebrow` and table `<th>` labels are functional value-labels for a live control or column, not decorative kickers, and that distinction should hold for anything new).
 - **Don't** let a table's row-action button be the thing that determines whether the layout overflows — give a data-dense table its own full-width row rather than fighting it into half a `grid-2`.
+- **Don't** give the same content type (e.g. raw build/command output) two different visual treatments in two different places — use `CodeBlock` for a finished dump, `LogViewer` for a live stream, never a bare `<p>`/inline style.
+- **Don't** let an unmatched route silently render an existing page (it used to fall through to Projects/Your-apps) — `NotFoundPage` renders for anything that isn't an explicitly matched path.
