@@ -15,7 +15,7 @@ export function SettingsPage() {
       </div>
 
       <div className="card">
-        <div className="card-title">Theme</div>
+        <div className="card-title">Instrument metal</div>
         <ThemePicker />
       </div>
 
@@ -32,7 +32,8 @@ function ThemePicker() {
   return (
     <>
       <p className="text-dim" style={{ marginTop: 0 }}>
-        Pick an instrument accent -- the station mark re-colors to match, in the sidebar and the browser tab.
+        Pick which metal trims the panel -- borders, labels, and secondary chrome re-color to match. The living
+        leaf-green accent (primary buttons, active nav) stays put regardless.
       </p>
       <div className="theme-grid">
         {THEMES.map((t) => (

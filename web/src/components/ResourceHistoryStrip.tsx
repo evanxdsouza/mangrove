@@ -7,7 +7,7 @@ import { fmtWhen } from "../lib/format";
 function toneColor(fraction: number): string {
   if (fraction > 0.9) return "var(--red)";
   if (fraction > 0.7) return "var(--ochre)";
-  return "var(--brass-dim)";
+  return "var(--leaf)";
 }
 
 // ResourceHistoryStrip renders scheduler.ResourceSampler's periodic

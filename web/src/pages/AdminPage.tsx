@@ -494,7 +494,7 @@ function ChartLegend() {
   return (
     <div className="chart-legend">
       <span className="chart-legend-item">
-        <span className="chart-legend-swatch" style={{ background: "var(--brass-dim)" }} /> Normal
+        <span className="chart-legend-swatch" style={{ background: "var(--leaf)" }} /> Normal
       </span>
       <span className="chart-legend-item">
         <span className="chart-legend-swatch" style={{ background: "var(--ochre)" }} /> Above 70%

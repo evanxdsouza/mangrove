@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-// A color theme -- swaps the --brass* instrument-accent variables in
-// styles.css's per-theme [data-theme="..."] blocks. Semantic colors
-// (--verdigris/--red/--ochre, --text*, --bg*) intentionally stay constant
-// across themes -- DESIGN.md's "One Accent Rule" says the accent is never
-// duplicated *within* an active theme, and switching between named
-// single-accent presets keeps that true at every moment: only one accent
-// is ever live. "brass" is the default and needs no override block since
-// it matches styles.css's :root values.
+// A color theme -- swaps the --brass* SECONDARY-metal variables in
+// styles.css's per-theme [data-theme="..."] blocks. The living --leaf*
+// primary accent and the semantic colors (--verdigris/--red/--ochre,
+// --text*, --bg*) intentionally stay constant across themes -- DESIGN.md's
+// "Two-Accent Rule" says leaf is always the one living/primary accent, and
+// switching between named metal presets only ever changes which single
+// metal plays the secondary/structural role alongside it. "brass" is the
+// default and needs no override block since it matches styles.css's :root
+// values.
 export interface ThemeDef {
   id: string;
   label: string;
