@@ -8,7 +8,8 @@ import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
-import { BranchIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, DeployIcon, EmptyLedgerIcon, LedgerIcon, PlusIcon, TrashIcon } from "../icons";
+import { fmtWhen } from "../lib/format";
 
 interface ProjectRepoInfo {
   id: number;
@@ -121,44 +122,60 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         <div className="card empty-state">
           <EmptyLedgerIcon />
           <p>No deployments yet in this project.</p>
+          <div className="field-hint">
+            A deployment is one running thing -- an app built from a repo, an image, or a template. Deploy from
+            GitHub, from a template, or configure one by hand above.
+          </div>
         </div>
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Strategy</th>
-                <th>Environment</th>
-                <th>Status</th>
-                <th>Visibility</th>
-                <th>Last deployed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deployments.map((d) => (
-                <tr
-                  key={d.id}
-                  className="row-link"
-                  onClick={() => (window.location.href = `/projects/${projectId}/deployments/${d.id}`)}
-                >
-                  <td>
-                    <Link to={`/projects/${projectId}/deployments/${d.id}`}>{d.name}</Link>
-                  </td>
-                  <td className="mono text-dim">{d.build_strategy}</td>
-                  <td>{d.environment === "staging" ? <span className="pill pill-yellow">staging</span> : "production"}</td>
-                  <td>
-                    <StatusPill status={d.status} />
-                  </td>
-                  <td className="text-dim">
-                    {d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}
-                  </td>
-                  <td className="text-dim">{d.last_deployed_at ? new Date(d.last_deployed_at).toLocaleString() : "never"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="instrument-row" style={{ marginBottom: 16 }}>
+            <div className="instrument-cell">
+              <div className="stat-tile">
+                <div className="stat-value">{deployments.length}</div>
+                <div className="stat-label">Deployment{deployments.length === 1 ? "" : "s"}</div>
+              </div>
+            </div>
+            <div className="instrument-cell">
+              <div className="stat-tile">
+                <div className="stat-value">{deployments.filter((d) => d.status === "running").length}</div>
+                <div className="stat-label">Running</div>
+              </div>
+            </div>
+            {deployments.some((d) => d.environment !== "production") && (
+              <div className="instrument-cell">
+                <div className="stat-tile">
+                  <div className="stat-value">{deployments.filter((d) => d.environment !== "production").length}</div>
+                  <div className="stat-label">Staging / preview</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="deployment-grid">
+            {deployments.map((d) => (
+              <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
+                <div className="deployment-card-top">
+                  <DeployIcon className="deployment-card-icon" />
+                  <span className="deployment-card-name">{d.name}</span>
+                  <StatusPill status={d.status} />
+                </div>
+                <div className="deployment-card-meta">
+                  <span className="mono">{d.build_strategy}</span>
+                  {d.environment !== "production" && (
+                    <span className="pill pill-yellow">
+                      {d.environment}
+                      {d.pr_number ? ` #${d.pr_number}` : ""}
+                    </span>
+                  )}
+                  <span>{d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}</span>
+                </div>
+                <div className="deployment-card-footer text-faint">
+                  Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
 
       <div className="card">
@@ -172,6 +189,12 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
             </button>
           )}
         </div>
+        {!repo && (
+          <p className="text-dim" style={{ marginTop: 0, marginBottom: 0 }}>
+            Link a GitHub repo to auto-deploy on every push, get staging environments per branch, and preview
+            deployments for open pull requests -- all configured per-deployment once this project has a repo.
+          </p>
+        )}
         {repo && (
           <div className="kv-list">
             <div className="kv-row">

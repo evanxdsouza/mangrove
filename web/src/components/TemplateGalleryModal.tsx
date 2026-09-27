@@ -43,27 +43,20 @@ export function TemplateGalleryModal({
   }
 
   return (
-    <Modal title="Deploy from template" onClose={onClose}>
+    <Modal title="Deploy from template" onClose={onClose} size="lg">
       {error && <div className="error-banner">{error}</div>}
       {templates === null ? (
         <div className="center-loading">
           <div className="spinner" />
         </div>
       ) : (
-        <div className="grid grid-2">
+        <div className="template-grid">
           {templates.map((t) => (
-            <div
-              key={t.key}
-              className="card card-clickable"
-              style={{ marginBottom: 0 }}
-              onClick={() => setSelected(t)}
-            >
+            <div key={t.key} className="card card-clickable template-card" onClick={() => setSelected(t)}>
               <div className="card-title" style={{ margin: 0 }}>
                 {t.name}
               </div>
-              <p className="text-dim" style={{ fontSize: 13, margin: "6px 0" }}>
-                {t.description}
-              </p>
+              <p className="text-dim template-card-description">{t.description}</p>
               <div className="text-faint" style={{ fontSize: 12 }}>
                 {t.category} &middot; ~{t.total_memory_mb}MB
                 {t.deployments.length > 1 ? ` across ${t.deployments.length} deployments` : ""}

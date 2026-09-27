@@ -1,9 +1,6 @@
 import type { AuditEvent } from "../api";
 import { EmptyLedgerIcon } from "../icons";
-
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
+import { fmtWhen, humanLabel } from "../lib/format";
 
 // AuditLogTable is the shared rendering for both the per-workspace log
 // (WorkspacesPage's Activity modal, viewer+) and the global one
@@ -39,9 +36,9 @@ export function AuditLogTable({ events, showWorkspace }: { events: AuditEvent[] 
           <tr key={e.id}>
             <td className="text-dim mono">{fmtWhen(e.created_at)}</td>
             <td>{e.actor_email}</td>
-            <td className="mono">{e.action}</td>
+            <td>{humanLabel(e.action)}</td>
             <td className="text-dim">
-              {e.resource_type}
+              {humanLabel(e.resource_type)}
               {e.resource_id != null ? ` #${e.resource_id}` : ""}
             </td>
             {showWorkspace && <td className="text-dim">{e.workspace_id ?? "—"}</td>}

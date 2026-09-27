@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 // A minimal client-side router -- deliberately hand-rolled instead of
 // pulling in react-router-dom. The dashboard only has a handful of views
@@ -43,11 +43,15 @@ export function Link({
   children,
   className,
   style,
+  onClick,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** Runs before navigation -- e.g. stopping propagation to a clickable
+      parent card that navigates somewhere else on click. */
+  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const { navigate } = useRouter();
   return (
@@ -56,6 +60,7 @@ export function Link({
       className={className}
       style={style}
       onClick={(e) => {
+        onClick?.(e);
         e.preventDefault();
         navigate(to);
       }}

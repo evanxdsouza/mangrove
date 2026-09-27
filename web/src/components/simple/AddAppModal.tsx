@@ -80,27 +80,27 @@ export function AddAppModal({ onClose, onAdded }: { onClose: () => void; onAdded
   }
 
   return (
-    <Modal title="Add an app" onClose={onClose}>
+    <Modal title="Add an app" onClose={onClose} size="lg">
       {error && <div className="error-banner">{error}</div>}
       {templates === null ? (
         <div className="center-loading">
           <div className="spinner" />
         </div>
       ) : (
-        <div className="grid grid-2">
+        <div className="template-grid">
           {templates.map((t) => {
             const copy = SIMPLE_TEMPLATES[t.key];
             return (
               <div
                 key={t.key}
-                className="card card-clickable"
-                style={{ marginBottom: 0, opacity: installing && installing !== t.key ? 0.5 : 1 }}
+                className="card card-clickable template-card"
+                style={{ opacity: installing && installing !== t.key ? 0.5 : 1 }}
                 onClick={() => !installing && install(t)}
               >
                 <div className="card-title" style={{ margin: 0 }}>
                   {copy.label}
                 </div>
-                <p className="text-dim" style={{ fontSize: 13, margin: "6px 0 0" }}>
+                <p className="text-dim template-card-description">
                   {installing === t.key ? "Setting it up..." : copy.blurb}
                 </p>
               </div>

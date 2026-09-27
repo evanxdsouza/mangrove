@@ -10,7 +10,21 @@ export function useModalClose(): () => void {
   return useContext(ModalCloseContext);
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  size = "md",
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  /** "md" (460px) fits a form; "lg" (720px) is for anything that lays out a
+      card grid inside itself (template gallery, GitHub repo picker) -- a
+      grid squeezed into a form-width modal is what used to clip template
+      descriptions mid-sentence and force a horizontal scroll on a popup. */
+  size?: "md" | "lg";
+}) {
   const [progress, setProgress] = useState(0);
   const springRef = useRef<SpringHandle | null>(null);
   const closingRef = useRef(false);
@@ -62,7 +76,10 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         if (e.target === e.currentTarget) requestClose();
       }}
     >
-      <div className="modal" style={{ opacity: progress, transform: `scale(${0.96 + 0.04 * progress})` }}>
+      <div
+        className={`modal ${size === "lg" ? "modal-lg" : ""}`}
+        style={{ opacity: progress, transform: `scale(${0.96 + 0.04 * progress})` }}
+      >
         <button type="button" className="modal-close" onClick={requestClose} aria-label="Close">
           <CloseIcon />
         </button>

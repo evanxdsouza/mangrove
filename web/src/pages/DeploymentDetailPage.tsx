@@ -10,6 +10,7 @@ import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useWorkspaceRole } from "../workspaceContext";
 import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, StripChartIcon, TrashIcon } from "../icons";
+import { fmtWhen } from "../lib/format";
 
 type Tab = "overview" | "history" | "logs" | "env";
 
@@ -22,6 +23,7 @@ const TAB_ICON: Record<Tab, (props: SVGProps<SVGSVGElement>) => ReactElement> = 
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
   const [projectWorkspaceId, setProjectWorkspaceId] = useState<number | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const role = useWorkspaceRole(projectWorkspaceId);
   const isAdmin = role === "admin";
   const canEdit = role === "admin" || role === "editor";
@@ -74,8 +76,11 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   // (only project_id), so this is the one extra lookup that needs.
   useEffect(() => {
     api
-      .get<{ workspace_id: number }>(`/api/projects/${projectId}`)
-      .then((p) => setProjectWorkspaceId(p.workspace_id))
+      .get<{ workspace_id: number; name: string }>(`/api/projects/${projectId}`)
+      .then((p) => {
+        setProjectWorkspaceId(p.workspace_id);
+        setProjectName(p.name);
+      })
       .catch(() => {});
   }, [projectId]);
 
@@ -160,7 +165,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
   return (
     <>
       <div className="breadcrumb">
-        <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>Project</Link> / {deployment?.name ?? "..."}
+        <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> / {deployment?.name ?? "..."}
       </div>
       <div className="page-header">
         <div>
@@ -612,7 +617,7 @@ function WebhookHealth({ projectId, repo }: { projectId: number; repo: ProjectRe
           {events.slice(0, 8).map((e) => (
             <div className="kv-row" key={e.id}>
               <span className="kv-key mono" style={{ fontSize: 12 }}>
-                {new Date(e.received_at).toLocaleString()}
+                {fmtWhen(e.received_at)}
               </span>
               <span className="kv-value text-dim" style={{ fontSize: 12 }}>
                 {e.event_type} &middot; {e.signature_valid ? "signed" : "bad signature"} &middot; {e.status.replace(/_/g, " ")}

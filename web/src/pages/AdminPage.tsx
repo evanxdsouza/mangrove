@@ -5,13 +5,7 @@ import { Gauge } from "../components/Gauge";
 import { ResourceHistoryStrip } from "../components/ResourceHistoryStrip";
 import { AuditLogTable } from "../components/AuditLogTable";
 import { DialsIcon, PlusIcon, TrashIcon } from "../icons";
-
-// A compact instrument-log timestamp -- ledger tables here pair it with an
-// action button in the same row, and the full locale string (with year and
-// seconds) was wide enough to push that button past the card's edge.
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
+import { fmtWhen, humanLabel } from "../lib/format";
 
 interface ResourceBudget {
   memory_allocated_mb: number;
@@ -225,6 +219,7 @@ export function AdminPage() {
               Disk used
             </div>
             <ResourceHistoryStrip snapshots={history} metric="disk" />
+            <ChartLegend />
           </div>
         )}
       </div>
@@ -261,7 +256,7 @@ export function AdminPage() {
                   {ports.map((p) => (
                     <tr key={p.id}>
                       <td className="mono">{p.port}</td>
-                      <td className="text-dim">{p.allocation_type}</td>
+                      <td className="text-dim">{humanLabel(p.allocation_type)}</td>
                       <td className="text-dim">{p.note || "—"}</td>
                       <td>
                         {p.allocation_type !== "system" && (
@@ -489,6 +484,25 @@ export function AdminPage() {
         </div>
       )}
     </>
+  );
+}
+
+// Every chart in the dashboard explains its own colors -- a trend strip
+// whose only key is "figure it out from the axis" is decoration wearing a
+// data-visualization costume, per DESIGN.md.
+function ChartLegend() {
+  return (
+    <div className="chart-legend">
+      <span className="chart-legend-item">
+        <span className="chart-legend-swatch" style={{ background: "var(--brass-dim)" }} /> Normal
+      </span>
+      <span className="chart-legend-item">
+        <span className="chart-legend-swatch" style={{ background: "var(--ochre)" }} /> Above 70%
+      </span>
+      <span className="chart-legend-item">
+        <span className="chart-legend-swatch" style={{ background: "var(--red)" }} /> Above 90%
+      </span>
+    </div>
   );
 }
 

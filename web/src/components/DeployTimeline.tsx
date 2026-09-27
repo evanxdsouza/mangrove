@@ -1,6 +1,8 @@
 import type { DeployHistory } from "../api";
 import { StatusPill } from "./StatusPill";
+import { CodeBlock } from "./CodeBlock";
 import { EmptyLedgerIcon } from "../icons";
+import { fmtWhen } from "../lib/format";
 
 const DOT_COLOR: Record<string, string> = {
   success: "var(--verdigris)",
@@ -49,10 +51,14 @@ export function DeployTimeline({
               )}
             </div>
             <div className="timeline-time">
-              {new Date(h.started_at).toLocaleString()} &middot; triggered by {h.triggered_by}
+              {fmtWhen(h.started_at)} &middot; triggered by {h.triggered_by}
             </div>
             {h.commit_message && <div className="timeline-msg">{h.commit_message}</div>}
-            {h.error_message && <div className="timeline-msg" style={{ color: "var(--red-bright)" }}>{h.error_message}</div>}
+            {h.error_message && (
+              <div style={{ marginTop: 8 }}>
+                <CodeBlock tone="danger">{h.error_message}</CodeBlock>
+              </div>
+            )}
           </div>
           {h.status === "success" && !h.is_current && (
             <button className="btn btn-sm" disabled={busyId !== null} onClick={() => onRollback(h.id)}>

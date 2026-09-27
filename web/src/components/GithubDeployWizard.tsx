@@ -111,7 +111,7 @@ export function GithubDeployWizard({
   }
 
   return (
-    <Modal title="Deploy from GitHub" onClose={onClose}>
+    <Modal title="Deploy from GitHub" onClose={onClose} size="lg">
       {error && <div className="error-banner">{error}</div>}
 
       {step === "connect" && (

@@ -1,4 +1,5 @@
 import type { ResourceUsageSnapshot } from "../api";
+import { fmtWhen } from "../lib/format";
 
 // Same tone thresholds as AdminPage's StatTile/Gauge (>0.9 danger, >0.7
 // warn), so a spike in the trend strip reads the same as a spike in the
@@ -7,10 +8,6 @@ function toneColor(fraction: number): string {
   if (fraction > 0.9) return "var(--red)";
   if (fraction > 0.7) return "var(--ochre)";
   return "var(--brass-dim)";
-}
-
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 // ResourceHistoryStrip renders scheduler.ResourceSampler's periodic

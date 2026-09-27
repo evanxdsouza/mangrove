@@ -4,11 +4,13 @@ import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
-import { EmptyLedgerIcon, PlusIcon } from "../icons";
+import { EmptyLedgerIcon, LedgerIcon, PlusIcon } from "../icons";
+import { fmtWhen } from "../lib/format";
 
 interface ProjectStatus {
   worst: string | null;
   count: number;
+  runningCount: number;
 }
 
 export function ProjectsPage() {
@@ -34,11 +36,18 @@ export function ProjectsPage() {
           list.map((project) =>
             api
               .get<Deployment[]>(`/api/projects/${project.id}/deployments`)
-              .then((deps): [number, ProjectStatus] => [
-                project.id,
-                { worst: worstStatus((deps ?? []).map((d) => d.status)), count: (deps ?? []).length },
-              ])
-              .catch((): [number, ProjectStatus] => [project.id, { worst: null, count: 0 }]),
+              .then((deps): [number, ProjectStatus] => {
+                const list = deps ?? [];
+                return [
+                  project.id,
+                  {
+                    worst: worstStatus(list.map((d) => d.status)),
+                    count: list.length,
+                    runningCount: list.filter((d) => d.status === "running").length,
+                  },
+                ];
+              })
+              .catch((): [number, ProjectStatus] => [project.id, { worst: null, count: 0, runningCount: 0 }]),
           ),
         ).then((entries) => setStatus(Object.fromEntries(entries)));
       })
@@ -90,60 +99,54 @@ export function ProjectsPage() {
           <div className="field-hint">Create one to deploy your first app.</div>
         </div>
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Slug</th>
-                <th>Workspace</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => {
-                const s = status[p.id];
-                return (
-                <tr key={p.id} className="row-link" onClick={() => (window.location.href = `/projects/${p.id}`)}>
-                  <td>
-                    <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                  </td>
-                  <td>
-                    {s == null ? (
-                      <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
-                    ) : s.worst == null ? (
-                      <span className="text-faint">no deployments</span>
-                    ) : (
-                      <span className="flex gap-8" style={{ alignItems: "center" }}>
-                        <StatusPill status={s.worst} />
-                        {s.count > 1 && <span className="text-faint mono" style={{ fontSize: 11.5 }}>&times;{s.count}</span>}
-                      </span>
-                    )}
-                  </td>
-                  <td className="mono text-dim">{p.slug}</td>
-                  <td className="text-dim">
-                    {p.workspace_name ? (
-                      <a
-                        href={`/`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setActiveWorkspaceId(p.workspace_id);
-                        }}
-                      >
-                        {p.workspace_name}
-                      </a>
-                    ) : (
-                      <span className="text-faint">—</span>
-                    )}
-                  </td>
-                  <td className="text-dim">{new Date(p.created_at).toLocaleString()}</td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="project-grid">
+          {projects.map((p) => {
+            const s = status[p.id];
+            return (
+              <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+                <div className="project-card-top">
+                  <LedgerIcon className="project-card-icon" />
+                  <div className="project-card-heading">
+                    <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+                      {p.name}
+                    </Link>
+                    <span className="mono text-faint project-card-slug">{p.slug}</span>
+                  </div>
+                  {s == null ? (
+                    <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
+                  ) : s.worst != null ? (
+                    <StatusPill status={s.worst} />
+                  ) : null}
+                </div>
+
+                {p.description && <p className="project-card-description">{p.description}</p>}
+
+                <div className="project-card-footer">
+                  <span className="project-card-rollup">
+                    {s == null
+                      ? "loading..."
+                      : s.count === 0
+                        ? "no deployments yet"
+                        : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
+                  </span>
+                  {p.workspace_name && (
+                    <a
+                      href="/"
+                      className="project-card-workspace"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveWorkspaceId(p.workspace_id);
+                      }}
+                    >
+                      {p.workspace_name}
+                    </a>
+                  )}
+                  <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
