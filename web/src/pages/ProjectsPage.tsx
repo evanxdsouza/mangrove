@@ -6,7 +6,7 @@ import { CenterLoading } from "../components/CenterLoading";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
 import { PlantGlyph } from "../components/PlantGlyph";
-import { ChevronDownIcon, EmptyLedgerIcon, PlusIcon, SearchIcon } from "../icons";
+import { ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
 
@@ -14,6 +14,19 @@ interface ProjectStatus {
   worst: string | null;
   count: number;
   runningCount: number;
+}
+
+// "Needs attention" is the same worst-status classification StatusPill
+// already uses (failed/unhealthy/error) -- a filter chip, not a new
+// status vocabulary.
+const ATTENTION_STATUSES = new Set(["failed", "unhealthy", "error"]);
+
+type ProjectView = "grid" | "list";
+const VIEW_STORAGE_KEY = "mangrove-projects-view";
+
+function readStoredView(): ProjectView {
+  if (typeof window === "undefined") return "grid";
+  return window.localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "grid";
 }
 
 export function ProjectsPage() {
@@ -28,8 +41,20 @@ export function ProjectsPage() {
   const [deploymentsByProject, setDeploymentsByProject] = useState<Record<number, Deployment[]>>({});
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "attention">("all");
+  const [view, setView] = useState<ProjectView>(readStoredView);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+
+  const setPersistedView = (next: ProjectView) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // localStorage unavailable (private browsing etc.) -- view still
+      // works for this session, just doesn't persist across reloads.
+    }
+  };
 
   const load = () => {
     const q = activeWorkspaceId ? `?workspace_id=${activeWorkspaceId}` : "";
@@ -86,9 +111,173 @@ export function ProjectsPage() {
 
   const activeWorkspaceName = workspaces.find((w) => w.workspace.id === activeWorkspaceId)?.workspace.name ?? null;
   const q = search.trim().toLowerCase();
-  const filteredProjects = (projects ?? []).filter(
-    (p) => !q || p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q),
-  );
+  const filteredProjects = (projects ?? []).filter((p) => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.slug.toLowerCase().includes(q)) return false;
+    const worst = status[p.id]?.worst ?? null;
+    if (statusFilter === "running") return worst === "running";
+    if (statusFilter === "attention") return worst != null && ATTENTION_STATUSES.has(worst);
+    return true;
+  });
+  const attentionCount = (projects ?? []).filter((p) => {
+    const worst = status[p.id]?.worst;
+    return worst != null && ATTENTION_STATUSES.has(worst);
+  }).length;
+
+  // Shared between the grid-card and list-row renderings: expanding reveals
+  // a project's own deployments as a recessed inset (not a second bordered
+  // card -- see DESIGN.md's "no card-in-a-card" rule), each still a real
+  // link to its own detail page.
+  const renderChildren = (p: Project, isExpanded: boolean) => {
+    const children = deploymentsByProject[p.id] ?? [];
+    if (!isExpanded || children.length === 0) return null;
+    return (
+      <div className="project-card-children" onClick={(e) => e.stopPropagation()}>
+        {children.map((d) => (
+          <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-deployment">
+            <PlantGlyph status={d.status} size={14} />
+            <span className="project-child-name">{d.name}</span>
+            <span className="mono text-dim project-child-type">{d.build_strategy}</span>
+            <StatusPill status={d.status} />
+            <span className="text-dim project-child-meta">
+              {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
+            </span>
+          </Link>
+        ))}
+      </div>
+    );
+  };
+
+  const renderGridCard = (p: Project) => {
+    const s = status[p.id];
+    const isExpanded = expanded.has(p.id);
+    return (
+      <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+        <div className="project-card-top">
+          <PlantGlyph status={s?.worst} size={20} />
+          <div className="project-card-heading">
+            <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+              {p.name}
+            </Link>
+            <span className="mono text-dim project-card-slug">{p.slug}</span>
+          </div>
+          {s == null ? (
+            <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
+          ) : s.worst != null ? (
+            <StatusPill status={s.worst} />
+          ) : null}
+          {s != null && s.count > 0 && (
+            <button
+              type="button"
+              className="project-card-chevron-btn"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleExpanded(p.id);
+              }}
+            >
+              <ChevronDownIcon className="project-card-chevron" />
+            </button>
+          )}
+        </div>
+
+        {p.description && <p className="project-card-description">{p.description}</p>}
+
+        <div className="project-card-footer">
+          <span className="project-card-rollup">
+            {s == null
+              ? "loading..."
+              : s.count === 0
+                ? "no deployments yet"
+                : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
+          </span>
+          <div className="project-card-footer-meta">
+            {p.workspace_name ? (
+              <a
+                href="/"
+                className="project-card-workspace"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setActiveWorkspaceId(p.workspace_id);
+                }}
+              >
+                {p.workspace_name}
+              </a>
+            ) : (
+              <span />
+            )}
+            <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
+          </div>
+        </div>
+
+        {renderChildren(p, isExpanded)}
+      </div>
+    );
+  };
+
+  const renderListRow = (p: Project) => {
+    const s = status[p.id];
+    const isExpanded = expanded.has(p.id);
+    return (
+      <div key={p.id} className="card card-clickable project-list-row" onClick={() => navigate(`/projects/${p.id}`)}>
+        <div className="project-list-row-main">
+          {s != null && s.count > 0 ? (
+            <button
+              type="button"
+              className="project-card-chevron-btn"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleExpanded(p.id);
+              }}
+            >
+              <ChevronDownIcon className="project-card-chevron" />
+            </button>
+          ) : (
+            <span className="project-list-row-chevron-spacer" />
+          )}
+          <PlantGlyph status={s?.worst} size={20} />
+          <div className="project-list-row-heading">
+            <span className="flex gap-8" style={{ alignItems: "baseline" }}>
+              <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+                {p.name}
+              </Link>
+              <span className="mono text-dim project-card-slug">{p.slug}</span>
+            </span>
+            <span className="text-dim project-list-row-rollup">
+              {s == null
+                ? "loading..."
+                : s.count === 0
+                  ? "no deployments yet"
+                  : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
+            </span>
+          </div>
+          <div className="project-list-row-end">
+            {p.workspace_name && (
+              <a
+                href="/"
+                className="project-card-workspace"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setActiveWorkspaceId(p.workspace_id);
+                }}
+              >
+                {p.workspace_name}
+              </a>
+            )}
+            <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
+            {s?.worst != null && <StatusPill status={s.worst} />}
+          </div>
+        </div>
+        {renderChildren(p, isExpanded)}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -116,15 +305,57 @@ export function ProjectsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {projects !== null && projects.length > 0 && (
-        <div className="search-field">
-          <SearchIcon />
-          <input
-            className="input"
-            placeholder="Search projects..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search projects"
-          />
+        <div className="projects-toolbar">
+          <div className="search-field">
+            <SearchIcon />
+            <input
+              className="input"
+              placeholder="Search projects..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search projects"
+            />
+          </div>
+          <div className="filter-chips" role="group" aria-label="Filter by status">
+            <button type="button" className={`filter-chip ${statusFilter === "all" ? "active" : ""}`} onClick={() => setStatusFilter("all")}>
+              All
+            </button>
+            <button
+              type="button"
+              className={`filter-chip ${statusFilter === "running" ? "active" : ""}`}
+              onClick={() => setStatusFilter("running")}
+            >
+              Running
+            </button>
+            <button
+              type="button"
+              className={`filter-chip ${statusFilter === "attention" ? "active" : ""}`}
+              onClick={() => setStatusFilter("attention")}
+            >
+              Needs attention
+              {attentionCount > 0 && <span className="tab-count">{attentionCount}</span>}
+            </button>
+          </div>
+          <div className="view-toggle" role="group" aria-label="Layout">
+            <button
+              type="button"
+              className={`view-toggle-btn ${view === "grid" ? "active" : ""}`}
+              aria-pressed={view === "grid"}
+              aria-label="Grid view"
+              onClick={() => setPersistedView("grid")}
+            >
+              <GridIcon />
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn ${view === "list" ? "active" : ""}`}
+              aria-pressed={view === "list"}
+              aria-label="List view"
+              onClick={() => setPersistedView("list")}
+            >
+              <ListViewIcon />
+            </button>
+          </div>
         </div>
       )}
 
@@ -141,99 +372,18 @@ export function ProjectsPage() {
           ) : filteredProjects.length === 0 ? (
             <div className="card empty-state">
               <EmptyLedgerIcon />
-              <p>No projects match &ldquo;{search}&rdquo;.</p>
+              <p>
+                {q && statusFilter !== "all"
+                  ? <>No {statusFilter === "running" ? "running" : "attention-needing"} projects match &ldquo;{search}&rdquo;.</>
+                  : q
+                    ? <>No projects match &ldquo;{search}&rdquo;.</>
+                    : <>No {statusFilter === "running" ? "running" : "attention-needing"} projects right now.</>}
+              </p>
             </div>
+          ) : view === "grid" ? (
+            <div className="project-grid">{filteredProjects.map(renderGridCard)}</div>
           ) : (
-            <div className="project-grid">
-              {filteredProjects.map((p) => {
-                const s = status[p.id];
-                const isExpanded = expanded.has(p.id);
-                const children = deploymentsByProject[p.id] ?? [];
-                return (
-                  <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
-                    <div className="project-card-top">
-                      <PlantGlyph status={s?.worst} size={20} />
-                      <div className="project-card-heading">
-                        <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
-                          {p.name}
-                        </Link>
-                        <span className="mono text-faint project-card-slug">{p.slug}</span>
-                      </div>
-                      {s == null ? (
-                        <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
-                      ) : s.worst != null ? (
-                        <StatusPill status={s.worst} />
-                      ) : null}
-                      {s != null && s.count > 0 && (
-                        <button
-                          type="button"
-                          className="project-card-chevron-btn"
-                          aria-expanded={isExpanded}
-                          aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            toggleExpanded(p.id);
-                          }}
-                        >
-                          <ChevronDownIcon className="project-card-chevron" />
-                        </button>
-                      )}
-                    </div>
-
-                    {p.description && <p className="project-card-description">{p.description}</p>}
-
-                    <div className="project-card-footer">
-                      <span className="project-card-rollup">
-                        {s == null
-                          ? "loading..."
-                          : s.count === 0
-                            ? "no deployments yet"
-                            : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
-                      </span>
-                      <div className="project-card-footer-meta">
-                        {p.workspace_name ? (
-                          <a
-                            href="/"
-                            className="project-card-workspace"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setActiveWorkspaceId(p.workspace_id);
-                            }}
-                          >
-                            {p.workspace_name}
-                          </a>
-                        ) : (
-                          <span />
-                        )}
-                        <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
-                      </div>
-                    </div>
-
-                    {/* Expanding reveals this project's own deployments right
-                        here, as a recessed inset (not a second bordered card
-                        -- see DESIGN.md's "no card-in-a-card" rule), each
-                        still a real link to its own detail page. */}
-                    {isExpanded && children.length > 0 && (
-                      <div className="project-card-children" onClick={(e) => e.stopPropagation()}>
-                        {children.map((d) => (
-                          <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-deployment">
-                            <PlantGlyph status={d.status} size={14} />
-                            <span className="project-child-name">{d.name}</span>
-                            <span className="mono text-faint project-child-type">{d.build_strategy}</span>
-                            <StatusPill status={d.status} />
-                            <span className="text-faint project-child-meta">
-                              {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
-                            </span>
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <div className="project-list">{filteredProjects.map(renderListRow)}</div>
           )}
         </div>
 
@@ -297,7 +447,7 @@ function RecentActivityPanel({
               <PlantGlyph status={d.status} size={14} />
               <span className="activity-item-body">
                 <span className="activity-item-name">{d.name}</span>
-                <span className="text-faint activity-item-meta">
+                <span className="text-dim activity-item-meta">
                   {projectNameById.get(d.projectId) ?? "..."} &middot; {fmtWhen(d.last_deployed_at)}
                 </span>
               </span>

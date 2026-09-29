@@ -60,7 +60,7 @@ export function TemplateGalleryModal({
                 </div>
               </div>
               <p className="text-dim template-card-description">{t.description}</p>
-              <div className="text-faint" style={{ fontSize: 12 }}>
+              <div className="text-dim" style={{ fontSize: 12 }}>
                 {t.category} &middot; ~{t.total_memory_mb}MB
                 {t.deployments.length > 1 ? ` across ${t.deployments.length} deployments` : ""}
               </div>

@@ -44,7 +44,14 @@ export function worstStatus(statuses: string[]): string | null {
 // .beacon-live in styles.css. Exported so Simple mode's own hand-rolled
 // pill markup (plain-language status text instead of the raw enum) can
 // apply the same beacon.
-export const IN_PROGRESS_STATUSES = new Set(["building", "healthchecking", "queued", "pending"]);
+//
+// "pending" is deliberately excluded: for a Deployment record it means
+// "created, never deployed yet" -- nothing is actually happening in the
+// background, so pulsing it as if it were mid-operation was dishonest
+// (Product Principle 1: every state must reflect real backend state, never
+// decorative UI). It renders identically to "stopped" instead -- both are
+// genuinely "no container running," just for different reasons.
+export const IN_PROGRESS_STATUSES = new Set(["building", "healthchecking", "queued"]);
 
 export function StatusPill({ status }: { status: string }) {
   const color = STATUS_COLORS[status] ?? "gray";

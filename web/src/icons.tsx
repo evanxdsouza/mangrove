@@ -196,6 +196,29 @@ export function UserIcon(props: IconProps) {
   );
 }
 
+/** Four-tile grid -- the card-grid view toggle. */
+export function GridIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.3" />
+      <rect x="13" y="3.5" width="7.5" height="7.5" rx="1.3" />
+      <rect x="3.5" y="13" width="7.5" height="7.5" rx="1.3" />
+      <rect x="13" y="13" width="7.5" height="7.5" rx="1.3" />
+    </svg>
+  );
+}
+
+/** Three stacked rows -- the row/list view toggle. */
+export function ListViewIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3.5" y="4.5" width="17" height="4.2" rx="1.2" />
+      <rect x="3.5" y="10.9" width="17" height="4.2" rx="1.2" />
+      <rect x="3.5" y="17.3" width="17" height="4.2" rx="1.2" />
+    </svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

@@ -197,7 +197,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                   )}
                   <span>{d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}</span>
                 </div>
-                <div className="deployment-card-footer text-faint">
+                <div className="deployment-card-footer text-dim">
                   Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}
                 </div>
               </Link>

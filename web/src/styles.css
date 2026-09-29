@@ -544,6 +544,60 @@ button, input, select, textarea {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
+/* Projects specifically get a wider minimum than deployments/templates --
+   at a realistic project count (2-6), 260px cards left a populated grid
+   photographing nearly as empty as a zero-project state (critique finding). */
+.project-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+/* Resource-list toolbar: search, status filter chips, and the grid/list
+   view toggle share one row above the grid, wrapping on narrow screens
+   rather than forcing three controls onto one cramped line. */
+.projects-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.projects-toolbar .search-field { margin-bottom: 0; }
+
+.filter-chips { display: flex; gap: 6px; }
+.filter-chip {
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-standard), background-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+.filter-chip:hover { border-color: var(--border-hover); color: var(--text); }
+.filter-chip.active { background: var(--leaf-wash); border-color: transparent; color: var(--leaf-bright); }
+.filter-chip .tab-count { margin-left: 5px; }
+
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-md);
+  margin-left: auto;
+}
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.view-toggle-btn svg { width: 15px; height: 15px; }
+.view-toggle-btn:hover { color: var(--text-dim); }
+.view-toggle-btn.active { background: var(--leaf-wash); color: var(--leaf-bright); }
 
 .project-card, .deployment-card {
   margin-bottom: 0;
@@ -601,8 +655,20 @@ button, input, select, textarea {
   white-space: nowrap;
 }
 .project-card-footer-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.project-card-workspace { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-card-workspace:hover { color: var(--brass-bright); }
+/* A small bordered pill, not plain text -- it's a scope-switching action
+   (changes the active workspace) sitting right next to a passive timestamp,
+   and needs to visually announce "control," not "metadata" (critique
+   finding: it previously invited accidental scope changes). */
+.project-card-workspace {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  font-size: 11px;
+}
+.project-card-workspace:hover { color: var(--brass-bright); border-color: var(--border-hover); }
 .project-card-created { font-family: var(--mono); font-size: 11.5px; flex-shrink: 0; }
 
 /* Expand/collapse chevron on a project card with deployments -- reuses the
@@ -615,7 +681,7 @@ button, input, select, textarea {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  color: var(--text-faint);
+  color: var(--text-dim);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -648,6 +714,28 @@ button, input, select, textarea {
 .project-child-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-child-type { flex-shrink: 0; }
 .project-child-meta { flex-shrink: 0; font-size: 11.5px; }
+/* At phone width the fixed-width type/pill/timestamp siblings crushed the
+   one column that actually identifies the row down to 3-4 characters
+   (critique finding) -- let the name take its own full-width line instead. */
+@media (max-width: 480px) {
+  .project-child-deployment { flex-wrap: wrap; row-gap: 4px; }
+  .project-child-name { flex-basis: 100%; white-space: normal; }
+}
+
+/* The Projects list's alternate row layout (view toggle) -- a full-width
+   row per project instead of a grid card, closer to a single-project-at-a-
+   time reading order when there's more horizontal room to use. */
+.project-list { display: flex; flex-direction: column; gap: 8px; }
+.project-list-row { margin-bottom: 0; }
+.project-list-row-main { display: flex; align-items: center; gap: 12px; }
+.project-list-row-chevron-spacer { width: 25px; flex-shrink: 0; }
+.project-list-row-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.project-list-row-rollup { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-list-row-end { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  .project-list-row-main { flex-wrap: wrap; }
+  .project-list-row-end { margin-left: 37px; }
+}
 
 /* Resource-list page: main grid + a persistent, always-something-to-look-at
    activity rail (built from data the page already fetched, not a new
@@ -1232,19 +1320,32 @@ tr.row-link:hover { background: var(--bg-elevated); }
    Tabs
    ========================================================================== */
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 22px; }
+/* A segmented control set into a recessed track (bg-inset), the active
+   segment a leaf-wash pill -- the same active-tab color the old underline
+   treatment used, just filled instead of ruled, matching the "resource
+   detail page" pattern's tab-bar shape more directly. */
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-md);
+  margin-bottom: 22px;
+  max-width: 100%;
+  overflow-x: auto;
+}
 .tab {
-  padding: 9px 14px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
   color: var(--text-dim);
   font-weight: 500;
   font-size: 13.5px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s var(--ease-standard), border-color 0.15s var(--ease-standard);
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
 }
 .tab:hover { color: var(--text); }
-.tab.active { color: var(--leaf-bright); border-bottom-color: var(--leaf); }
+.tab.active { background: var(--leaf-wash); color: var(--leaf-bright); }
 
 /* A tab's own count badge -- a count is structural/static content, so it
    stays neutral even on the active tab, never tinted to match the active
@@ -1255,7 +1356,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
   padding: 1px 6px;
   border-radius: var(--radius-full);
   background: var(--bg-elevated);
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: 11px;
   font-family: var(--mono);
   vertical-align: 1px;

@@ -645,7 +645,7 @@ function WebhookHealth({ projectId, repo }: { projectId: number; repo: ProjectRe
 
       {events && events.length > 0 && (
         <div className="kv-list">
-          <div className="text-faint" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="text-dim" style={{ fontSize: 12, marginBottom: 4 }}>
             Recent deliveries
           </div>
           {events.slice(0, 8).map((e) => (
@@ -778,7 +778,7 @@ function StagingCard({ projectId, productionDeployment }: { projectId: number; p
           {staging.map((s) => (
             <div className="kv-row row-link" key={s.id} onClick={() => (window.location.href = `/projects/${projectId}/deployments/${s.id}`)} style={{ cursor: "pointer" }}>
               <span className="kv-key">
-                {s.name} <span className="text-faint mono">({s.git_branch})</span>
+                {s.name} <span className="text-dim mono">({s.git_branch})</span>
               </span>
               <span className="kv-value">
                 <StatusPill status={s.status} />
@@ -872,7 +872,7 @@ function PreviewsCard({ projectId, productionDeployment }: { projectId: number; 
               style={{ cursor: "pointer" }}
             >
               <span className="kv-key">
-                PR #{p.pr_number} <span className="text-faint mono">({p.git_branch})</span>
+                PR #{p.pr_number} <span className="text-dim mono">({p.git_branch})</span>
               </span>
               <span className="kv-value">
                 <StatusPill status={p.status} />
