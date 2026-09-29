@@ -7,8 +7,10 @@ import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
 import { PlantGlyph } from "../components/PlantGlyph";
 import { ArrowRightIcon, ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
+import { imageIconKey, TemplateIcon } from "../templateIcons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
+import { CreateDeploymentModal } from "./ProjectDetailPage";
 
 interface ProjectStatus {
   worst: string | null;
@@ -45,6 +47,10 @@ export function ProjectsPage() {
   const [view, setView] = useState<ProjectView>(readStoredView);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // Quick-add a deployment straight from the list, without navigating into
+  // the project first -- matches the reference dashboard's inline "+New"
+  // on a project row.
+  const [quickAddProjectId, setQuickAddProjectId] = useState<number | null>(null);
 
   const setPersistedView = (next: ProjectView) => {
     setView(next);
@@ -132,17 +138,31 @@ export function ProjectsPage() {
     if (!isExpanded || children.length === 0) return null;
     return (
       <div className="project-card-children" onClick={(e) => e.stopPropagation()}>
-        {children.map((d) => (
-          <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-deployment">
-            <PlantGlyph status={d.status} size={14} />
-            <span className="project-child-name">{d.name}</span>
-            <span className="mono text-dim project-child-type">{d.build_strategy}</span>
-            <StatusPill status={d.status} />
-            <span className="text-dim project-child-meta">
-              {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
-            </span>
-          </Link>
-        ))}
+        {children.map((d) => {
+          const iconKey = d.build_strategy === "image" ? imageIconKey(d.image_ref) : null;
+          return (
+            <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-tile">
+              <div className="project-child-tile-top">
+                <PlantGlyph status={d.status} size={16} />
+                {/* A recognizable tech icon sits beside PlantGlyph, not
+                    stacked on it -- the plant glyph stays the one
+                    load-bearing status signal (DESIGN.md's Living-Resource
+                    Rule); this is identity, not status, and an overlaid
+                    corner badge at this size read as visual noise rather
+                    than a legible mark. */}
+                {iconKey && <TemplateIcon templateKey={iconKey} category="" className="project-child-tile-tech-icon" />}
+                <span className="project-child-tile-name">{d.name}</span>
+              </div>
+              <div className="project-child-tile-meta">
+                <StatusPill status={d.status} />
+                <span className="mono text-dim">{d.build_strategy}</span>
+              </div>
+              <div className="text-dim project-child-tile-time">
+                {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
+              </div>
+            </Link>
+          );
+        })}
       </div>
     );
   };
@@ -169,6 +189,19 @@ export function ProjectsPage() {
           ) : s.worst != null ? (
             <StatusPill status={s.worst} />
           ) : null}
+          <button
+            type="button"
+            className="project-card-quick-add"
+            aria-label={`New deployment in ${p.name}`}
+            title="New deployment"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setQuickAddProjectId(p.id);
+            }}
+          >
+            <PlusIcon />
+          </button>
           {s != null && s.count > 0 && (
             <button
               type="button"
@@ -280,6 +313,18 @@ export function ProjectsPage() {
             )}
             <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
             {s?.worst != null && <StatusPill status={s.worst} />}
+            <button
+              type="button"
+              className="project-card-quick-add"
+              aria-label={`New deployment in ${p.name}`}
+              title="New deployment"
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuickAddProjectId(p.id);
+              }}
+            >
+              <PlusIcon />
+            </button>
             <button
               type="button"
               className="project-list-row-open"
@@ -422,6 +467,16 @@ export function ProjectsPage() {
             setShowCreate(false);
             reloadWorkspaces();
             navigate(`/projects/${id}`);
+          }}
+        />
+      )}
+
+      {quickAddProjectId != null && (
+        <CreateDeploymentModal
+          projectId={quickAddProjectId}
+          onClose={() => setQuickAddProjectId(null)}
+          onCreated={(id) => {
+            window.location.href = `/projects/${quickAddProjectId}/deployments/${id}`;
           }}
         />
       )}

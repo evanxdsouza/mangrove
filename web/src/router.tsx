@@ -43,12 +43,14 @@ export function Link({
   children,
   className,
   style,
+  title,
   onClick,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  title?: string;
   /** Runs before navigation -- e.g. stopping propagation to a clickable
       parent card that navigates somewhere else on click. */
   onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
@@ -59,6 +61,7 @@ export function Link({
       href={to}
       className={className}
       style={style}
+      title={title}
       onClick={(e) => {
         onClick?.(e);
         e.preventDefault();

@@ -1,4 +1,5 @@
 import type { DeployHistory } from "../api";
+import { Link } from "../router";
 import { StatusPill } from "./StatusPill";
 import { CodeBlock } from "./CodeBlock";
 import { EmptyLedgerIcon } from "../icons";
@@ -17,10 +18,18 @@ export function DeployTimeline({
   history,
   onRollback,
   busyId,
+  projectId,
+  deploymentId,
 }: {
   history: DeployHistory[];
   onRollback: (id: number) => void;
   busyId: number | null;
+  // Each entry links to its own run page (RunDetailPage) -- the reference
+  // dashboard's "run page" pattern, one route per run rather than only a
+  // list. Optional so this component still works anywhere that context
+  // isn't available.
+  projectId?: number;
+  deploymentId?: number;
 }) {
   if (history.length === 0) {
     return (
@@ -33,13 +42,10 @@ export function DeployTimeline({
 
   return (
     <div className="timeline">
-      {history.map((h, i) => (
-        <div className="timeline-item" key={h.id}>
-          <div className="timeline-marker">
-            <span className="timeline-index">{history.length - i}</span>
-            <div className="dot" style={{ background: DOT_COLOR[h.status] ?? "var(--text-faint)" }} />
-          </div>
-          <div className="timeline-body">
+      {history.map((h, i) => {
+        const runNumber = history.length - i;
+        const body = (
+          <>
             <div className="timeline-meta">
               <StatusPill status={h.status} />
               {h.is_current && <span className="pill pill-gray">current</span>}
@@ -60,14 +66,29 @@ export function DeployTimeline({
                 <CodeBlock tone="danger">{h.error_message}</CodeBlock>
               </div>
             )}
+          </>
+        );
+        return (
+          <div className="timeline-item" key={h.id}>
+            <div className="timeline-marker">
+              <span className="timeline-index">{runNumber}</span>
+              <div className="dot" style={{ background: DOT_COLOR[h.status] ?? "var(--text-faint)" }} />
+            </div>
+            {projectId != null && deploymentId != null ? (
+              <Link to={`/projects/${projectId}/deployments/${deploymentId}/history/${h.id}`} className="timeline-body timeline-item-link">
+                {body}
+              </Link>
+            ) : (
+              <div className="timeline-body">{body}</div>
+            )}
+            {h.status === "success" && !h.is_current && (
+              <button className="btn btn-sm" disabled={busyId !== null} onClick={() => onRollback(h.id)}>
+                {busyId === h.id ? "Rolling back..." : "Revert to this"}
+              </button>
+            )}
           </div>
-          {h.status === "success" && !h.is_current && (
-            <button className="btn btn-sm" disabled={busyId !== null} onClick={() => onRollback(h.id)}>
-              {busyId === h.id ? "Rolling back..." : "Revert to this"}
-            </button>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

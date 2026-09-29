@@ -258,6 +258,26 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+/** Checkmark in a ring -- a run/step's successful result. */
+export function CheckCircleIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.3 12.3 2.6 2.6 5-5.2" />
+    </svg>
+  );
+}
+
+/** X in a ring -- a run/step's failed result. */
+export function XCircleIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6" />
+    </svg>
+  );
+}
+
 export function AlertIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

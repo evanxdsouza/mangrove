@@ -179,30 +179,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
             </div>
           </div>
         ) : (
-          <div className="deployment-grid">
-            {deployments.map((d) => (
-              <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
-                <div className="deployment-card-top">
-                  <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
-                  <span className="deployment-card-name">{d.name}</span>
-                  <StatusPill status={d.status} />
-                </div>
-                <div className="deployment-card-meta">
-                  <span className="mono">{d.build_strategy}</span>
-                  {d.environment !== "production" && (
-                    <span className="pill pill-yellow">
-                      {d.environment}
-                      {d.pr_number ? ` #${d.pr_number}` : ""}
-                    </span>
-                  )}
-                  <span>{d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}</span>
-                </div>
-                <div className="deployment-card-footer text-dim">
-                  Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}
-                </div>
-              </Link>
-            ))}
-          </div>
+          <DeploymentSections deployments={deployments} projectId={projectId} burstKeys={burstKeys} />
         ))}
 
       {tab === "github" && (
@@ -332,6 +309,73 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   );
 }
 
+const ENV_ORDER: Record<string, number> = { production: 0, staging: 1, preview: 2 };
+const ENV_LABEL: Record<string, string> = { production: "Production", staging: "Staging", preview: "Previews" };
+
+// Grouped sections under labeled headers -- the reference dashboard's own
+// "project/group page" pattern (Apps / Databases / Template instances).
+// Mangrove doesn't track which template (if any) produced a deployment, so
+// grouping by *kind* would be a guess; grouping by *environment* is real,
+// already-tracked data (production/staging/preview) and only kicks in once
+// there's actually more than one to separate, so the common single-
+// environment project still renders as one flat grid.
+function DeploymentSections({
+  deployments,
+  projectId,
+  burstKeys,
+}: {
+  deployments: Deployment[];
+  projectId: number;
+  burstKeys: Map<number, number>;
+}) {
+  const environments = Array.from(new Set(deployments.map((d) => d.environment))).sort(
+    (a, b) => (ENV_ORDER[a] ?? 9) - (ENV_ORDER[b] ?? 9),
+  );
+
+  const grid = (list: Deployment[]) => (
+    <div className="deployment-grid">
+      {list.map((d) => (
+        <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
+          <div className="deployment-card-top">
+            <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
+            <span className="deployment-card-name">{d.name}</span>
+            <StatusPill status={d.status} />
+          </div>
+          <div className="deployment-card-meta">
+            <span className="mono">{d.build_strategy}</span>
+            {d.environment !== "production" && (
+              <span className="pill pill-yellow">
+                {d.environment}
+                {d.pr_number ? ` #${d.pr_number}` : ""}
+              </span>
+            )}
+            <span>{d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}</span>
+          </div>
+          <div className="deployment-card-footer text-dim">Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}</div>
+        </Link>
+      ))}
+    </div>
+  );
+
+  if (environments.length <= 1) {
+    return grid(deployments);
+  }
+
+  return (
+    <>
+      {environments.map((env) => (
+        <div key={env} className="deployment-section">
+          <div className="card-title">
+            {ENV_LABEL[env] ?? env}
+            <span className="tab-count">{deployments.filter((d) => d.environment === env).length}</span>
+          </div>
+          {grid(deployments.filter((d) => d.environment === env))}
+        </div>
+      ))}
+    </>
+  );
+}
+
 interface GithubPATOption {
   id: number;
   label: string;
@@ -448,7 +492,7 @@ function errMsg(e: unknown): string {
 
 type Strategy = "dockerfile" | "nixpacks" | "compose" | "image" | "static";
 
-function CreateDeploymentModal({
+export function CreateDeploymentModal({
   projectId,
   onClose,
   onCreated,

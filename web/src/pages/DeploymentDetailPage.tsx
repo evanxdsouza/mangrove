@@ -297,7 +297,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       )}
       {tab === "history" && (
         <div className="card">
-          <DeployTimeline history={history} onRollback={rollback} busyId={rollbackBusyId} />
+          <DeployTimeline history={history} onRollback={rollback} busyId={rollbackBusyId} projectId={projectId} deploymentId={deploymentId} />
         </div>
       )}
 
@@ -1048,6 +1048,14 @@ function ServiceStatRow({ service, isStatic }: { service: Service; isStatic: boo
           </div>
           <div className="instrument-cell">
             <div className="stat-tile">
+              <div className="stat-value mono" style={{ fontSize: 13 }} title="Reachable from any other deployment on this box, over the private Docker network every managed container joins">
+                {service.container_name}:{service.internal_port || "?"}
+              </div>
+              <div className="stat-label">Internal address</div>
+            </div>
+          </div>
+          <div className="instrument-cell">
+            <div className="stat-tile">
               <div className="stat-value" style={{ fontSize: 15 }}>
                 {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
               </div>
@@ -1118,6 +1126,12 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
             <div className="kv-row">
               <span className="kv-key">Internal port</span>
               <span className="kv-value">{service.internal_port || "—"}</span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">Internal address</span>
+              <span className="kv-value mono">
+                {service.container_name}:{service.internal_port || "?"}
+              </span>
             </div>
             <div className="kv-row">
               <span className="kv-key">Resources</span>

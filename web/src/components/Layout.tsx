@@ -17,10 +17,22 @@ import {
   UserIcon,
 } from "../icons";
 
+const SIDEBAR_COLLAPSE_KEY = "mangrove-sidebar-collapsed";
+
+function readStoredCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogout: () => void; children: ReactNode }) {
   const { path } = useRouter();
   const { mode, setMode } = useUiMode();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsedState] = useState(readStoredCollapsed);
   // Explicit membership, not "everything else" -- the old inverse check
   // (any path that isn't one of the other known pages) meant an unmatched
   // path, e.g. a 404, still lit up "Projects" as the active nav item.
@@ -29,19 +41,28 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
   const isOwner = user.role === "owner";
   const critical = useHostCritical(isOwner);
 
+  const setCollapsed = (next: boolean) => {
+    setCollapsedState(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, next ? "1" : "0");
+    } catch {
+      // localStorage unavailable -- still works for this session
+    }
+  };
+
   // A navigation closes the mobile drawer it was reached through, same as
   // any mobile off-canvas menu.
   useEffect(() => setMobileOpen(false), [path]);
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+      <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""} ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-topbar">
           <div className="sidebar-brand">
             <span style={{ display: "inline-flex" }} title={critical ? "Host resources critical -- see Admin" : undefined}>
               <MangroveIcon className={`sidebar-brand-mark ${critical ? "sidebar-brand-mark-critical" : ""}`} />
             </span>
-            Mangrove
+            <span className="sidebar-brand-label">Mangrove</span>
           </div>
           <button
             type="button"
@@ -55,13 +76,13 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         </div>
 
         <div className="sidebar-body">
-          {!simple && <StationSwitcher />}
-          {!simple && <SidebarSearch />}
+          {!simple && <StationSwitcher collapsed={collapsed} />}
+          {!simple && <SidebarSearch collapsed={collapsed} onRequestExpand={() => setCollapsed(false)} />}
 
           {!simple && <div className="nav-section-label">Workspace</div>}
-          <Link to="/" className={`nav-link ${onProjects ? "active" : ""}`}>
+          <Link to="/" className={`nav-link ${onProjects ? "active" : ""}`} title={collapsed ? (simple ? "Your apps" : "Projects") : undefined}>
             <LedgerIcon />
-            {simple ? "Your apps" : "Projects"}
+            <span className="nav-link-label">{simple ? "Your apps" : "Projects"}</span>
           </Link>
 
           {/* Admin (users, ports, tokens, pruning, server health) stays
@@ -70,13 +91,17 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
           {!simple && (
             <>
               <div className="nav-section-label">Host</div>
-              <Link to="/admin" className={`nav-link ${path === "/admin" ? "active" : ""}`}>
+              <Link to="/admin" className={`nav-link ${path === "/admin" ? "active" : ""}`} title={collapsed ? "Admin" : undefined}>
                 <DialsIcon />
-                Admin
+                <span className="nav-link-label">Admin</span>
               </Link>
-              <Link to="/server-health" className={`nav-link ${path === "/server-health" ? "active" : ""}`}>
+              <Link
+                to="/server-health"
+                className={`nav-link ${path === "/server-health" ? "active" : ""}`}
+                title={collapsed ? "Server health" : undefined}
+              >
                 <GaugeIcon />
-                Server health
+                <span className="nav-link-label">Server health</span>
               </Link>
               {/* Storage/NAS sharing mounts host drives and creates SMB
                   shares with plaintext credentials -- system-level,
@@ -86,9 +111,9 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
                   Admin is hidden in simple mode, just gated on role
                   instead of mode. */}
               {isOwner && (
-                <Link to="/storage" className={`nav-link ${path === "/storage" ? "active" : ""}`}>
+                <Link to="/storage" className={`nav-link ${path === "/storage" ? "active" : ""}`} title={collapsed ? "Storage" : undefined}>
                   <CabinetIcon />
-                  Storage
+                  <span className="nav-link-label">Storage</span>
                 </Link>
               )}
             </>
@@ -113,17 +138,34 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
                 Simple
               </button>
             </div>
-            <div className="sidebar-user">
+            <div className="sidebar-user" title={collapsed ? (user.email ?? `user #${user.id}`) : undefined}>
               <UserIcon />
               <span>{user.email ?? `user #${user.id}`}</span>
             </div>
-            <Link to="/settings" className={`nav-link ${path === "/settings" ? "active" : ""}`} style={{ marginBottom: 8 }}>
+            <Link
+              to="/settings"
+              className={`nav-link ${path === "/settings" ? "active" : ""}`}
+              style={{ marginBottom: 8 }}
+              title={collapsed ? "Settings" : undefined}
+            >
               <GearIcon />
-              Settings
+              <span className="nav-link-label">Settings</span>
             </Link>
-            <button className="btn btn-sm" onClick={onLogout} style={{ width: "100%" }}>
-              Log out
+            <button className="btn btn-sm" onClick={onLogout} style={{ width: "100%" }} title={collapsed ? "Log out" : undefined}>
+              {collapsed ? <UserIcon style={{ width: 14, height: 14 }} /> : "Log out"}
             </button>
+            {!simple && (
+              <button
+                type="button"
+                className="sidebar-collapse-toggle"
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                onClick={() => setCollapsed(!collapsed)}
+              >
+                <ChevronDownIcon />
+                <span className="sidebar-collapse-toggle-label">Collapse</span>
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -178,12 +220,17 @@ function useHostCritical(isOwner: boolean): boolean {
 // command-palette-style search. Client-side only: one /api/projects call
 // (every workspace, not scoped to the active station) cached for the
 // component's lifetime, no new endpoint.
-function SidebarSearch() {
+function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onRequestExpand: () => void }) {
   const { navigate } = useRouter();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  // When Ctrl/Cmd+K fires while the sidebar is collapsed (icon-only), the
+  // input isn't focusable until the sidebar re-expands -- this flag defers
+  // the actual focus() call to the effect below, which fires once the
+  // expand has actually re-rendered the real input into the DOM.
+  const [focusPending, setFocusPending] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -195,16 +242,29 @@ function SidebarSearch() {
   }, []);
 
   useEffect(() => {
+    if (!collapsed && focusPending) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      setFocusPending(false);
+    }
+  }, [collapsed, focusPending]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        if (collapsed) {
+          onRequestExpand();
+          setFocusPending(true);
+        } else {
+          inputRef.current?.focus();
+          inputRef.current?.select();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [collapsed, onRequestExpand]);
 
   useEffect(() => {
     if (!open) return;
@@ -226,6 +286,22 @@ function SidebarSearch() {
     inputRef.current?.blur();
     navigate(`/projects/${p.id}`);
   };
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="nav-link sidebar-search-collapsed-btn"
+        title="Search (Ctrl/Cmd+K)"
+        onClick={() => {
+          onRequestExpand();
+          setFocusPending(true);
+        }}
+      >
+        <SearchIcon />
+      </button>
+    );
+  }
 
   return (
     <div className="sidebar-search" ref={rootRef}>
@@ -288,7 +364,7 @@ function SidebarSearch() {
 // the active workspace is ambient context pinned at the top of the
 // sidebar, always visible, changeable in one click from anywhere in the
 // technical dashboard -- see workspaceContext.tsx.
-function StationSwitcher() {
+function StationSwitcher({ collapsed }: { collapsed: boolean }) {
   const { navigate, path } = useRouter();
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId } = useWorkspaces();
   const [open, setOpen] = useState(false);
@@ -331,6 +407,7 @@ function StationSwitcher() {
         className="station-switcher-button"
         aria-expanded={open}
         aria-haspopup="listbox"
+        title={collapsed ? label : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         <MangroveIcon className="station-switcher-icon" />

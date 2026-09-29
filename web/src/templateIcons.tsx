@@ -194,3 +194,21 @@ export function TemplateIcon({ templateKey, category, ...props }: { templateKey:
   const Icon = TEMPLATE_ICONS[templateKey] ?? CATEGORY_ICON[category] ?? SheetGrid;
   return <Icon {...props} />;
 }
+
+// A hand-configured "image" deployment (not installed from a template) can
+// still carry a recognizable icon when its own image reference happens to
+// match one of Mangrove's own curated template keys (e.g. `image_ref:
+// "postgres:16"` matches the "postgres" key that already has an elephant
+// glyph) -- an honest, narrow heuristic, not a guess: it only ever returns
+// a key this file already has a *real*, deliberately-authored icon for,
+// never a fabricated/generic match. Returns null (render PlantGlyph alone)
+// for anything else, including well-known non-template images like nginx
+// that have no authored glyph here.
+export function imageIconKey(imageRef: string | undefined | null): string | null {
+  if (!imageRef) return null;
+  const withoutDigest = imageRef.split("@")[0];
+  const withoutTag = withoutDigest.split(":")[0];
+  const segments = withoutTag.split("/");
+  const base = segments[segments.length - 1].toLowerCase();
+  return TEMPLATE_ICONS[base] ? base : null;
+}

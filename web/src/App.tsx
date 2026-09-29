@@ -8,6 +8,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { DeploymentDetailPage } from "./pages/DeploymentDetailPage";
+import { RunDetailPage } from "./pages/RunDetailPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ServerHealthPage } from "./pages/ServerHealthPage";
@@ -64,8 +65,22 @@ function AppRoutes({ user, onLogout }: { user: CurrentUser; onLogout: () => void
   let body: ReactElement;
   let projectParams = matchPath("/projects/:projectId", path);
   let deploymentParams = matchPath("/projects/:projectId/deployments/:deploymentId", path);
+  let runParams = matchPath("/projects/:projectId/deployments/:deploymentId/history/:historyId", path);
 
-  if (deploymentParams) {
+  if (runParams) {
+    const projectId = Number(runParams.projectId);
+    const deploymentId = Number(runParams.deploymentId);
+    // Deploy history is a technical-mode concept -- simple mode's flattened
+    // app view has no history tab to link a run out of, so a stray link
+    // here just lands on the app's own page, same as /workspaces bouncing
+    // to the apps list.
+    body =
+      mode === "simple" ? (
+        <SimpleAppDetailPage deploymentId={deploymentId} />
+      ) : (
+        <RunDetailPage projectId={projectId} deploymentId={deploymentId} historyId={Number(runParams.historyId)} />
+      );
+  } else if (deploymentParams) {
     const projectId = Number(deploymentParams.projectId);
     const deploymentId = Number(deploymentParams.deploymentId);
     body =
