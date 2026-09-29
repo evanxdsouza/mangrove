@@ -2,7 +2,7 @@ import type { DeployHistory } from "../api";
 import { StatusPill } from "./StatusPill";
 import { CodeBlock } from "./CodeBlock";
 import { EmptyLedgerIcon } from "../icons";
-import { fmtWhen } from "../lib/format";
+import { fmtDuration, fmtWhen } from "../lib/format";
 
 const DOT_COLOR: Record<string, string> = {
   success: "var(--verdigris)",
@@ -52,6 +52,7 @@ export function DeployTimeline({
             </div>
             <div className="timeline-time">
               {fmtWhen(h.started_at)} &middot; triggered by {h.triggered_by}
+              {fmtDuration(h.started_at, h.finished_at) && <> &middot; {fmtDuration(h.started_at, h.finished_at)}</>}
             </div>
             {h.commit_message && <div className="timeline-msg">{h.commit_message}</div>}
             {h.error_message && (

@@ -8,11 +8,13 @@ import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
-import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
 import { PlantGlyph } from "../components/PlantGlyph";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_DEPLOYMENTS } from "../lib/copy";
 import { CenterLoading } from "../components/CenterLoading";
+
+type ProjectTab = "deployments" | "github" | "workspace";
 
 interface ProjectRepoInfo {
   id: number;
@@ -36,6 +38,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [showDelete, setShowDelete] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState<number>(1);
+  const [tab, setTab] = useState<ProjectTab>("deployments");
   // Tracks each deployment's previous status so a fresh transition into
   // "running" can trigger that card's plant-glyph growth burst -- real
   // feedback from a real state change, not decoration on a timer.
@@ -141,42 +144,41 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {deployments === null ? (
-        <CenterLoading />
-      ) : deployments.length === 0 ? (
-        <div className="card empty-state">
-          <EmptyLedgerIcon />
-          <p>{EMPTY_DEPLOYMENTS}</p>
-          <div className="field-hint">
-            A deployment is one running thing -- an app built from a repo, an image, or a template. Deploy from
-            GitHub, from a template, or configure one by hand above.
-          </div>
+      {/* A project's own sections as real tabs (Deployments / GitHub /
+          Workspace) rather than a stack of always-visible cards -- each
+          tab's own count badge (neutral, per DESIGN.md's color rules: a
+          count is structural, never colored) stands in for the plain stat
+          row a project with more resource kinds would show up here. */}
+      <div className="tabs">
+        <div className={`tab ${tab === "deployments" ? "active" : ""}`} onClick={() => setTab("deployments")}>
+          <LedgerIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+          Deployments
+          {deployments != null && <span className="tab-count">{deployments.length}</span>}
         </div>
-      ) : (
-        <>
-          <div className="instrument-row" style={{ marginBottom: 16 }}>
-            <div className="instrument-cell">
-              <div className="stat-tile">
-                <div className="stat-value">{deployments.length}</div>
-                <div className="stat-label">Deployment{deployments.length === 1 ? "" : "s"}</div>
-              </div>
+        <div className={`tab ${tab === "github" ? "active" : ""}`} onClick={() => setTab("github")}>
+          <BranchIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+          GitHub
+          {repo && <span className="tab-count">1</span>}
+        </div>
+        <div className={`tab ${tab === "workspace" ? "active" : ""}`} onClick={() => setTab("workspace")}>
+          <UserIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+          Workspace
+        </div>
+      </div>
+
+      {tab === "deployments" &&
+        (deployments === null ? (
+          <CenterLoading />
+        ) : deployments.length === 0 ? (
+          <div className="card empty-state">
+            <EmptyLedgerIcon />
+            <p>{EMPTY_DEPLOYMENTS}</p>
+            <div className="field-hint">
+              A deployment is one running thing -- an app built from a repo, an image, or a template. Deploy from
+              GitHub, from a template, or configure one by hand above.
             </div>
-            <div className="instrument-cell">
-              <div className="stat-tile">
-                <div className="stat-value">{deployments.filter((d) => d.status === "running").length}</div>
-                <div className="stat-label">Running</div>
-              </div>
-            </div>
-            {deployments.some((d) => d.environment !== "production") && (
-              <div className="instrument-cell">
-                <div className="stat-tile">
-                  <div className="stat-value">{deployments.filter((d) => d.environment !== "production").length}</div>
-                  <div className="stat-label">Staging / preview</div>
-                </div>
-              </div>
-            )}
           </div>
-          <div className="card-title">Deployments</div>
+        ) : (
           <div className="deployment-grid">
             {deployments.map((d) => (
               <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
@@ -201,73 +203,76 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               </Link>
             ))}
           </div>
-        </>
-      )}
+        ))}
 
-      <div className="card">
-        <div className="flex-between" style={{ marginBottom: repo ? 14 : 0 }}>
-          <div className="card-title" style={{ margin: 0 }}>
-            GitHub
+      {tab === "github" && (
+        <div className="card">
+          <div className="flex-between" style={{ marginBottom: repo ? 14 : 0 }}>
+            <div className="card-title" style={{ margin: 0 }}>
+              GitHub
+            </div>
+            {!repo && (
+              <button className="btn btn-sm" onClick={() => setShowLinkRepo(true)}>
+                <BranchIcon /> Connect a repo
+              </button>
+            )}
           </div>
           {!repo && (
-            <button className="btn btn-sm" onClick={() => setShowLinkRepo(true)}>
-              <BranchIcon /> Connect a repo
-            </button>
+            <p className="text-dim" style={{ marginTop: 0, marginBottom: 0 }}>
+              Link a GitHub repo to auto-deploy on every push, get staging environments per branch, and preview
+              deployments for open pull requests -- all configured per-deployment once this project has a repo.
+            </p>
+          )}
+          {repo && (
+            <div className="kv-list">
+              <div className="kv-row">
+                <span className="kv-key">Repo</span>
+                <span className="kv-value">
+                  {repo.repo_owner}/{repo.repo_name}
+                </span>
+              </div>
+              <div className="kv-row">
+                <span className="kv-key">Default branch</span>
+                <span className="kv-value">{repo.default_branch}</span>
+              </div>
+              <div className="kv-row">
+                <span className="kv-key">Webhook path</span>
+                <span className="kv-value">{repo.webhook_path}</span>
+              </div>
+              <div className="field-hint">
+                Set each deployment's auto-deploy branch from its own page. Paste the webhook URL and secret (shown once,
+                at link time) into this repo's GitHub settings &rarr; Webhooks.
+              </div>
+            </div>
           )}
         </div>
-        {!repo && (
-          <p className="text-dim" style={{ marginTop: 0, marginBottom: 0 }}>
-            Link a GitHub repo to auto-deploy on every push, get staging environments per branch, and preview
-            deployments for open pull requests -- all configured per-deployment once this project has a repo.
-          </p>
-        )}
-        {repo && (
-          <div className="kv-list">
-            <div className="kv-row">
-              <span className="kv-key">Repo</span>
-              <span className="kv-value">
-                {repo.repo_owner}/{repo.repo_name}
-              </span>
-            </div>
-            <div className="kv-row">
-              <span className="kv-key">Default branch</span>
-              <span className="kv-value">{repo.default_branch}</span>
-            </div>
-            <div className="kv-row">
-              <span className="kv-key">Webhook path</span>
-              <span className="kv-value">{repo.webhook_path}</span>
-            </div>
-            <div className="field-hint">
-              Set each deployment's auto-deploy branch from its own page. Paste the webhook URL and secret (shown once,
-              at link time) into this repo's GitHub settings &rarr; Webhooks.
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
-      <div className="card">
-        <div className="card-title">Workspace</div>
-        <div className="form-row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="project-workspace">Move to workspace</label>
-            <select
-              id="project-workspace"
-              className="input"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(Number(e.target.value))}
-            >
-              {workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+      {tab === "workspace" && (
+        <div className="card">
+          <div className="card-title">Workspace</div>
+          <div className="form-row" style={{ alignItems: "flex-end" }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor="project-workspace">Move to workspace</label>
+              <select
+                id="project-workspace"
+                className="input"
+                value={workspaceId}
+                onChange={(e) => setWorkspaceId(Number(e.target.value))}
+              >
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="btn btn-sm" onClick={moveWorkspace}>
+              Move
+            </button>
           </div>
-          <button className="btn btn-sm" onClick={moveWorkspace}>
-            Move
-          </button>
         </div>
-      </div>
+      )}
 
       {showCreate && (
         <CreateDeploymentModal

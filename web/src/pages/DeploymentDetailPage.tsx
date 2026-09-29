@@ -194,7 +194,8 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           {deployment && (
             <p className="flex gap-8" style={{ alignItems: "center" }}>
               <StatusPill status={deployment.status} />
-              <span className="mono text-dim">{deployment.build_strategy}</span>
+              <span className="pill pill-gray">{deployment.build_strategy}</span>
+              <span className="pill pill-gray mono">{deployment.slug}</span>
               {deployment.environment === "staging" && <span className="pill pill-yellow">staging</span>}
               {deployment.environment === "preview" && (
                 <span className="pill pill-yellow">preview{deployment.pr_number ? ` (PR #${deployment.pr_number})` : ""}</span>

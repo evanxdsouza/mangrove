@@ -46,6 +46,18 @@ export function fmtRelative(iso: string): string {
   return past ? `${value} ${plural} ago` : `in ${value} ${plural}`;
 }
 
+/** "1m 24s" / "42s" between two timestamps -- a deploy run's duration, the
+    one thing a status pill and a start time together don't tell you. */
+export function fmtDuration(startIso: string, endIso: string | null | undefined): string | null {
+  if (!endIso) return null;
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 /** Internal DB/enum value -> human label. Anything not in the table falls
     back to the same snake_case->"Title Case with spaces" transform so a
     future enum value never leaks verbatim, even before someone adds it

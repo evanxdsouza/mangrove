@@ -6,7 +6,7 @@ import { CenterLoading } from "../components/CenterLoading";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
 import { PlantGlyph } from "../components/PlantGlyph";
-import { EmptyLedgerIcon, PlusIcon } from "../icons";
+import { ChevronDownIcon, EmptyLedgerIcon, PlusIcon, SearchIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
 
@@ -21,6 +21,13 @@ export function ProjectsPage() {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, reload: reloadWorkspaces } = useWorkspaces();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [status, setStatus] = useState<Record<number, ProjectStatus>>({});
+  // Kept alongside `status`'s rollup counts, not instead of them -- an
+  // expanded card renders these directly, and the recent-activity panel
+  // flattens them across every loaded project, both for free (no extra
+  // request beyond the one this page already made per project).
+  const [deploymentsByProject, setDeploymentsByProject] = useState<Record<number, Deployment[]>>({});
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -39,22 +46,35 @@ export function ProjectsPage() {
           list.map((project) =>
             api
               .get<Deployment[]>(`/api/projects/${project.id}/deployments`)
-              .then((deps): [number, ProjectStatus] => {
-                const list = deps ?? [];
-                return [
-                  project.id,
-                  {
-                    worst: worstStatus(list.map((d) => d.status)),
-                    count: list.length,
-                    runningCount: list.filter((d) => d.status === "running").length,
-                  },
-                ];
-              })
-              .catch((): [number, ProjectStatus] => [project.id, { worst: null, count: 0, runningCount: 0 }]),
+              .then((deps): [number, Deployment[]] => [project.id, deps ?? []])
+              .catch((): [number, Deployment[]] => [project.id, []]),
           ),
-        ).then((entries) => setStatus(Object.fromEntries(entries)));
+        ).then((entries) => {
+          setDeploymentsByProject(Object.fromEntries(entries));
+          setStatus(
+            Object.fromEntries(
+              entries.map(([id, deps]): [number, ProjectStatus] => [
+                id,
+                {
+                  worst: worstStatus(deps.map((d) => d.status)),
+                  count: deps.length,
+                  runningCount: deps.filter((d) => d.status === "running").length,
+                },
+              ]),
+            ),
+          );
+        });
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load projects"));
+  };
+
+  const toggleExpanded = (projectId: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -65,6 +85,10 @@ export function ProjectsPage() {
   }, [activeWorkspaceId]);
 
   const activeWorkspaceName = workspaces.find((w) => w.workspace.id === activeWorkspaceId)?.workspace.name ?? null;
+  const q = search.trim().toLowerCase();
+  const filteredProjects = (projects ?? []).filter(
+    (p) => !q || p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q),
+  );
 
   return (
     <>
@@ -91,69 +115,134 @@ export function ProjectsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {projects === null ? (
-        <CenterLoading />
-      ) : projects.length === 0 ? (
-        <div className="card empty-state">
-          <EmptyLedgerIcon />
-          <p>{activeWorkspaceId != null ? EMPTY_PROJECTS_WORKSPACE : EMPTY_PROJECTS}</p>
-          <div className="field-hint">Create one to deploy your first app.</div>
-        </div>
-      ) : (
-        <div className="project-grid">
-          {projects.map((p) => {
-            const s = status[p.id];
-            return (
-              <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
-                <div className="project-card-top">
-                  <PlantGlyph status={s?.worst} size={20} />
-                  <div className="project-card-heading">
-                    <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
-                      {p.name}
-                    </Link>
-                    <span className="mono text-faint project-card-slug">{p.slug}</span>
-                  </div>
-                  {s == null ? (
-                    <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
-                  ) : s.worst != null ? (
-                    <StatusPill status={s.worst} />
-                  ) : null}
-                </div>
-
-                {p.description && <p className="project-card-description">{p.description}</p>}
-
-                <div className="project-card-footer">
-                  <span className="project-card-rollup">
-                    {s == null
-                      ? "loading..."
-                      : s.count === 0
-                        ? "no deployments yet"
-                        : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
-                  </span>
-                  <div className="project-card-footer-meta">
-                    {p.workspace_name ? (
-                      <a
-                        href="/"
-                        className="project-card-workspace"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setActiveWorkspaceId(p.workspace_id);
-                        }}
-                      >
-                        {p.workspace_name}
-                      </a>
-                    ) : (
-                      <span />
-                    )}
-                    <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {projects !== null && projects.length > 0 && (
+        <div className="search-field">
+          <SearchIcon />
+          <input
+            className="input"
+            placeholder="Search projects..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search projects"
+          />
         </div>
       )}
+
+      <div className="projects-layout">
+        <div className="projects-main">
+          {projects === null ? (
+            <CenterLoading />
+          ) : projects.length === 0 ? (
+            <div className="card empty-state">
+              <EmptyLedgerIcon />
+              <p>{activeWorkspaceId != null ? EMPTY_PROJECTS_WORKSPACE : EMPTY_PROJECTS}</p>
+              <div className="field-hint">Create one to deploy your first app.</div>
+            </div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="card empty-state">
+              <EmptyLedgerIcon />
+              <p>No projects match &ldquo;{search}&rdquo;.</p>
+            </div>
+          ) : (
+            <div className="project-grid">
+              {filteredProjects.map((p) => {
+                const s = status[p.id];
+                const isExpanded = expanded.has(p.id);
+                const children = deploymentsByProject[p.id] ?? [];
+                return (
+                  <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+                    <div className="project-card-top">
+                      <PlantGlyph status={s?.worst} size={20} />
+                      <div className="project-card-heading">
+                        <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+                          {p.name}
+                        </Link>
+                        <span className="mono text-faint project-card-slug">{p.slug}</span>
+                      </div>
+                      {s == null ? (
+                        <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
+                      ) : s.worst != null ? (
+                        <StatusPill status={s.worst} />
+                      ) : null}
+                      {s != null && s.count > 0 && (
+                        <button
+                          type="button"
+                          className="project-card-chevron-btn"
+                          aria-expanded={isExpanded}
+                          aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleExpanded(p.id);
+                          }}
+                        >
+                          <ChevronDownIcon className="project-card-chevron" />
+                        </button>
+                      )}
+                    </div>
+
+                    {p.description && <p className="project-card-description">{p.description}</p>}
+
+                    <div className="project-card-footer">
+                      <span className="project-card-rollup">
+                        {s == null
+                          ? "loading..."
+                          : s.count === 0
+                            ? "no deployments yet"
+                            : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
+                      </span>
+                      <div className="project-card-footer-meta">
+                        {p.workspace_name ? (
+                          <a
+                            href="/"
+                            className="project-card-workspace"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveWorkspaceId(p.workspace_id);
+                            }}
+                          >
+                            {p.workspace_name}
+                          </a>
+                        ) : (
+                          <span />
+                        )}
+                        <span className="text-faint project-card-created">{fmtWhen(p.created_at)}</span>
+                      </div>
+                    </div>
+
+                    {/* Expanding reveals this project's own deployments right
+                        here, as a recessed inset (not a second bordered card
+                        -- see DESIGN.md's "no card-in-a-card" rule), each
+                        still a real link to its own detail page. */}
+                    {isExpanded && children.length > 0 && (
+                      <div className="project-card-children" onClick={(e) => e.stopPropagation()}>
+                        {children.map((d) => (
+                          <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-deployment">
+                            <PlantGlyph status={d.status} size={14} />
+                            <span className="project-child-name">{d.name}</span>
+                            <span className="mono text-faint project-child-type">{d.build_strategy}</span>
+                            <StatusPill status={d.status} />
+                            <span className="text-faint project-child-meta">
+                              {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* A persistent rail so there's always something to look at while
+            browsing, even a large/empty project grid -- see DESIGN.md's
+            "resource list page" pattern. Built entirely from data this page
+            already fetched per project (no extra request). */}
+        {projects !== null && <RecentActivityPanel projects={projects} deploymentsByProject={deploymentsByProject} />}
+      </div>
 
       {showCreate && (
         <CreateProjectModal
@@ -168,6 +257,55 @@ export function ProjectsPage() {
         />
       )}
     </>
+  );
+}
+
+interface RecentActivityDeployment extends Deployment {
+  projectId: number;
+}
+
+// The Projects list's persistent side rail: the most recently deployed
+// things across every currently-loaded project, so there's always
+// something to look at while browsing -- built entirely from data this
+// page already fetched (one request per project it makes anyway), never
+// a separate endpoint.
+function RecentActivityPanel({
+  projects,
+  deploymentsByProject,
+}: {
+  projects: Project[];
+  deploymentsByProject: Record<number, Deployment[]>;
+}) {
+  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  const items: RecentActivityDeployment[] = Object.entries(deploymentsByProject)
+    .flatMap(([projectId, deps]) => deps.map((d) => ({ ...d, projectId: Number(projectId) })))
+    .filter((d) => d.last_deployed_at)
+    .sort((a, b) => new Date(b.last_deployed_at!).getTime() - new Date(a.last_deployed_at!).getTime())
+    .slice(0, 8);
+
+  return (
+    <div className="card activity-panel">
+      <div className="card-title">Recent activity</div>
+      {items.length === 0 ? (
+        <p className="text-dim" style={{ marginTop: 0, marginBottom: 0 }}>
+          Nothing deployed yet -- recent deployments across every project will show up here.
+        </p>
+      ) : (
+        <div className="activity-list">
+          {items.map((d) => (
+            <Link key={d.id} to={`/projects/${d.projectId}/deployments/${d.id}`} className="activity-item">
+              <PlantGlyph status={d.status} size={14} />
+              <span className="activity-item-body">
+                <span className="activity-item-name">{d.name}</span>
+                <span className="text-faint activity-item-meta">
+                  {projectNameById.get(d.projectId) ?? "..."} &middot; {fmtWhen(d.last_deployed_at)}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

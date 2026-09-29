@@ -605,6 +605,81 @@ button, input, select, textarea {
 .project-card-workspace:hover { color: var(--brass-bright); }
 .project-card-created { font-family: var(--mono); font-size: 11.5px; flex-shrink: 0; }
 
+/* Expand/collapse chevron on a project card with deployments -- reuses the
+   station-switcher's own rotate-on-expand idiom for consistency. */
+.project-card-chevron-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-left: 2px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-faint);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.project-card-chevron-btn:hover { color: var(--text); background: var(--bg-elevated); }
+.project-card-chevron { width: 15px; height: 15px; transition: transform 0.15s var(--ease-standard); }
+.project-card-chevron-btn[aria-expanded="true"] .project-card-chevron { transform: rotate(180deg); }
+
+/* A project card's expanded children -- a recessed inset, never a second
+   bordered `.card`, per DESIGN.md's "no card-in-a-card" rule. */
+.project-card-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 6px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+.project-child-deployment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+  font-size: 12.5px;
+}
+.project-child-deployment:hover { background: var(--bg-elevated); }
+.project-child-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-child-type { flex-shrink: 0; }
+.project-child-meta { flex-shrink: 0; font-size: 11.5px; }
+
+/* Resource-list page: main grid + a persistent, always-something-to-look-at
+   activity rail (built from data the page already fetched, not a new
+   endpoint). Drops below the grid on narrow screens rather than squeezing
+   a third column into a phone width. */
+.projects-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+.projects-main { min-width: 0; }
+.activity-panel { position: sticky; top: 24px; margin-bottom: 0; }
+@media (max-width: 900px) {
+  .projects-layout { grid-template-columns: 1fr; }
+  .activity-panel { position: static; }
+}
+.activity-list { display: flex; flex-direction: column; gap: 1px; }
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.activity-item:hover { background: var(--bg-elevated); }
+.activity-item-body { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.activity-item-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-item-meta { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .deployment-card-meta {
   display: flex;
   align-items: center;
@@ -717,6 +792,17 @@ button, input, select, textarea {
 .input::placeholder, textarea.input::placeholder { color: var(--text-faint); }
 
 .field { margin-bottom: 14px; }
+
+/* A resource list's own search field -- icon-prefixed, neutral, capped
+   width so it doesn't stretch full-page-width above a card grid. */
+.search-field {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  margin-bottom: 18px;
+}
+.search-field svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-faint); pointer-events: none; }
+.search-field .input { padding-left: 34px; }
 .field label {
   display: block;
   font-size: 12px;
@@ -1159,6 +1245,21 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--leaf-bright); border-bottom-color: var(--leaf); }
+
+/* A tab's own count badge -- a count is structural/static content, so it
+   stays neutral even on the active tab, never tinted to match the active
+   tab's leaf color (DESIGN.md: "counts" are explicitly never colored). */
+.tab-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-family: var(--mono);
+  vertical-align: 1px;
+}
 
 /* ==========================================================================
    Key/value list
