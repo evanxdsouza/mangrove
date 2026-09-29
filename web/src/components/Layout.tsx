@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter } from "../router";
-import { api, type CurrentUser } from "../api";
+import { api, type CurrentUser, type Project } from "../api";
 import { useUiMode } from "../uiMode";
 import { useWorkspaces } from "../workspaceContext";
 import {
@@ -13,6 +13,7 @@ import {
   LedgerIcon,
   MangroveIcon,
   MenuIcon,
+  SearchIcon,
   UserIcon,
 } from "../icons";
 
@@ -55,7 +56,9 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
 
         <div className="sidebar-body">
           {!simple && <StationSwitcher />}
+          {!simple && <SidebarSearch />}
 
+          {!simple && <div className="nav-section-label">Workspace</div>}
           <Link to="/" className={`nav-link ${onProjects ? "active" : ""}`}>
             <LedgerIcon />
             {simple ? "Your apps" : "Projects"}
@@ -167,6 +170,117 @@ function useHostCritical(isOwner: boolean): boolean {
   }, [isOwner]);
 
   return critical;
+}
+
+// Jump straight to a project by name/slug from anywhere in the technical
+// dashboard, without detouring through the list first -- Ctrl/Cmd+K
+// focuses it from any page, matching the muscle memory of every other
+// command-palette-style search. Client-side only: one /api/projects call
+// (every workspace, not scoped to the active station) cached for the
+// component's lifetime, no new endpoint.
+function SidebarSearch() {
+  const { navigate } = useRouter();
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api
+      .get<Project[]>("/api/projects")
+      .then((p) => setProjects(p ?? []))
+      .catch(() => setProjects([]));
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? (projects ?? []).filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q)).slice(0, 6)
+    : [];
+
+  const go = (p: Project) => {
+    setQuery("");
+    setOpen(false);
+    inputRef.current?.blur();
+    navigate(`/projects/${p.id}`);
+  };
+
+  return (
+    <div className="sidebar-search" ref={rootRef}>
+      <SearchIcon className="sidebar-search-icon" />
+      <input
+        ref={inputRef}
+        className="sidebar-search-input"
+        placeholder="Search"
+        aria-label="Search projects"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setActiveIndex(0);
+          setOpen(true);
+        }}
+        onFocus={() => query && setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            inputRef.current?.blur();
+          } else if (e.key === "ArrowDown" && matches.length > 0) {
+            e.preventDefault();
+            setActiveIndex((i) => (i + 1) % matches.length);
+          } else if (e.key === "ArrowUp" && matches.length > 0) {
+            e.preventDefault();
+            setActiveIndex((i) => (i - 1 + matches.length) % matches.length);
+          } else if (e.key === "Enter" && matches[activeIndex]) {
+            go(matches[activeIndex]);
+          }
+        }}
+      />
+      {!query && <span className="sidebar-search-kbd">&#8984;K</span>}
+      {open && query && (
+        <div className="sidebar-search-panel">
+          {matches.length === 0 ? (
+            <div className="sidebar-search-empty">No projects match &ldquo;{query}&rdquo;.</div>
+          ) : (
+            matches.map((p, i) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`sidebar-search-item ${i === activeIndex ? "active" : ""}`}
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => go(p)}
+              >
+                <LedgerIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
+                {p.name}
+                <span className="sidebar-search-item-slug">{p.slug}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // The station switcher fixes "workspaces isn't where it's supposed to

@@ -6,7 +6,7 @@ import { CenterLoading } from "../components/CenterLoading";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
 import { PlantGlyph } from "../components/PlantGlyph";
-import { ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
+import { ArrowRightIcon, ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
 
@@ -151,7 +151,11 @@ export function ProjectsPage() {
     const s = status[p.id];
     const isExpanded = expanded.has(p.id);
     return (
-      <div key={p.id} className="card card-clickable project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+      <div
+        key={p.id}
+        className={`card card-clickable project-card ${isExpanded ? "project-list-row-expanded" : ""}`}
+        onClick={() => navigate(`/projects/${p.id}`)}
+      >
         <div className="project-card-top">
           <PlantGlyph status={s?.worst} size={20} />
           <div className="project-card-heading">
@@ -221,7 +225,11 @@ export function ProjectsPage() {
     const s = status[p.id];
     const isExpanded = expanded.has(p.id);
     return (
-      <div key={p.id} className="card card-clickable project-list-row" onClick={() => navigate(`/projects/${p.id}`)}>
+      <div
+        key={p.id}
+        className={`card card-clickable project-list-row ${isExpanded ? "project-list-row-expanded" : ""}`}
+        onClick={() => navigate(`/projects/${p.id}`)}
+      >
         <div className="project-list-row-main">
           {s != null && s.count > 0 ? (
             <button
@@ -272,6 +280,17 @@ export function ProjectsPage() {
             )}
             <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
             {s?.worst != null && <StatusPill status={s.worst} />}
+            <button
+              type="button"
+              className="project-list-row-open"
+              aria-label={`Open ${p.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/projects/${p.id}`);
+              }}
+            >
+              <ArrowRightIcon />
+            </button>
           </div>
         </div>
         {renderChildren(p, isExpanded)}

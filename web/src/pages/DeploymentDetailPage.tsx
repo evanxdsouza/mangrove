@@ -9,7 +9,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useWorkspaceRole } from "../workspaceContext";
-import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, StripChartIcon, TrashIcon } from "../icons";
+import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, RestartIcon, StopIcon, StripChartIcon, TrashIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { firstTime } from "../lib/milestones";
@@ -220,21 +220,21 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             disabled={redeploying}
             title="Rebuild and redeploy from the currently configured source (linked repo branch, or image ref)"
           >
-            {redeploying ? "Redeploying..." : "Redeploy"}
+            <RestartIcon /> {redeploying ? "Redeploying..." : "Redeploy"}
           </button>
           {deployment?.build_strategy !== "static" && (
             <>
               {deployment?.status === "stopped" ? (
                 <button className="btn" onClick={restart} disabled={restarting}>
-                  {restarting ? "Starting..." : "Start"}
+                  <RestartIcon /> {restarting ? "Starting..." : "Start"}
                 </button>
               ) : (
                 <>
                   <button className="btn" onClick={restart} disabled={restarting}>
-                    {restarting ? "Restarting..." : "Restart"}
+                    <RestartIcon /> {restarting ? "Restarting..." : "Restart"}
                   </button>
                   <button className="btn" onClick={stop} disabled={stopping}>
-                    {stopping ? "Stopping..." : "Stop"}
+                    <StopIcon /> {stopping ? "Stopping..." : "Stop"}
                   </button>
                 </>
               )}

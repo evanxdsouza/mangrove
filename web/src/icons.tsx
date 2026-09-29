@@ -143,6 +143,36 @@ export function BranchIcon(props: IconProps) {
   );
 }
 
+/** Circular refresh arrows -- Restart/Redeploy. */
+export function RestartIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M19 12a7 7 0 1 1-2.3-5.2" />
+      <path d="M19 4.5V9h-4.5" />
+    </svg>
+  );
+}
+
+/** Filled square -- Stop, matching the universal transport-control glyph. */
+export function StopIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="6" y="6" width="12" height="12" rx="1.6" />
+    </svg>
+  );
+}
+
+/** Rightward arrow -- "open this" on a collapsed/expanded row, distinct
+    from the chevron that only toggles expansion in place. */
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 12h14" />
+      <path d="M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
