@@ -409,10 +409,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) (deployHis
 		upstreams = append(upstreams, r.ContainerAddr)
 	}
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil && runResult.ContainerAddr != "" {
-		routeOpts := proxy.RouteOptions{}
-		if dep.PasswordProtected {
-			routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
-		}
+		routeOpts := o.routeOptionsFor(dep)
 		if err := o.Proxy.PutRouteMulti(ctx, *registeredPort, upstreams, routeOpts); err != nil {
 			o.teardownContainers(cleanupCtx, newContainerIDs)
 			return fail(fmt.Errorf("update proxy route: %w", err))

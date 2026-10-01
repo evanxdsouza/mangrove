@@ -9,7 +9,6 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/github"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
-	"github.com/evanxdsouza/mangrove/internal/proxy"
 )
 
 // DeployStatic runs one deploy round for a static-strategy deployment: an
@@ -128,10 +127,7 @@ func (o *Orchestrator) DeployStatic(ctx context.Context, req DeployRequest) (dep
 	}
 
 	if o.Proxy != nil && !svc.IsInternalOnly && registeredPort != nil {
-		routeOpts := proxy.RouteOptions{}
-		if dep.PasswordProtected {
-			routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
-		}
+		routeOpts := o.routeOptionsFor(dep)
 		if err := o.Proxy.PutFileServerRoute(ctx, *registeredPort, outputPath, routeOpts); err != nil {
 			return fail(fmt.Errorf("update proxy route: %w", err))
 		}

@@ -9,7 +9,6 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
-	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/webhook"
 )
 
@@ -159,10 +158,7 @@ func (o *Orchestrator) pushCustomDomainRoute(ctx context.Context, domain models.
 	}
 	svc := services[0]
 
-	opts := proxy.RouteOptions{}
-	if dep.PasswordProtected {
-		opts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
-	}
+	opts := o.routeOptionsFor(dep)
 
 	// A static-strategy deployment never runs a container (Caddy serves
 	// its build output directly -- see DeployStatic) so there's no

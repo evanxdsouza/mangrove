@@ -157,6 +157,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	go resourceSampler.Run(ctx)
 	go resourceSampler.PruneOld(ctx)
 
+	sleeper := scheduler.NewSleeper(orch, log)
+	go sleeper.Run(ctx)
+
 	// Home-server DDNS: only started when MANGROVE_DDNS_DOMAIN is set (a
 	// VPS/Nest install leaves it empty, see setup.sh's "home" vs "vps"
 	// install mode).

@@ -229,6 +229,10 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
                 <button className="btn" onClick={restart} disabled={restarting}>
                   <RestartIcon /> {restarting ? "Starting..." : "Start"}
                 </button>
+              ) : deployment?.status === "sleeping" ? (
+                <button className="btn" onClick={restart} disabled={restarting} title="Wake it up now instead of waiting for the next visitor to trigger it">
+                  <RestartIcon /> {restarting ? "Waking up..." : "Wake up"}
+                </button>
               ) : (
                 <>
                   <button className="btn" onClick={restart} disabled={restarting}>
@@ -282,6 +286,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <>
           <OverviewTab services={services} deployment={deployment} canEdit={canEdit} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} isAdmin={isAdmin} />
+          <SleepCard deploymentId={deploymentId} deployment={deployment} onSaved={load} canEdit={canEdit} />
           <DomainsPanel deploymentId={deploymentId} canEdit={canEdit} isAdmin={isAdmin} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           {deployment?.promotes_to_deployment_id != null ? (
@@ -485,6 +490,95 @@ function AccessControlCard({
         </>
       )}
       {isAdmin && (
+        <button className="btn btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+      )}
+      {saved && <div className="field-hint">Saved.</div>}
+    </div>
+  );
+}
+
+// SleepCard is the idle-sleep opt-in: when enabled, a deployment with no
+// traffic for sleep_idle_minutes gets stopped by the backend scheduler
+// (internal/scheduler/sleeper.go) and auto-wakes on its next visit, showing
+// a "waking up" page in the meantime (internal/api/gate.go). Mirrors
+// AccessControlCard's save/error/busy pattern above.
+function SleepCard({
+  deploymentId,
+  deployment,
+  onSaved,
+  canEdit,
+}: {
+  deploymentId: number;
+  deployment: Deployment | null;
+  onSaved: () => void;
+  canEdit: boolean;
+}) {
+  const [enabled, setEnabled] = useState(false);
+  const [idleMinutes, setIdleMinutes] = useState(30);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (deployment) {
+      setEnabled(deployment.sleep_enabled);
+      setIdleMinutes(deployment.sleep_idle_minutes);
+    }
+  }, [deployment]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/sleep`, {
+        enabled,
+        idle_minutes: idleMinutes,
+      });
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Idle sleep</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Stop this deployment's container automatically after a period with no traffic, and wake it
+        back up the moment someone visits -- they'll see a brief "waking up" page while it starts.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      {!canEdit && <div className="field-hint">Only an editor or admin can change idle sleep.</div>}
+      <div className="field">
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={enabled} disabled={!canEdit} onChange={(e) => setEnabled(e.target.checked)} />
+          Sleep when idle
+        </label>
+      </div>
+      {enabled && (
+        <div className="field">
+          <label htmlFor="sleep-idle-minutes">Idle minutes before sleeping</label>
+          <input
+            id="sleep-idle-minutes"
+            className="input"
+            type="number"
+            min={1}
+            max={1440}
+            style={{ maxWidth: 140 }}
+            disabled={!canEdit}
+            value={idleMinutes}
+            onChange={(e) => setIdleMinutes(Math.max(1, Number(e.target.value) || 1))}
+          />
+          {deployment?.status === "sleeping" && <div className="field-hint">Currently asleep -- the next visit will wake it.</div>}
+        </div>
+      )}
+      {canEdit && (
         <button className="btn btn-sm" onClick={save} disabled={busy}>
           {busy ? "Saving..." : "Save"}
         </button>

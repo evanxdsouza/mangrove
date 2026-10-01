@@ -6,9 +6,18 @@
 // for the signed tokens that hold it together, and
 // internal/proxy/caddy.go's gateHandler for how traffic ends up here in
 // the first place.
+//
+// The same loopback handler also serves a sleep-enabled deployment's
+// idle-wake flow (independent of password protection, and composable with
+// it -- see handleGatedRequest below): proxyOrWake is the single point
+// every already-authorized request passes through, and it's where a
+// sleeping deployment gets intercepted with the "waking up" page instead of
+// being proxied through for real. See internal/orchestrator/sleep.go and
+// internal/scheduler/sleeper.go for the other halves.
 package api
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -16,6 +25,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/httprate"
@@ -24,6 +34,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/gateauth"
 	"github.com/evanxdsouza/mangrove/internal/gatepaths"
+	"github.com/evanxdsouza/mangrove/internal/models"
 )
 
 const gateCallbackPath = "/__mangrove_gate__/callback"
@@ -68,23 +79,104 @@ func (s *Server) handleGatedRequest(w http.ResponseWriter, r *http.Request, depl
 	case r.URL.Path == gateCallbackPath:
 		s.gateHandleCallback(w, r, deploymentID)
 	default:
-		cookie, err := r.Cookie(gateauth.CookieName)
-		if err == nil && gateauth.NewSigner(s.Secrets).VerifyCookie(cookie.Value, deploymentID) {
-			s.gateProxyThrough(w, r, deploymentID)
+		dep, err := s.Store.GetDeployment(r.Context(), deploymentID)
+		if err != nil {
+			http.Error(w, "this deployment is temporarily unavailable", http.StatusBadGateway)
 			return
 		}
-		// A path the owner marked public skips the gate -- checked only
-		// after the cookie, so a signed-in visitor is unaffected.
-		if dep, err := s.Store.GetDeployment(r.Context(), deploymentID); err == nil && gatepaths.Match(dep.PublicPaths, r.URL.Path) {
-			s.gateProxyThrough(w, r, deploymentID)
-			return
+		if dep.PasswordProtected {
+			cookie, err := r.Cookie(gateauth.CookieName)
+			authed := err == nil && gateauth.NewSigner(s.Secrets).VerifyCookie(cookie.Value, deploymentID)
+			// A path the owner marked public skips the gate -- checked only
+			// after the cookie, so a signed-in visitor is unaffected.
+			if !authed && !gatepaths.Match(dep.PublicPaths, r.URL.Path) {
+				raw := r.URL.Path
+				if r.URL.RawQuery != "" {
+					raw += "?" + r.URL.RawQuery
+				}
+				s.gateRenderPage(w, r, deploymentID, sanitizeReturnTo(raw), "")
+				return
+			}
 		}
-		raw := r.URL.Path
-		if r.URL.RawQuery != "" {
-			raw += "?" + r.URL.RawQuery
-		}
-		s.gateRenderPage(w, r, deploymentID, sanitizeReturnTo(raw), "")
+		// Past the password gate (or there wasn't one) -- a sleep-enabled
+		// deployment still gets a chance to intercept with its own "waking
+		// up" page before any real proxying happens. A password-protected +
+		// sleep-enabled deployment deliberately checks the password first:
+		// triggering a wake is itself a (mild) cost, and this keeps an
+		// unauthenticated visitor from being able to repeatedly wake someone
+		// else's gated deployment.
+		s.proxyOrWake(w, r, dep)
 	}
+}
+
+// sleepWakeLocks serializes concurrent wake attempts for the same sleeping
+// deployment -- several visitors can land here in the same moment, and only
+// one of them should actually trigger Orchestrator.WakeDeployment; the rest
+// just get the same "waking up" page.
+var sleepWakeLocks sync.Map // map[int64]*sync.Mutex
+
+func wakeLockFor(deploymentID int64) *sync.Mutex {
+	v, _ := sleepWakeLocks.LoadOrStore(deploymentID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
+// proxyOrWake is the single choke point every already-authorized request to
+// a gated route passes through on its way to the real app. A sleep-enabled
+// deployment gets its traffic bumped here (throttled, so a busy awake
+// deployment isn't hammering the DB on every request) and, while actually
+// asleep, gets intercepted with the waking-up page instead of proxied --
+// triggering a background wake the first time, not on every repeated
+// request/reload while it's still booting.
+func (s *Server) proxyOrWake(w http.ResponseWriter, r *http.Request, dep models.Deployment) {
+	if dep.SleepEnabled {
+		s.touchDeploymentTraffic(dep.ID)
+		if dep.Status == "sleeping" {
+			s.triggerWake(dep.ID)
+			s.renderWakingPage(w, r, dep)
+			return
+		}
+	}
+	s.gateProxyThrough(w, r, dep.ID)
+}
+
+// lastTouchWrites throttles TouchDeploymentLastRequest so a busy awake
+// deployment doesn't write to the DB on every single request -- just often
+// enough (once a minute) that the sleeper's idle check stays accurate. Not
+// persisted: a restart resets it, which only costs one extra write per
+// previously-touched deployment, not a correctness problem.
+var lastTouchWrites sync.Map // map[int64]time.Time
+
+func (s *Server) touchDeploymentTraffic(deploymentID int64) {
+	now := time.Now()
+	if v, ok := lastTouchWrites.Load(deploymentID); ok {
+		if now.Sub(v.(time.Time)) < time.Minute {
+			return
+		}
+	}
+	lastTouchWrites.Store(deploymentID, now)
+	if err := s.Store.TouchDeploymentLastRequest(context.Background(), deploymentID); err != nil {
+		s.Log.Warn("wake: touch last request failed", "deployment_id", deploymentID, "error", err)
+	}
+}
+
+// triggerWake kicks off a background wake for a sleeping deployment, deduped
+// so concurrent visitors don't all call WakeDeployment at once. Detached
+// from the request context (like orchestrator.WithInflightDeploy's own
+// deploys) since the wake must finish even if the visitor who triggered it
+// navigates away or their connection drops.
+func (s *Server) triggerWake(deploymentID int64) {
+	lock := wakeLockFor(deploymentID)
+	if !lock.TryLock() {
+		return // already waking
+	}
+	go func() {
+		defer lock.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := s.Orchestrator.WakeDeployment(ctx, deploymentID); err != nil {
+			s.Log.Warn("wake: restart deployment failed", "deployment_id", deploymentID, "error", err)
+		}
+	}()
 }
 
 // sanitizeReturnTo defends against an open redirect within the gate's own
@@ -142,6 +234,21 @@ func (s *Server) gateRenderPage(w http.ResponseWriter, r *http.Request, deployme
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := gateTpl.Execute(w, data); err != nil {
 		s.Log.Error("gate: render page failed", "error", err)
+	}
+}
+
+// renderWakingPage serves the "this deployment is waking up" page in place
+// of the real app, with a meta-refresh so the visitor's browser reloads the
+// same URL every few seconds. On each reload, proxyOrWake re-checks the
+// deployment's current status fresh from the DB -- once triggerWake's
+// background WakeDeployment finishes, status flips to "running" and the
+// next reload proxies through for real, no separate status-polling endpoint
+// needed.
+func (s *Server) renderWakingPage(w http.ResponseWriter, r *http.Request, dep models.Deployment) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Retry-After", "3")
+	if err := sleepTpl.Execute(w, sleepPageData{Hostname: r.Host, Name: dep.Name}); err != nil {
+		s.Log.Error("wake: render waking page failed", "error", err)
 	}
 }
 

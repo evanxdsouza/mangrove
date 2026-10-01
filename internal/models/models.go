@@ -75,6 +75,14 @@ type Deployment struct {
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 	LastDeployedAt    *time.Time `json:"last_deployed_at,omitempty"`
+	// SleepEnabled opts a deployment into auto-sleeping after
+	// SleepIdleMinutes with no traffic (internal/scheduler/sleeper.go), and
+	// auto-waking on the next visit (internal/api/gate.go's wake handler).
+	// LastRequestAt is bumped on every request that reaches the deployment
+	// through that handler -- see internal/orchestrator/sleep.go.
+	SleepEnabled     bool       `json:"sleep_enabled"`
+	SleepIdleMinutes int        `json:"sleep_idle_minutes"`
+	LastRequestAt    *time.Time `json:"last_request_at,omitempty"`
 }
 
 type Service struct {

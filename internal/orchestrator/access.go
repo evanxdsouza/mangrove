@@ -8,7 +8,6 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/gatepaths"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
-	"github.com/evanxdsouza/mangrove/internal/proxy"
 )
 
 // SetAccessControl updates a deployment's public/internal-only and
@@ -115,7 +114,12 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 		}
 		upstreams = append(upstreams, addr)
 	}
-	opts := proxy.RouteOptions{PasswordProtected: passwordProtected, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
+	// dep still reflects the pre-update row (loaded above before
+	// SetDeploymentAccessControl ran) -- passwordProtected is this call's
+	// new value, so route with that instead of dep's stale one; SleepEnabled
+	// is untouched by this call, so dep's value for it is still current.
+	opts := o.routeOptionsFor(dep)
+	opts.PasswordProtected = passwordProtected
 	if err := o.Proxy.PutRouteMulti(ctx, *hostPort, upstreams, opts); err != nil {
 		return fmt.Errorf("update proxy route: %w", err)
 	}

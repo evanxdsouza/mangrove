@@ -102,6 +102,7 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
           {deployment?.status === "failed" && "This app is having trouble starting. Try again below, or switch to the advanced view for more detail."}
           {(deployment?.status === "pending" || deployment?.status === "building") && "This app is getting set up. This can take a minute."}
           {deployment?.status === "stopped" && "This app isn't running right now."}
+          {deployment?.status === "sleeping" && "This app went to sleep after a quiet period. It'll wake up automatically the next time someone visits."}
         </p>
       </div>
 

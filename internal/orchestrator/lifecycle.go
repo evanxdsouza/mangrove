@@ -7,7 +7,6 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/models"
-	"github.com/evanxdsouza/mangrove/internal/proxy"
 )
 
 // serviceContainerIDs returns the full set of running container IDs for a
@@ -145,10 +144,7 @@ func (o *Orchestrator) RestartDeployment(ctx context.Context, deploymentID int64
 				upstreams = append(upstreams, addr)
 			}
 			if len(upstreams) > 0 {
-				routeOpts := proxy.RouteOptions{}
-				if dep.PasswordProtected {
-					routeOpts = proxy.RouteOptions{PasswordProtected: true, GateDeploymentID: dep.ID, GatePort: o.Config.APIPort}
-				}
+				routeOpts := o.routeOptionsFor(dep)
 				if err := o.Proxy.PutRouteMulti(ctx, *svc.HostPort, upstreams, routeOpts); err != nil {
 					o.Log.Warn("restart deployment: update proxy route failed", "service_id", svc.ID, "error", err)
 				} else {

@@ -97,11 +97,14 @@ export interface Deployment {
   promotes_to_deployment_id?: number;
   pr_previews_enabled: boolean;
   pr_number?: number;
-  status: "pending" | "building" | "running" | "stopped" | "failed";
+  status: "pending" | "building" | "running" | "stopped" | "failed" | "sleeping";
   node_id: number;
   created_at: string;
   updated_at: string;
   last_deployed_at?: string;
+  sleep_enabled: boolean;
+  sleep_idle_minutes: number;
+  last_request_at?: string;
 }
 
 export interface Service {

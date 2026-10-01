@@ -170,6 +170,7 @@ func (s *Server) Router() http.Handler {
 				r.With(editor(depWS)).Post("/restart", s.restartDeployment)
 				r.With(editor(depWS)).Post("/repo", s.setDeploymentRepo)
 				r.With(admin(depWS)).Post("/access", s.setDeploymentAccess)
+				r.With(editor(depWS)).Post("/sleep", s.setDeploymentSleep)
 				r.With(viewer(depWS)).Get("/staging", s.listStagingDeployments)
 				r.With(editor(depWS)).Post("/staging", s.createStagingDeployment)
 				r.With(editor(depWS)).Post("/promote", s.promoteDeployment)

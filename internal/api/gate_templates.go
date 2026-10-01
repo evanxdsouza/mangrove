@@ -22,6 +22,14 @@ type gateAuthPageData struct {
 	IsError bool
 }
 
+// sleepPageData feeds the "waking up" page a sleep-enabled deployment's
+// first visitor after idle sleep sees -- see Server.renderWakingPage in
+// gate.go.
+type sleepPageData struct {
+	Hostname string
+	Name     string
+}
+
 // gateStyles is shared between both pages: same dark card, same brass
 // accent, same fallback font stacks (no external font loading -- this page
 // is served standalone, outside the SPA's self-hosted @fontsource bundle).
@@ -166,6 +174,51 @@ input:focus { outline: none; border-color: var(--brass); }
 </style>`
 
 const lockIconSVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>`
+
+// sproutIconSVG is a small root-and-sprout motif echoing PlantGlyph in the
+// SPA (web/src/components/PlantGlyph.tsx) -- a resource waking back up
+// reads as a plant stirring, not a generic loading spinner.
+const sproutIconSVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"></path><path d="M12 11c0-3.5 2-6 6-6 0 4-2 6-6 6Z"></path><path d="M12 14c0-3-2-5-5.5-5 0 3.5 2 5 5.5 5Z"></path></svg>`
+
+// sleepTpl is the "waking up" page a sleep-enabled deployment's visitor
+// sees while its containers restart -- see Server.renderWakingPage. Reuses
+// gateStyles' dark card/brass palette plus a local leaf accent (a
+// waking resource reads as "alive," not as another brass-toned auth
+// screen) and a meta-refresh instead of JS, matching gate.go's own
+// no-JS-dependency convention.
+var sleepTpl = template.Must(template.New("sleep").Parse(gateStyles + `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="3">
+<title>Waking up</title>
+<style>
+:root { --leaf: #4fae42; --leaf-bright: #6fcf5c; --leaf-wash: rgba(79, 174, 66, 0.14); }
+.icon-badge.waking {
+  background: var(--leaf-wash);
+  border-color: var(--leaf);
+  color: var(--leaf-bright);
+  animation: sprout-sway 2.4s ease-in-out infinite;
+}
+@keyframes sprout-sway {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-badge.waking { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon-badge waking">` + sproutIconSVG + `</div>
+  <h1>Waking up{{if .Name}} {{.Name}}{{end}}</h1>
+  <p class="subtext">This deployment went to sleep after a period with no traffic and is starting back up now. This page will refresh automatically -- it usually only takes a few seconds.</p>
+</div>
+</body>
+</html>
+`))
 
 var gateTpl = template.Must(template.New("gate").Parse(gateStyles + `<!doctype html>
 <html>

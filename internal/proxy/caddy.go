@@ -51,11 +51,28 @@ type RouteOptions struct {
 	// page with a "continue with your Mangrove account" option, not just a
 	// native browser credentials popup -- see docs/protected-deployments.md.
 	PasswordProtected bool
+	// Sleepable, when true, routes through the same Mangrove loopback
+	// handler as PasswordProtected -- not a separate Caddy handler type,
+	// since gateHandler's only job is "forward to Mangrove with a
+	// deployment-id header," which is equally what an idle-sleep-enabled
+	// deployment needs so Mangrove can serve a "waking up" page and trigger
+	// the wake instead of Caddy answering connection-refused. See
+	// internal/api/gate.go's handleGatedRequest, which branches on the
+	// deployment's own sleep_enabled/status once it gets the request,
+	// independent of whether PasswordProtected is also set.
+	Sleepable bool
 	// GateDeploymentID/GatePort identify which deployment and where
 	// Mangrove's own loopback API listens -- only meaningful when
-	// PasswordProtected is true.
+	// PasswordProtected or Sleepable is true.
 	GateDeploymentID int64
 	GatePort         int
+}
+
+// needsIndirectRoute reports whether opts requires traffic to go through
+// Mangrove's own loopback handler first, rather than straight to the real
+// upstream/root.
+func (o RouteOptions) needsIndirectRoute() bool {
+	return o.PasswordProtected || o.Sleepable
 }
 
 // EnsureBaseConfig makes sure apps.http.servers exists in Caddy's running
@@ -152,7 +169,7 @@ func (c *Client) PutRoute(ctx context.Context, port int, upstreamAddr string, op
 // the whole route, so traffic never splits between old and new replicas.
 func (c *Client) PutRouteMulti(ctx context.Context, port int, upstreams []string, opts RouteOptions) error {
 	var handlers []map[string]any
-	if opts.PasswordProtected {
+	if opts.needsIndirectRoute() {
 		// Traffic must not reach the real app until the gate says so -- the
 		// gate handler is the *only* handler on this route, not a leading
 		// check in front of the normal reverse_proxy handler.
@@ -199,7 +216,7 @@ func (c *Client) PutRouteMulti(ctx context.Context, port int, upstreams []string
 // Caddy process (see executor.DockerExecutor.StaticSitesDir).
 func (c *Client) PutFileServerRoute(ctx context.Context, port int, rootDir string, opts RouteOptions) error {
 	var handlers []map[string]any
-	if opts.PasswordProtected {
+	if opts.needsIndirectRoute() {
 		handlers = []map[string]any{gateHandler(opts)}
 	} else {
 		handlers = []map[string]any{{
@@ -304,7 +321,7 @@ func (c *Client) getPublicServer(ctx context.Context) (map[string]any, error) {
 // certificate for hostname on its own the moment a route matching that
 // host exists here; no apps.tls config is needed for the common case.
 func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams []string, opts RouteOptions) error {
-	if opts.PasswordProtected {
+	if opts.needsIndirectRoute() {
 		return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{gateHandler(opts)})
 	}
 	dials := make([]map[string]any, 0, len(upstreams))
@@ -324,7 +341,7 @@ func (c *Client) PutDomainRoute(ctx context.Context, hostname string, upstreams 
 // hostname is routed straight to rootDir via Caddy's file_server instead
 // (the domain-route equivalent of PutFileServerRoute).
 func (c *Client) PutFileServerDomainRoute(ctx context.Context, hostname, rootDir string, opts RouteOptions) error {
-	if opts.PasswordProtected {
+	if opts.needsIndirectRoute() {
 		return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{gateHandler(opts)})
 	}
 	return c.putDomainRouteHandlers(ctx, hostname, []map[string]any{

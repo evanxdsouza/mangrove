@@ -427,7 +427,7 @@ const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
 	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, environment,
 	       promotes_to_deployment_id, pr_previews_enabled, pr_number, github_pr_comment_id, status, node_id,
-	       created_at, updated_at, last_deployed_at, public_paths`
+	       created_at, updated_at, last_deployed_at, public_paths, sleep_enabled, sleep_idle_minutes, last_request_at`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
 // scanDeploymentRow serve single-row lookups and multi-row list queries
@@ -444,15 +444,20 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var githubPRCommentID sql.NullInt64
 	var lastDeployedAtT sql.NullTime
 	var publicPaths string
+	var lastRequestAtT sql.NullTime
 	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Environment,
 		&promotesToID, &d.PRPreviewsEnabled, &prNumber, &githubPRCommentID, &d.Status, &d.NodeID,
-		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT, &publicPaths)
+		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT, &publicPaths, &d.SleepEnabled, &d.SleepIdleMinutes, &lastRequestAtT)
 	if err != nil {
 		return models.Deployment{}, err
 	}
 	d.PublicPaths = splitPublicPaths(publicPaths)
+	if lastRequestAtT.Valid {
+		t := lastRequestAtT.Time
+		d.LastRequestAt = &t
+	}
 	if projectRepoID.Valid {
 		d.ProjectRepoID = &projectRepoID.Int64
 	}
@@ -719,8 +724,70 @@ func (s *Store) UpdateDeploymentStatus(ctx context.Context, id int64, status str
 }
 
 func (s *Store) TouchDeploymentDeployed(ctx context.Context, id int64) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_deployed_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	// Also counts as traffic: a fresh deploy shouldn't read as having been
+	// idle since whenever it last saw a real visitor, which would let the
+	// idle-sleep scheduler put it straight back to sleep before anyone
+	// gets a chance to look at it.
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_deployed_at = CURRENT_TIMESTAMP, last_request_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
 	return err
+}
+
+// SetDeploymentSleepConfig updates a deployment's idle-sleep opt-in and
+// threshold (internal/scheduler/sleeper.go). Enabling it resets
+// last_request_at to now, so a deployment that's never actually seen the
+// wake handler yet (and so has a NULL last_request_at) doesn't read as
+// having been idle forever and get swept on the sleeper's very next tick.
+func (s *Store) SetDeploymentSleepConfig(ctx context.Context, id int64, enabled bool, idleMinutes int) error {
+	if enabled {
+		_, err := s.DB.ExecContext(ctx,
+			`UPDATE deployments SET sleep_enabled = 1, sleep_idle_minutes = ?, last_request_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			idleMinutes, id,
+		)
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE deployments SET sleep_enabled = 0, sleep_idle_minutes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		idleMinutes, id,
+	)
+	return err
+}
+
+// TouchDeploymentLastRequest records that a visitor's request just reached
+// a sleep-enabled deployment through the wake handler. Callers throttle how
+// often this actually runs (see internal/api/gate.go) -- a busy awake
+// deployment doesn't need a write on every single request, just often
+// enough that the sleeper's idle check stays accurate.
+func (s *Store) TouchDeploymentLastRequest(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_request_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	return err
+}
+
+// ListSleepCandidates returns every running, sleep-enabled deployment whose
+// last_request_at is older than its own sleep_idle_minutes -- what
+// internal/scheduler/sleeper.go puts to sleep on each tick. A NULL
+// last_request_at (shouldn't happen once SetDeploymentSleepConfig always
+// sets it, but defensively) never matches, rather than sleeping
+// immediately.
+func (s *Store) ListSleepCandidates(ctx context.Context) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments
+		 WHERE sleep_enabled = 1 AND status = 'running' AND last_request_at IS NOT NULL
+		   AND last_request_at < datetime('now', '-' || sleep_idle_minutes || ' minutes')`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) SetDeploymentAccessControl(ctx context.Context, id int64, isPublic, passwordProtected bool, passwordHash string, publicPaths []string) error {
