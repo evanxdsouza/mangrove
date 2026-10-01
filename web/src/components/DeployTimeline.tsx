@@ -5,7 +5,7 @@ import { CodeBlock } from "./CodeBlock";
 import { EmptyLedgerIcon } from "../icons";
 import { fmtDuration, fmtWhen } from "../lib/format";
 
-const DOT_COLOR: Record<string, string> = {
+export const DOT_COLOR: Record<string, string> = {
   success: "var(--verdigris)",
   failed: "var(--red)",
   building: "var(--ochre)",

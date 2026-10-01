@@ -12,7 +12,8 @@ import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashI
 import { PlantGlyph } from "../components/PlantGlyph";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_DEPLOYMENTS } from "../lib/copy";
-import { CenterLoading } from "../components/CenterLoading";
+import { hashString } from "../lib/hash";
+import { DeploymentCardSkeleton } from "../components/Skeleton";
 
 type ProjectTab = "deployments" | "github" | "workspace";
 
@@ -106,6 +107,17 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  // Every project gets its own hero banner "skin" -- deterministic from its
+  // slug (same project always looks the same, no backend field, no upload),
+  // varying only composition within the already-approved palette (gradient
+  // angle, watermark rotation/scale, and which of the two sanctioned accents
+  // tints it) so the Two-Accent Rule still holds: never a new hue per project.
+  const heroSeed = project ? hashString(project.slug) : 0;
+  const heroAngle = 105 + (heroSeed % 60);
+  const heroMotifRotate = ((heroSeed >> 3) % 50) - 25;
+  const heroMotifScale = 0.85 + ((heroSeed >> 7) % 30) / 100;
+  const heroMotifColor = heroSeed % 2 === 0 ? "var(--leaf-dim)" : "var(--brass-dim)";
+
   return (
     <>
       <div className="breadcrumb">
@@ -116,8 +128,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           per DESIGN.md's color rules: it carries no status/health signal of
           its own, so it's the one place a large field of accent color is
           fine (a faint watermark, not a wash standing in for state). */}
-      <div className="project-hero">
-        <MangroveIcon className="project-hero-motif" />
+      <div className="project-hero" style={{ background: `linear-gradient(${heroAngle}deg, var(--bg-elevated), var(--bg-card))` }}>
+        <MangroveIcon
+          className="project-hero-motif"
+          style={{ transform: `translateY(-50%) rotate(${heroMotifRotate}deg) scale(${heroMotifScale})`, color: heroMotifColor }}
+        />
         <div className="page-header">
           <div>
             <h1>{project?.name ?? "Loading..."}</h1>
@@ -168,7 +183,9 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
 
       {tab === "deployments" &&
         (deployments === null ? (
-          <CenterLoading />
+          <div className="deployment-grid">
+            {Array.from({ length: 3 }, (_, i) => <DeploymentCardSkeleton key={i} />)}
+          </div>
         ) : deployments.length === 0 ? (
           <div className="card empty-state">
             <EmptyLedgerIcon />

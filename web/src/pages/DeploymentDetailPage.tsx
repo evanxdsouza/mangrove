@@ -3,6 +3,7 @@ import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEnt
 import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
 import { DeployTimeline } from "../components/DeployTimeline";
+import { DeployHistorySparkline } from "../components/DeployHistorySparkline";
 import { LogViewer } from "../components/LogViewer";
 import { EnvVarsEditor } from "../components/EnvVarsEditor";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -297,6 +298,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       )}
       {tab === "history" && (
         <div className="card">
+          <DeployHistorySparkline history={history} />
           <DeployTimeline history={history} onRollback={rollback} busyId={rollbackBusyId} projectId={projectId} deploymentId={deploymentId} />
         </div>
       )}

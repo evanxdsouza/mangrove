@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Deployment, type Project } from "../api";
 import { Link, useRouter } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
-import { CenterLoading } from "../components/CenterLoading";
+import { ProjectCardSkeleton, ProjectRowSkeleton } from "../components/Skeleton";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
 import { PlantGlyph } from "../components/PlantGlyph";
@@ -10,6 +10,8 @@ import { ArrowRightIcon, ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIco
 import { imageIconKey, TemplateIcon } from "../templateIcons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
+import { firstTime } from "../lib/milestones";
+import { useToast } from "../components/Toast";
 import { CreateDeploymentModal } from "./ProjectDetailPage";
 
 interface ProjectStatus {
@@ -33,6 +35,7 @@ function readStoredView(): ProjectView {
 
 export function ProjectsPage() {
   const { navigate } = useRouter();
+  const { showToast } = useToast();
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, reload: reloadWorkspaces } = useWorkspaces();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [status, setStatus] = useState<Record<number, ProjectStatus>>({});
@@ -128,6 +131,12 @@ export function ProjectsPage() {
     const worst = status[p.id]?.worst;
     return worst != null && ATTENTION_STATUSES.has(worst);
   }).length;
+  // A thin, plain-text summary strip -- counts only, never colored (the
+  // same "static/structural content is never colored" rule the rest of
+  // the color-rule audit already enforces), built from the per-project
+  // rollups this page already computes per load, no new fetch.
+  const totalDeployments = Object.values(status).reduce((sum, s) => sum + s.count, 0);
+  const totalRunning = Object.values(status).reduce((sum, s) => sum + s.runningCount, 0);
 
   // Shared between the grid-card and list-row renderings: expanding reveals
   // a project's own deployments as a recessed inset (not a second bordered
@@ -366,6 +375,14 @@ export function ProjectsPage() {
         </div>
       </div>
 
+      {projects !== null && projects.length > 0 && (
+        <p className="projects-summary-strip">
+          {totalRunning} of {totalDeployments} deployment{totalDeployments === 1 ? "" : "s"} running
+          {attentionCount > 0 && <> &middot; {attentionCount} need{attentionCount === 1 ? "s" : ""} attention</>}
+          {activeWorkspaceId == null && workspaces.length > 1 && <> &middot; across {workspaces.length} workspaces</>}
+        </p>
+      )}
+
       {error && <div className="error-banner">{error}</div>}
 
       {projects !== null && projects.length > 0 && (
@@ -426,7 +443,15 @@ export function ProjectsPage() {
       <div className="projects-layout">
         <div className="projects-main">
           {projects === null ? (
-            <CenterLoading />
+            view === "grid" ? (
+              <div className="project-grid">
+                {Array.from({ length: 4 }, (_, i) => <ProjectCardSkeleton key={i} />)}
+              </div>
+            ) : (
+              <div className="project-list">
+                {Array.from({ length: 4 }, (_, i) => <ProjectRowSkeleton key={i} />)}
+              </div>
+            )
           ) : projects.length === 0 ? (
             <div className="card empty-state">
               <EmptyLedgerIcon />
@@ -464,9 +489,20 @@ export function ProjectsPage() {
           defaultWorkspaceId={activeWorkspaceId ?? undefined}
           onClose={() => setShowCreate(false)}
           onCreated={(id) => {
+            // The redirect into a brand-new, empty project used to be
+            // completely silent -- the critique's "Jordan" persona flagged
+            // this as the one real milestone (a first-timer's first
+            // project) that passed with zero acknowledgment. Scoped to a
+            // genuinely empty list at creation time, not "first time this
+            // browser has seen a project" (an existing instance's second
+            // user creating their own first project still gets the toast).
+            const isFirstEver = (projects?.length ?? 0) === 0;
             setShowCreate(false);
             reloadWorkspaces();
             navigate(`/projects/${id}`);
+            if (isFirstEver && firstTime("first-project")) {
+              showToast("First project planted. Deploy something into it whenever you're ready.");
+            }
           }}
         />
       )}

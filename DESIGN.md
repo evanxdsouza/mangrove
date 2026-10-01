@@ -248,7 +248,25 @@ The one component for a finished block of raw machine output an operator might n
 Spring-driven open/close (`lib/spring.ts`, critically damped) with two widths: `size="md"` (460px, the default, for a form) and `size="lg"` (720px, `.modal-lg`) for anything that lays out a card grid inside itself — the template gallery and GitHub repo picker used to squeeze a `grid-2` into a 460px modal, which is what clipped template descriptions mid-sentence and forced a horizontal scroll on a popup.
 
 ### Toast (`src/components/Toast.tsx`)
-Rare, on-brand milestone moments (first deploy ever, first rollback ever — gated by a one-time `localStorage` flag via `lib/milestones.ts` so they stay genuinely rare) surface as a small spring-animated toast, bottom-right, `--leaf-dim` bordered. Never used for routine status or errors — those stay in an `.error-banner` or a status pill, read instantly, no animation to wait out.
+Rare, on-brand milestone moments (first project ever, first deploy ever, first rollback ever — gated by a one-time `localStorage` flag via `lib/milestones.ts`'s `firstTime(key)` so they stay genuinely rare) surface as a small spring-animated toast, bottom-right, `--leaf-dim` bordered. Never used for routine status or errors — those stay in an `.error-banner` or a status pill, read instantly, no animation to wait out.
+
+### Skeleton loading (`src/components/Skeleton.tsx`)
+`SkeletonLine`/`SkeletonCircle` (a CSS-only animated-gradient shimmer, `background-position` sweeping across a `bg-elevated`/`bg-card` gradient) compose into shape-matched placeholders (`ProjectCardSkeleton`, `ProjectRowSkeleton`, `DeploymentCardSkeleton`) for the first load of a list, replacing a single centered `CenterLoading` spinner with something that previews the real layout. Automatically respects the app-wide `prefers-reduced-motion` rule already in `styles.css` — it's a loading indicator, not a status animation, so no separate exemption was needed.
+
+### Staggered card entrance
+`.project-card`/`.project-list-row`/`.deployment-card` each play a one-shot 0.3s fade-and-rise (`card-enter` keyframe) on mount, staggered by `:nth-child` position (0-210ms). Relies on React's keyed-list reconciliation (`key={p.id}`) to fire only on a genuine first mount, not on the 4s status-poll re-renders that already touch these lists — a stable key means the DOM node is reused, not remounted, so the animation doesn't replay every poll tick.
+
+### Per-project hero art
+`ProjectDetailPage`'s `.project-hero` band derives its gradient angle, `MangroveIcon` watermark rotation/scale, and leaf-vs-brass tint from `hashString(project.slug)` (`lib/hash.ts`, a djb2 variant) rather than randomness — so a given project always renders the same hero art across reloads, and no two differently-named projects look identical by chance.
+
+### Command palette (`SidebarSearch` in `Layout.tsx`)
+Extends the original project-only search into a combined project+deployment picker: typing lazy-loads every workspace's deployments (one parallel fetch across all visible projects, done once per session and cached, not per keystroke) and merges them with the already-loaded project list into one ranked, capped-at-8 result set, each row showing a kind-specific icon (`LedgerIcon` for a project, `DeployIcon` for a deployment) and its parent project as secondary text. Still no new backend endpoint — it composes the same per-project deployment-list call the Deployments tab already makes.
+
+### Deploy history sparkline (`src/components/DeployHistorySparkline.tsx`)
+A compact row of colored ticks (reusing `DeployTimeline`'s own `DOT_COLOR` map, exported for this purpose) above the full `DeployTimeline` list on a deployment's History tab — the last 40 runs, oldest to newest, so a long-lived deployment's recent reliability reads at a glance before scrolling the detailed log below it.
+
+### Projects summary strip
+A single `text-dim` line under the Projects page header ("3 of 5 deployments running · 1 needs attention · across 2 workspaces") computed from data the page already fetched for its cards — no new endpoint. Only renders once at least one project exists, and the "across N workspaces" clause only appears when no single workspace is selected.
 
 ### Log Viewer / Strip-Chart (`src/components/LogViewer.tsx`)
 A signature component: live logs render inside a `log-viewer-frame` with a `log-strip` above the text — one thin vertical tick per received line (height derived from that line's length, a taller red tick when the line matches an error/fail/panic pattern), scrolling right-aligned like a seismograph drum. `ResourceHistoryStrip` reuses the same idiom for periodic resource snapshots, with a `.chart-legend` explaining its tone colors and a capped per-tick width (`flex: 0 1 10px`) so a fresh instance with only one or two samples reads as "a few real readings," not one bar stretched to fill the whole strip like a decorative fill.

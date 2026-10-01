@@ -561,6 +561,12 @@ button, input, select, textarea {
 .page-header h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
 .page-header p { color: var(--text-dim); margin: 5px 0 0; font-size: 13.5px; }
 
+/* The Projects list's own "at a glance" line -- plain counts, never
+   colored (even the attention count), built from data the page already
+   computes per load. Gives the dashboard an actual front door instead of
+   opening straight onto the grid with no summary at all. */
+.projects-summary-strip { color: var(--text-dim); font-size: 13px; margin: -10px 0 18px; }
+
 /* A project/group page's own hero: a full-width decorative band behind the
    name -- art, not data, per DESIGN.md's color rules. The gradient and
    watermark carry no status of their own, so they're the one place a large
@@ -1392,6 +1398,25 @@ tr.row-link:hover { background: var(--bg-elevated); }
 }
 .log-strip-tick.danger { background: var(--red); }
 
+/* Deploy-history sparkline: one uniform tick per recent run, colored by
+   its real status -- the same seismograph idiom as .log-strip, applied to
+   outcomes instead of log lines. Sits above DeployTimeline in the History
+   tab, in its own neutral strip, not a card (a glance, not a data table). */
+.deploy-sparkline {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  margin-bottom: 16px;
+  padding: 0 2px;
+}
+.deploy-sparkline-tick {
+  flex: 1 1 6px;
+  max-width: 10px;
+  height: 100%;
+  border-radius: 1px;
+}
+
 /* Resource-usage history: the same seismograph-strip idiom as .log-strip,
    applied to a periodic snapshot instead of a log line -- one tick per
    sample, height from its fraction of ceiling/total, colored by the same
@@ -1556,6 +1581,48 @@ tr.row-link:hover { background: var(--bg-elevated); }
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Skeleton loading shapes -- a card/row's own outline shown while its
+   first fetch is in flight, instead of a spinner replacing the whole
+   content area. The shimmer sweep is a plain animation, so it's already
+   covered by the global prefers-reduced-motion rule above (collapses to
+   a static plate, which still reads fine as "loading"). */
+.skeleton-card { cursor: default; animation: none; }
+.skeleton-card:hover { border-color: var(--border); }
+.skeleton-line, .skeleton-circle {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-card) 37%, var(--bg-elevated) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+.skeleton-circle { border-radius: 50%; flex-shrink: 0; }
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* A resource card/row fades and lifts in once, the first time it actually
+   mounts (not on every poll refresh -- React keeps the same DOM node across
+   a keyed re-render, so this never replays just because the 4s poll ticked).
+   A small per-position stagger reads as a deliberate reveal instead of
+   every card popping in at once. Capped at 8 positions; anything past that
+   just uses the same delay as #8 rather than growing unbounded on a long list. */
+.project-card, .project-list-row, .deployment-card {
+  animation: card-enter 0.3s var(--ease-out-expo) backwards;
+}
+.project-grid > *:nth-child(1), .project-list > *:nth-child(1), .deployment-grid > *:nth-child(1) { animation-delay: 0ms; }
+.project-grid > *:nth-child(2), .project-list > *:nth-child(2), .deployment-grid > *:nth-child(2) { animation-delay: 30ms; }
+.project-grid > *:nth-child(3), .project-list > *:nth-child(3), .deployment-grid > *:nth-child(3) { animation-delay: 60ms; }
+.project-grid > *:nth-child(4), .project-list > *:nth-child(4), .deployment-grid > *:nth-child(4) { animation-delay: 90ms; }
+.project-grid > *:nth-child(5), .project-list > *:nth-child(5), .deployment-grid > *:nth-child(5) { animation-delay: 120ms; }
+.project-grid > *:nth-child(6), .project-list > *:nth-child(6), .deployment-grid > *:nth-child(6) { animation-delay: 150ms; }
+.project-grid > *:nth-child(7), .project-list > *:nth-child(7), .deployment-grid > *:nth-child(7) { animation-delay: 180ms; }
+.project-grid > *:nth-child(n+8), .project-list > *:nth-child(n+8), .deployment-grid > *:nth-child(n+8) { animation-delay: 210ms; }
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .center-loading {
   display: flex; align-items: center; justify-content: center;

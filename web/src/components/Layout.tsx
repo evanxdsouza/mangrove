@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter } from "../router";
-import { api, type CurrentUser, type Project } from "../api";
+import { api, type CurrentUser, type Deployment, type Project } from "../api";
 import { useUiMode } from "../uiMode";
 import { useWorkspaces } from "../workspaceContext";
 import {
   CabinetIcon,
   ChevronDownIcon,
   CloseIcon,
+  DeployIcon,
   DialsIcon,
   GaugeIcon,
   GearIcon,
@@ -220,9 +221,24 @@ function useHostCritical(isOwner: boolean): boolean {
 // command-palette-style search. Client-side only: one /api/projects call
 // (every workspace, not scoped to the active station) cached for the
 // component's lifetime, no new endpoint.
+interface SearchMatch {
+  kind: "project" | "deployment";
+  id: number;
+  name: string;
+  slug: string;
+  projectId: number;
+  projectName?: string; // only set for a deployment match
+}
+
 function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onRequestExpand: () => void }) {
   const { navigate } = useRouter();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  // Deployments are fetched lazily, the first time a query actually needs
+  // them -- an eager fetch-per-project on every sidebar mount would be a
+  // real N+1 cost most visits never use (most sidebar renders never open
+  // search at all).
+  const [deploymentsByProject, setDeploymentsByProject] = useState<Record<number, Deployment[]> | null>(null);
+  const [loadingDeployments, setLoadingDeployments] = useState(false);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -240,6 +256,22 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
       .then((p) => setProjects(p ?? []))
       .catch(() => setProjects([]));
   }, []);
+
+  const ensureDeploymentsLoaded = () => {
+    if (deploymentsByProject != null || loadingDeployments || projects == null) return;
+    setLoadingDeployments(true);
+    Promise.all(
+      projects.map((p) =>
+        api
+          .get<Deployment[]>(`/api/projects/${p.id}/deployments`)
+          .then((d): [number, Deployment[]] => [p.id, d ?? []])
+          .catch((): [number, Deployment[]] => [p.id, []]),
+      ),
+    ).then((entries) => {
+      setDeploymentsByProject(Object.fromEntries(entries));
+      setLoadingDeployments(false);
+    });
+  };
 
   useEffect(() => {
     if (!collapsed && focusPending) {
@@ -276,15 +308,34 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
   }, [open]);
 
   const q = query.trim().toLowerCase();
-  const matches = q
-    ? (projects ?? []).filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q)).slice(0, 6)
+  const projectNameById = new Map((projects ?? []).map((p) => [p.id, p.name]));
+  const matches: SearchMatch[] = q
+    ? [
+        ...(projects ?? [])
+          .filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q))
+          .map((p): SearchMatch => ({ kind: "project", id: p.id, name: p.name, slug: p.slug, projectId: p.id })),
+        ...Object.entries(deploymentsByProject ?? {}).flatMap(([projectId, deps]) =>
+          deps
+            .filter((d) => d.name.toLowerCase().includes(q) || d.slug.toLowerCase().includes(q))
+            .map(
+              (d): SearchMatch => ({
+                kind: "deployment",
+                id: d.id,
+                name: d.name,
+                slug: d.slug,
+                projectId: Number(projectId),
+                projectName: projectNameById.get(Number(projectId)),
+              }),
+            ),
+        ),
+      ].slice(0, 8)
     : [];
 
-  const go = (p: Project) => {
+  const go = (m: SearchMatch) => {
     setQuery("");
     setOpen(false);
     inputRef.current?.blur();
-    navigate(`/projects/${p.id}`);
+    navigate(m.kind === "project" ? `/projects/${m.projectId}` : `/projects/${m.projectId}/deployments/${m.id}`);
   };
 
   if (collapsed) {
@@ -309,15 +360,21 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
       <input
         ref={inputRef}
         className="sidebar-search-input"
-        placeholder="Search"
-        aria-label="Search projects"
+        placeholder="Search projects and deployments"
+        aria-label="Search projects and deployments"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setActiveIndex(0);
           setOpen(true);
+          if (e.target.value.trim()) ensureDeploymentsLoaded();
         }}
-        onFocus={() => query && setOpen(true)}
+        onFocus={() => {
+          if (query) {
+            setOpen(true);
+            ensureDeploymentsLoaded();
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setOpen(false);
@@ -337,19 +394,25 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
       {open && query && (
         <div className="sidebar-search-panel">
           {matches.length === 0 ? (
-            <div className="sidebar-search-empty">No projects match &ldquo;{query}&rdquo;.</div>
+            <div className="sidebar-search-empty">
+              {loadingDeployments ? "Searching..." : <>No projects or deployments match &ldquo;{query}&rdquo;.</>}
+            </div>
           ) : (
-            matches.map((p, i) => (
+            matches.map((m, i) => (
               <button
-                key={p.id}
+                key={`${m.kind}-${m.id}`}
                 type="button"
                 className={`sidebar-search-item ${i === activeIndex ? "active" : ""}`}
                 onMouseEnter={() => setActiveIndex(i)}
-                onClick={() => go(p)}
+                onClick={() => go(m)}
               >
-                <LedgerIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
-                {p.name}
-                <span className="sidebar-search-item-slug">{p.slug}</span>
+                {m.kind === "project" ? (
+                  <LedgerIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
+                ) : (
+                  <DeployIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
+                )}
+                {m.name}
+                <span className="sidebar-search-item-slug">{m.kind === "deployment" ? m.projectName : m.slug}</span>
               </button>
             ))
           )}
