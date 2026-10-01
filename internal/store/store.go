@@ -427,7 +427,8 @@ const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
 	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, environment,
 	       promotes_to_deployment_id, pr_previews_enabled, pr_number, github_pr_comment_id, status, node_id,
-	       created_at, updated_at, last_deployed_at, public_paths, sleep_enabled, sleep_idle_minutes, last_request_at`
+	       created_at, updated_at, last_deployed_at, public_paths, sleep_enabled, sleep_idle_minutes, last_request_at,
+	       self_heal_enabled, auto_retry_count`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
 // scanDeploymentRow serve single-row lookups and multi-row list queries
@@ -449,7 +450,8 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Environment,
 		&promotesToID, &d.PRPreviewsEnabled, &prNumber, &githubPRCommentID, &d.Status, &d.NodeID,
-		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT, &publicPaths, &d.SleepEnabled, &d.SleepIdleMinutes, &lastRequestAtT)
+		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT, &publicPaths, &d.SleepEnabled, &d.SleepIdleMinutes, &lastRequestAtT,
+		&d.SelfHealEnabled, &d.AutoRetryCount)
 	if err != nil {
 		return models.Deployment{}, err
 	}
@@ -727,9 +729,57 @@ func (s *Store) TouchDeploymentDeployed(ctx context.Context, id int64) error {
 	// Also counts as traffic: a fresh deploy shouldn't read as having been
 	// idle since whenever it last saw a real visitor, which would let the
 	// idle-sleep scheduler put it straight back to sleep before anyone
-	// gets a chance to look at it.
-	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_deployed_at = CURRENT_TIMESTAMP, last_request_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	// gets a chance to look at it. Also resets auto_retry_count: a
+	// successful deploy (whether triggered normally or by the self-healing
+	// auto-retry scheduler) means the failure streak that count was tracking
+	// is over.
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET last_deployed_at = CURRENT_TIMESTAMP, last_request_at = CURRENT_TIMESTAMP, auto_retry_count = 0 WHERE id = ?`, id)
 	return err
+}
+
+// SetSelfHealEnabled toggles a deployment's opt-in to automated recovery --
+// see internal/scheduler/health.go and internal/scheduler/healer.go.
+func (s *Store) SetSelfHealEnabled(ctx context.Context, id int64, enabled bool) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET self_heal_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, enabled, id)
+	return err
+}
+
+// IncrementDeploymentAutoRetryCount records that internal/scheduler/
+// healer.go is about to attempt another automatic retry -- called right
+// before the retry's Deploy()/DeployCompose()/DeployStatic() call, so even
+// a retry that itself fails still counts toward the cap (otherwise a
+// persistently broken deployment would retry forever).
+func (s *Store) IncrementDeploymentAutoRetryCount(ctx context.Context, id int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE deployments SET auto_retry_count = auto_retry_count + 1 WHERE id = ?`, id)
+	return err
+}
+
+// ListAutoRetryCandidates returns every self-heal-enabled deployment
+// that's failed and hasn't exhausted its retry cap (2 attempts), with a
+// backoff computed from auto_retry_count against updated_at (the moment it
+// most recently transitioned to "failed" -- UpdateDeploymentStatus always
+// bumps updated_at on a status change): 1 minute before the first retry, 5
+// minutes before the second. What internal/scheduler/healer.go sweeps.
+func (s *Store) ListAutoRetryCandidates(ctx context.Context) ([]models.Deployment, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments
+		 WHERE self_heal_enabled = 1 AND status = 'failed' AND auto_retry_count < 2
+		   AND updated_at < datetime('now', '-' || (CASE auto_retry_count WHEN 0 THEN 1 WHEN 1 THEN 5 ELSE 999999 END) || ' minutes')`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]models.Deployment, 0)
+	for rows.Next() {
+		d, err := scanDeploymentRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 // SetDeploymentSleepConfig updates a deployment's idle-sleep opt-in and
@@ -1450,21 +1500,32 @@ func (s *Store) LatestHealthCheck(ctx context.Context, serviceID int64) (status 
 // just to poll a container.
 type RunnableService struct {
 	ID                   int64
+	DeploymentID         int64
 	ContainerID          string // the live, versioned container -- container_name is only a naming prefix, not a running container
 	InternalPort         int
 	HealthCheckPath      string
 	HealthCheckIntervalS int
 	HealthCheckTimeoutS  int
+	// SelfHealEnabled (the owning deployment's own flag) and
+	// ConsecutiveHealthFailures (this service's own running streak) are
+	// what internal/scheduler/health.go needs to decide whether a failed
+	// check should trigger an automatic restart -- joined in here rather
+	// than requiring a second query per service on every tick.
+	SelfHealEnabled           bool
+	ConsecutiveHealthFailures int
 }
 
 // ListRunningServicesWithHealthCheck returns every service that is running
 // and has an HTTP health check configured -- what the scheduler polls.
 func (s *Store) ListRunningServicesWithHealthCheck(ctx context.Context) ([]RunnableService, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, container_id_current, internal_port, health_check_path, health_check_interval_s, health_check_timeout_s
+		SELECT services.id, services.deployment_id, services.container_id_current, services.internal_port,
+		       services.health_check_path, services.health_check_interval_s, services.health_check_timeout_s,
+		       deployments.self_heal_enabled, services.consecutive_health_failures
 		FROM services
-		WHERE status = 'running' AND container_id_current IS NOT NULL AND container_id_current != ''
-		  AND health_check_path IS NOT NULL AND health_check_path != ''`)
+		JOIN deployments ON deployments.id = services.deployment_id
+		WHERE services.status = 'running' AND services.container_id_current IS NOT NULL AND services.container_id_current != ''
+		  AND services.health_check_path IS NOT NULL AND services.health_check_path != ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -1473,12 +1534,24 @@ func (s *Store) ListRunningServicesWithHealthCheck(ctx context.Context) ([]Runna
 	var out []RunnableService
 	for rows.Next() {
 		var r RunnableService
-		if err := rows.Scan(&r.ID, &r.ContainerID, &r.InternalPort, &r.HealthCheckPath, &r.HealthCheckIntervalS, &r.HealthCheckTimeoutS); err != nil {
+		if err := rows.Scan(&r.ID, &r.DeploymentID, &r.ContainerID, &r.InternalPort, &r.HealthCheckPath, &r.HealthCheckIntervalS, &r.HealthCheckTimeoutS,
+			&r.SelfHealEnabled, &r.ConsecutiveHealthFailures); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// SetServiceHealthFailureStreak records a service's current run of
+// consecutive failed health checks -- 0 on a healthy result, incremented on
+// a failure. internal/scheduler/health.go resets it to 0 after triggering
+// an automatic restart too, so the service needs a fresh full streak before
+// another one can fire (the per-check interval this is tied to already
+// rate-limits how often that can happen -- see docs/self-healing.md).
+func (s *Store) SetServiceHealthFailureStreak(ctx context.Context, serviceID int64, count int) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE services SET consecutive_health_failures = ? WHERE id = ?`, count, serviceID)
+	return err
 }
 
 // PruneOldHealthChecks deletes health_checks rows older than `before`,

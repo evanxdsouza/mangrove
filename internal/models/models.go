@@ -83,6 +83,14 @@ type Deployment struct {
 	SleepEnabled     bool       `json:"sleep_enabled"`
 	SleepIdleMinutes int        `json:"sleep_idle_minutes"`
 	LastRequestAt    *time.Time `json:"last_request_at,omitempty"`
+	// SelfHealEnabled opts a deployment into two automated recovery
+	// behaviors: internal/scheduler/health.go restarts a service whose
+	// health check fails repeatedly while otherwise "running", and
+	// internal/scheduler/healer.go retries a deploy that failed outright
+	// (up to a small cap, tracked by AutoRetryCount, reset to 0 on the next
+	// successful deploy).
+	SelfHealEnabled bool `json:"self_heal_enabled"`
+	AutoRetryCount  int  `json:"auto_retry_count"`
 }
 
 type Service struct {

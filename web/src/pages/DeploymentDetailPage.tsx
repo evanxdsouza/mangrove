@@ -287,6 +287,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           <OverviewTab services={services} deployment={deployment} canEdit={canEdit} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} isAdmin={isAdmin} />
           <SleepCard deploymentId={deploymentId} deployment={deployment} onSaved={load} canEdit={canEdit} />
+          <SelfHealCard deploymentId={deploymentId} deployment={deployment} onSaved={load} canEdit={canEdit} />
           <DomainsPanel deploymentId={deploymentId} canEdit={canEdit} isAdmin={isAdmin} />
           <AutoDeployCard projectId={projectId} deploymentId={deploymentId} deployment={deployment} onSaved={load} />
           {deployment?.promotes_to_deployment_id != null ? (
@@ -576,6 +577,79 @@ function SleepCard({
             onChange={(e) => setIdleMinutes(Math.max(1, Number(e.target.value) || 1))}
           />
           {deployment?.status === "sleeping" && <div className="field-hint">Currently asleep -- the next visit will wake it.</div>}
+        </div>
+      )}
+      {canEdit && (
+        <button className="btn btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+      )}
+      {saved && <div className="field-hint">Saved.</div>}
+    </div>
+  );
+}
+
+// SelfHealCard is the self-healing opt-in: when enabled, a service whose
+// health check fails repeatedly gets restarted automatically, and a deploy
+// that failed outright gets retried (with backoff, up to 2 attempts) by the
+// backend scheduler (internal/scheduler/health.go, internal/scheduler/
+// healer.go). Mirrors AccessControlCard/SleepCard's save/busy/error pattern.
+function SelfHealCard({
+  deploymentId,
+  deployment,
+  onSaved,
+  canEdit,
+}: {
+  deploymentId: number;
+  deployment: Deployment | null;
+  onSaved: () => void;
+  canEdit: boolean;
+}) {
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (deployment) {
+      setEnabled(deployment.self_heal_enabled);
+    }
+  }, [deployment]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.post(`/api/deployments/${deploymentId}/self-heal`, { enabled });
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title">Self-healing</div>
+      <p className="text-dim" style={{ marginTop: 0 }}>
+        Automatically restart this deployment's container if its health check fails repeatedly, and
+        automatically retry a deploy that fails outright (up to 2 attempts, with backoff) instead of
+        leaving it sitting failed until someone notices.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      {!canEdit && <div className="field-hint">Only an editor or admin can change self-healing.</div>}
+      <div className="field">
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={enabled} disabled={!canEdit} onChange={(e) => setEnabled(e.target.checked)} />
+          Self-heal automatically
+        </label>
+      </div>
+      {deployment && deployment.auto_retry_count > 0 && deployment.status === "failed" && (
+        <div className="field-hint">
+          Auto-retried {deployment.auto_retry_count} time{deployment.auto_retry_count === 1 ? "" : "s"} so far.
         </div>
       )}
       {canEdit && (

@@ -26,16 +26,7 @@ import (
 // every one of those triggers at once -- see auditDeploy. (Rollback and
 // scale bypass this switch entirely and record their own audit event.)
 func (s *Server) dispatchDeploy(ctx context.Context, dep models.Deployment, req orchestrator.DeployRequest) (int64, error) {
-	var historyID int64
-	var err error
-	switch dep.BuildStrategy {
-	case "compose":
-		historyID, err = s.Orchestrator.DeployCompose(ctx, req)
-	case "static":
-		historyID, err = s.Orchestrator.DeployStatic(ctx, req)
-	default:
-		historyID, err = s.Orchestrator.Deploy(ctx, req)
-	}
+	historyID, err := s.Orchestrator.DispatchDeploy(ctx, dep, req)
 	s.auditDeploy(ctx, dep, req, err)
 	return historyID, err
 }
@@ -462,41 +453,12 @@ func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildRedeployRequest resolves the source a deployment is configured with
-// into a DeployRequest ready to feed the deploy pipeline: for a git-backed
-// deployment, the linked repo's URL/branch and decrypted PAT; for the
-// image strategy, no source (a redeploy just reuses the image ref). Shared
-// by redeployDeployment and scaleDeployment.
+// into a DeployRequest ready to feed the deploy pipeline. The actual
+// resolution lives in orchestrator.BuildRedeployRequest, shared with
+// internal/scheduler/healer.go's automatic retry; this stays as a thin
+// method on Server since every call site in this file already has one.
 func (s *Server) buildRedeployRequest(ctx context.Context, dep models.Deployment) (orchestrator.DeployRequest, error) {
-	deployReq := orchestrator.DeployRequest{DeploymentID: dep.ID, TriggeredBy: "redeploy"}
-
-	if dep.ProjectRepoID != nil {
-		repo, err := s.Store.GetProjectRepoByID(ctx, *dep.ProjectRepoID)
-		if err != nil {
-			return deployReq, fmt.Errorf("load linked repo: %w", err)
-		}
-		ciphertext, nonce, err := s.Store.GetGithubPATEncrypted(ctx, repo.GithubPATID)
-		if err != nil {
-			return deployReq, fmt.Errorf("load repo credentials: %w", err)
-		}
-		token, err := s.Secrets.Open(patAAD(repo.GithubPATID), ciphertext, nonce)
-		if err != nil {
-			return deployReq, fmt.Errorf("decrypt repo credentials: %w", err)
-		}
-		s.Store.TouchGithubPATUsed(ctx, repo.GithubPATID)
-
-		branch := dep.GitBranch
-		if branch == "" {
-			branch = repo.DefaultBranch
-		}
-		deployReq.GitURL = fmt.Sprintf("https://github.com/%s/%s.git", repo.RepoOwner, repo.RepoName)
-		deployReq.GitRef = branch
-		deployReq.AuthToken = string(token)
-		return deployReq, nil
-	}
-	if dep.BuildStrategy != "image" {
-		return deployReq, fmt.Errorf("deployment has no linked repository to redeploy from; link a repo first, or use POST .../deploy with explicit git parameters")
-	}
-	return deployReq, nil
+	return s.Orchestrator.BuildRedeployRequest(ctx, dep)
 }
 
 type scaleDeploymentRequest struct {

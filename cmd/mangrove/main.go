@@ -140,7 +140,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		PublicURL:               cfg.PublicURL,
 	}
 
-	healthChecker := scheduler.NewHealthChecker(st, dockerExec, log)
+	healthChecker := scheduler.NewHealthChecker(orch, log)
 	go healthChecker.Run(ctx)
 	go healthChecker.PruneOldChecks(ctx)
 
@@ -159,6 +159,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	sleeper := scheduler.NewSleeper(orch, log)
 	go sleeper.Run(ctx)
+
+	healer := scheduler.NewHealer(orch, log)
+	go healer.Run(ctx)
 
 	// Home-server DDNS: only started when MANGROVE_DDNS_DOMAIN is set (a
 	// VPS/Nest install leaves it empty, see setup.sh's "home" vs "vps"

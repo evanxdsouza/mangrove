@@ -105,6 +105,8 @@ export interface Deployment {
   sleep_enabled: boolean;
   sleep_idle_minutes: number;
   last_request_at?: string;
+  self_heal_enabled: boolean;
+  auto_retry_count: number;
 }
 
 export interface Service {
