@@ -6,6 +6,7 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/executor"
+	"github.com/evanxdsouza/mangrove/internal/gatepaths"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
 	"github.com/evanxdsouza/mangrove/internal/proxy"
 )
@@ -14,26 +15,42 @@ import (
 // password-protection settings, and -- if the deployment currently has a
 // running container -- immediately re-pushes (or removes) its Caddy route
 // so the change takes effect without a redeploy. Enabling password
-// protection always requires a password in the same call; there is no
-// "keep the old password" path, which keeps this handler from needing to
-// read back a hash it can't safely re-display anyway.
-func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64, isPublic, passwordProtected bool, password string) error {
-	if passwordProtected && password == "" {
-		return fmt.Errorf("password is required to enable password protection")
+// protection requires a password in the same call; the one exception is a
+// deployment that is already protected, where an empty password keeps the
+// existing hash (so the public-path list can be edited without re-typing
+// it). publicPaths only has an effect while password-protected -- see
+// internal/gatepaths.
+func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64, isPublic, passwordProtected bool, password string, publicPaths []string) error {
+	publicPaths, err := gatepaths.Normalize(publicPaths)
+	if err != nil {
+		return err
 	}
-
-	var passwordHash string
-	if passwordProtected {
-		hash, err := auth.HashPasswordBcrypt(password)
-		if err != nil {
-			return fmt.Errorf("hash password: %w", err)
-		}
-		passwordHash = hash
+	if !passwordProtected {
+		publicPaths = nil
 	}
 
 	dep, err := o.Store.GetDeployment(ctx, deploymentID)
 	if err != nil {
 		return fmt.Errorf("load deployment: %w", err)
+	}
+
+	var passwordHash string
+	switch {
+	case !passwordProtected:
+	case password != "":
+		hash, err := auth.HashPasswordBcrypt(password)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		passwordHash = hash
+	case dep.PasswordProtected:
+		passwordHash, err = o.Store.GetDeploymentPasswordHash(ctx, dep.ID)
+		if err != nil {
+			return fmt.Errorf("load existing password: %w", err)
+		}
+	}
+	if passwordProtected && passwordHash == "" {
+		return fmt.Errorf("password is required to enable password protection")
 	}
 	services, err := o.Store.ListServices(ctx, deploymentID)
 	if err != nil {
@@ -44,7 +61,7 @@ func (o *Orchestrator) SetAccessControl(ctx context.Context, deploymentID int64,
 	}
 	svc := services[0]
 
-	if err := o.Store.SetDeploymentAccessControl(ctx, dep.ID, isPublic, passwordProtected, passwordHash); err != nil {
+	if err := o.Store.SetDeploymentAccessControl(ctx, dep.ID, isPublic, passwordProtected, passwordHash, publicPaths); err != nil {
 		return fmt.Errorf("update deployment: %w", err)
 	}
 	if err := o.Store.UpdateServiceInternalOnly(ctx, svc.ID, !isPublic); err != nil {

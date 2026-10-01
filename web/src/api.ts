@@ -90,6 +90,7 @@ export interface Deployment {
   auto_deploy_on_push: boolean;
   is_public: boolean;
   password_protected: boolean;
+  public_paths: string[];
   image_retention_count: number;
   replicas: number;
   environment: "production" | "staging" | "preview";

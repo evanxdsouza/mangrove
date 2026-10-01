@@ -23,6 +23,7 @@ import (
 
 	"github.com/evanxdsouza/mangrove/internal/auth"
 	"github.com/evanxdsouza/mangrove/internal/gateauth"
+	"github.com/evanxdsouza/mangrove/internal/gatepaths"
 )
 
 const gateCallbackPath = "/__mangrove_gate__/callback"
@@ -69,6 +70,12 @@ func (s *Server) handleGatedRequest(w http.ResponseWriter, r *http.Request, depl
 	default:
 		cookie, err := r.Cookie(gateauth.CookieName)
 		if err == nil && gateauth.NewSigner(s.Secrets).VerifyCookie(cookie.Value, deploymentID) {
+			s.gateProxyThrough(w, r, deploymentID)
+			return
+		}
+		// A path the owner marked public skips the gate -- checked only
+		// after the cookie, so a signed-in visitor is unaffected.
+		if dep, err := s.Store.GetDeployment(r.Context(), deploymentID); err == nil && gatepaths.Match(dep.PublicPaths, r.URL.Path) {
 			s.gateProxyThrough(w, r, deploymentID)
 			return
 		}

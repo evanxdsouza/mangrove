@@ -12,7 +12,7 @@ from scratch, and update this file (directory table, commands, "where to
 look" pointers, or the verified-status snapshot) as part of any change that
 makes part of it stale — see [CLAUDE.md](../CLAUDE.md).
 
-Last verified: 2026-09-29, after a fifth `web/`-only pass closing every remaining gap from a full diff against the reference dashboard: mini-card children with real per-technology icons, an inline "+New deployment" quick-add, a dedicated run/log page per deploy-history entry (`RunDetailPage`), environment-grouped deployment sections, a real "internal address" stat, and a collapsible icon-rail sidebar -- backend rows below (Go build/vet/test/race) are carried over unchanged from the 2026-09-18 pass since this one didn't touch `internal/`/`cmd/`; see the "Verified status" section below.
+Last verified: 2026-09-29, after merging two independently-developed lines: a `web/`-only series of five frontend passes (closing every remaining gap from a full diff against a reference dashboard -- mini-card children with real per-technology icons, an inline "+New deployment" quick-add, a dedicated run/log page per deploy-history entry (`RunDetailPage`), environment-grouped deployment sections, a real "internal address" stat, and a collapsible icon-rail sidebar), and PR #31 (`internal/gatepaths`: password-protected deployments can leave chosen pages/assets unprotected, e.g. a public pricing page behind an otherwise-gated app). Backend rows below (Go build/vet/test/race) reflect PR #31's own 2026-09-19 verification (unit/integration only, not re-clicked through a browser since); the frontend rows reflect the five-pass series -- see the "Verified status" section below for both.
 
 ## What this is
 
@@ -46,6 +46,7 @@ to the same HTTP API. No separate frontend repo, no microservices.
 | `internal/portregistry/` | Allocates/releases host ports for public deployments from `MANGROVE_PORT_RANGE_MIN/_MAX`. | [architecture.md](architecture.md) |
 | `internal/auth/` | Password hashing (bcrypt), session cookie issuing/validation, global-role middleware (`RequireAuth`/`RequireOwner`), and per-workspace role middleware (`workspace.go`'s `RequireWorkspaceRole`/`HasWorkspaceRole` — admin/editor/viewer, backed by `workspace_members`). | [multi-user.md](multi-user.md) |
 | `internal/gateauth/` | Signed, tamper-evident tokens (sealed under the same master key as `internal/secrets`) backing a password-protected deployment's gate cookie and its cross-domain "continue with your Mangrove account" handoff -- no new DB table. | [protected-deployments.md](protected-deployments.md) |
+| `internal/gatepaths/` | Validation + matching for a protected deployment's "unprotected pages" (public paths that skip the gate). Rejects non-canonical request paths so `..` can't escape a public prefix. | [protected-deployments.md](protected-deployments.md) |
 | `internal/github/` | GitHub OAuth, repo listing, commit-status posting, PR comment upsert. | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/webhook/` | `githubWebhook` HTTP handler's supporting logic — HMAC verify, delivery dedup. (Handler itself is `internal/api/webhook.go`.) | [architecture.md](architecture.md)#github-auto-deploy |
 | `internal/templates/` | `templates.go` (loader + `validate()`, panics at `init()` on a bad template) + `data/*.json` (the templates themselves, embedded via `go:embed`). | [templates.md](templates.md) |
@@ -142,7 +143,7 @@ go build -o mangrove-mcp ./cmd/mangrove-mcp
 - **Protected deployments (the password/account gate page)**:
   `internal/api/gate.go` + `gate_templates.go` (the gate/handoff/login HTTP
   handlers and their standalone HTML), `internal/gateauth/` (the signed
-  tokens), `internal/proxy/caddy.go`'s `gateHandler` (how Caddy routes a
+  tokens), `internal/gatepaths/` (which paths bypass the gate), `internal/proxy/caddy.go`'s `gateHandler` (how Caddy routes a
   protected deployment there instead of straight to the app),
   `internal/orchestrator/access.go`'s `GateUpstreams` (how Mangrove finds
   the real app once a visitor is let through). Read

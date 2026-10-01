@@ -29,23 +29,27 @@ type Project struct {
 }
 
 type Deployment struct {
-	ID                  int64  `json:"id"`
-	ProjectID           int64  `json:"project_id"`
-	Name                string `json:"name"`
-	Slug                string `json:"slug"`
-	BuildStrategy       string `json:"build_strategy"`
-	GitBranch           string `json:"git_branch,omitempty"`
-	ProjectRepoID       *int64 `json:"project_repo_id,omitempty"`
-	ImageRef            string `json:"image_ref,omitempty"`
-	RootPath            string `json:"root_path"`
-	DockerfilePath      string `json:"dockerfile_path,omitempty"`
-	ComposePath         string `json:"compose_path,omitempty"`
-	StaticBuildCommand  string `json:"static_build_command,omitempty"`
-	StaticOutputDir     string `json:"static_output_dir,omitempty"`
-	AutoDeployOnPush    bool   `json:"auto_deploy_on_push"`
-	IsPublic            bool   `json:"is_public"`
-	PasswordProtected   bool   `json:"password_protected"`
-	ImageRetentionCount int    `json:"image_retention_count"`
+	ID                 int64  `json:"id"`
+	ProjectID          int64  `json:"project_id"`
+	Name               string `json:"name"`
+	Slug               string `json:"slug"`
+	BuildStrategy      string `json:"build_strategy"`
+	GitBranch          string `json:"git_branch,omitempty"`
+	ProjectRepoID      *int64 `json:"project_repo_id,omitempty"`
+	ImageRef           string `json:"image_ref,omitempty"`
+	RootPath           string `json:"root_path"`
+	DockerfilePath     string `json:"dockerfile_path,omitempty"`
+	ComposePath        string `json:"compose_path,omitempty"`
+	StaticBuildCommand string `json:"static_build_command,omitempty"`
+	StaticOutputDir    string `json:"static_output_dir,omitempty"`
+	AutoDeployOnPush   bool   `json:"auto_deploy_on_push"`
+	IsPublic           bool   `json:"is_public"`
+	PasswordProtected  bool   `json:"password_protected"`
+	// PublicPaths are path patterns that bypass the password gate on a
+	// password-protected deployment: an exact path, or a prefix if it ends
+	// in "*". See internal/api/gate.go.
+	PublicPaths         []string `json:"public_paths"`
+	ImageRetentionCount int      `json:"image_retention_count"`
 	// Replicas is how many containers of the same image run for this
 	// deployment, load-balanced behind a single Caddy route. Only
 	// meaningful for single-service deployments (dockerfile/nixpacks/image/

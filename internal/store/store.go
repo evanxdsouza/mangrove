@@ -427,7 +427,7 @@ const deploymentColumns = `id, project_id, name, slug, build_strategy, COALESCE(
 	       COALESCE(static_build_command,''), COALESCE(static_output_dir,''),
 	       auto_deploy_on_push, is_public, password_protected, image_retention_count, replicas, environment,
 	       promotes_to_deployment_id, pr_previews_enabled, pr_number, github_pr_comment_id, status, node_id,
-	       created_at, updated_at, last_deployed_at`
+	       created_at, updated_at, last_deployed_at, public_paths`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows, letting
 // scanDeploymentRow serve single-row lookups and multi-row list queries
@@ -443,14 +443,16 @@ func scanDeploymentRow(sc rowScanner) (models.Deployment, error) {
 	var prNumber sql.NullInt64
 	var githubPRCommentID sql.NullInt64
 	var lastDeployedAtT sql.NullTime
+	var publicPaths string
 	err := sc.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Slug, &d.BuildStrategy, &d.GitBranch, &projectRepoID,
 		&d.ImageRef, &d.RootPath, &d.DockerfilePath, &d.ComposePath, &d.StaticBuildCommand, &d.StaticOutputDir,
 		&d.AutoDeployOnPush, &d.IsPublic, &d.PasswordProtected, &d.ImageRetentionCount, &d.Replicas, &d.Environment,
 		&promotesToID, &d.PRPreviewsEnabled, &prNumber, &githubPRCommentID, &d.Status, &d.NodeID,
-		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT)
+		&d.CreatedAt, &d.UpdatedAt, &lastDeployedAtT, &publicPaths)
 	if err != nil {
 		return models.Deployment{}, err
 	}
+	d.PublicPaths = splitPublicPaths(publicPaths)
 	if projectRepoID.Valid {
 		d.ProjectRepoID = &projectRepoID.Int64
 	}
@@ -721,12 +723,19 @@ func (s *Store) TouchDeploymentDeployed(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s *Store) SetDeploymentAccessControl(ctx context.Context, id int64, isPublic, passwordProtected bool, passwordHash string) error {
+func (s *Store) SetDeploymentAccessControl(ctx context.Context, id int64, isPublic, passwordProtected bool, passwordHash string, publicPaths []string) error {
 	_, err := s.DB.ExecContext(ctx,
-		`UPDATE deployments SET is_public = ?, password_protected = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-		isPublic, passwordProtected, nullIfEmpty(passwordHash), id,
+		`UPDATE deployments SET is_public = ?, password_protected = ?, password_hash = ?, public_paths = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		isPublic, passwordProtected, nullIfEmpty(passwordHash), strings.Join(publicPaths, "\n"), id,
 	)
 	return err
+}
+
+func splitPublicPaths(v string) []string {
+	if v == "" {
+		return []string{}
+	}
+	return strings.Split(v, "\n")
 }
 
 // GetDeploymentPasswordHash is kept separate from GetDeployment
