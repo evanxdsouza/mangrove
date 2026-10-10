@@ -1320,11 +1320,11 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
           <>
             <div className="kv-row">
               <span className="kv-key">Image</span>
-              <span className="kv-value">{service.image_tag_current ?? "—"}</span>
+              <span className="kv-value mono">{service.image_tag_current ?? "—"}</span>
             </div>
             <div className="kv-row">
               <span className="kv-key">Internal port</span>
-              <span className="kv-value">{service.internal_port || "—"}</span>
+              <span className="kv-value mono">{service.internal_port || "—"}</span>
             </div>
             <div className="kv-row">
               <span className="kv-key">Internal address</span>
@@ -1334,19 +1334,19 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
             </div>
             <div className="kv-row">
               <span className="kv-key">Resources</span>
-              <span className="kv-value">
+              <span className="kv-value mono">
                 {service.cpu_limit_cores} CPU / {service.memory_limit_mb}MB
               </span>
             </div>
             <div className="kv-row">
               <span className="kv-key">Replicas</span>
-              <span className="kv-value">{(service.replica_container_ids?.length ?? 1) || 1}</span>
+              <span className="kv-value mono">{(service.replica_container_ids?.length ?? 1) || 1}</span>
             </div>
           </>
         )}
         <div className="kv-row">
           <span className="kv-key">Host port</span>
-          <span className="kv-value">{service.host_port ?? (service.is_internal_only ? "internal only" : "not yet assigned")}</span>
+          <span className="kv-value mono">{service.host_port ?? (service.is_internal_only ? "internal only" : "not yet assigned")}</span>
         </div>
         {!isStatic && (
           <div className="kv-row">
