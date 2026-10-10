@@ -18,6 +18,7 @@ interface ProjectStatus {
   worst: string | null;
   count: number;
   runningCount: number;
+  lastDeployedAt: string | null;
 }
 
 // "Needs attention" is the same worst-status classification StatusPill
@@ -93,6 +94,10 @@ export function ProjectsPage() {
                   worst: worstStatus(deps.map((d) => d.status)),
                   count: deps.length,
                   runningCount: deps.filter((d) => d.status === "running").length,
+                  lastDeployedAt: deps.reduce<string | null>(
+                    (best, d) => (d.last_deployed_at && (!best || d.last_deployed_at > best) ? d.last_deployed_at : best),
+                    null,
+                  ),
                 },
               ]),
             ),
@@ -186,7 +191,7 @@ export function ProjectsPage() {
         onClick={() => navigate(`/projects/${p.id}`)}
       >
         <div className="project-card-top">
-          <PlantGlyph status={s?.worst} size={20} />
+          <span className="icon-box"><PlantGlyph status={s?.worst} size={22} /></span>
           <div className="project-card-heading">
             <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
               {p.name}
@@ -254,8 +259,10 @@ export function ProjectsPage() {
             ) : (
               <span />
             )}
-            <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
           </div>
+        </div>
+        <div className="project-card-lastdeployed">
+          Last deployed <strong>{s?.lastDeployedAt ? fmtWhen(s.lastDeployedAt) : "never"}</strong>
         </div>
 
         {renderChildren(p, isExpanded)}

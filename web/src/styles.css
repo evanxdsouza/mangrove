@@ -17,62 +17,56 @@
      with real separation between page/sidebar/card/border, instead of the
      original palette's four surfaces sitting within a few percent of each
      other's lightness. */
-  --bg: #0a0f0b;
-  --bg-elevated: #121a15;
-  --bg-card: #1b2620;
-  --bg-recorder: #050805; /* logs, terminal, code -- the darkest surface */
-  --bg-inset: #070a08; /* recessed fields inside a card */
+  --bg: #0b0c0e;
+  --bg-elevated: #111317;
+  --bg-card: #16181d;
+  --bg-recorder: #060708; /* logs, terminal, code -- the darkest surface */
+  --bg-inset: #0e1013; /* recessed fields inside a card */
 
-  --border: #362a1a;
-  --border-hover: #4d3c25;
-  --border-strong: #5e4a2d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.22);
 
   /* ---- Text ---------------------------------------------------------- */
-  --text: #ece3d2;
-  --text-dim: #a99b83;
-  --text-faint: #6f6250;
+  --text: #f3f4f6;
+  --text-dim: #9ca3af;
+  --text-faint: #6b7280;
 
-  /* ---- Instrument accents -------------------------------------------- */
-  /* Brass is now the SECONDARY metallic accent: borders, dividers, plaque
-     labels, page-identifier icons, texture -- never a primary action.
-     See --leaf below for the one living/primary accent. Settings > Theme
-     still swaps this family (Copper/Iron/Silver/Indigo) -- it themes which
-     *metal* trims the panel, not the living accent, which stays leaf
-     across every metal. */
-  --brass: #caa057;
-  --brass-bright: #e2bd76;
-  --brass-dim: #7a6236;
-  --brass-wash: rgba(202, 160, 87, 0.14);
-  --brass-wash-strong: rgba(202, 160, 87, 0.24);
+  /* ---- Accents ------------------------------------------------------- */
+  /* --brass* is the SECONDARY structural accent (labels, dividers); in the
+     default theme it is a neutral cool gray. Settings > Theme still swaps it. */
+  --brass: #9ca3af;
+  --brass-bright: #d1d5db;
+  --brass-dim: #6b7280;
+  --brass-wash: rgba(156, 163, 175, 0.12);
+  --brass-wash-strong: rgba(156, 163, 175, 0.22);
 
-  /* Leaf: the one living/primary accent -- primary buttons, active nav/tab,
-     focus rings, the station mark, the thing the eye lands on first. A
-     real saturated grass green, deliberately hued away from verdigris's
-     oxidized-copper teal (see below) so a status beacon never blends into
-     the brand accent it sits next to. */
-  --leaf: #4fae42;
-  --leaf-bright: #6fcf5c;
-  --leaf-dim: #35692e;
-  --leaf-wash: rgba(79, 174, 66, 0.16);
-  --leaf-wash-strong: rgba(79, 174, 66, 0.28);
-  --leaf-text-on: #0c1509; /* near-black text/icon color on a filled leaf surface */
+  /* The --leaf* names are kept for the one primary accent (primary buttons,
+     active nav/tab, focus rings) but the hue is now vermilion #E54D2E. */
+  --leaf: #e54d2e;
+  --leaf-bright: #f26a4d;
+  --leaf-dim: #8f2f1c;
+  --leaf-wash: rgba(229, 77, 46, 0.16);
+  --leaf-wash-strong: rgba(229, 77, 46, 0.28);
+  --leaf-text-on: #ffffff; /* text/icon color on a filled accent surface */
 
-  --verdigris: #55a087;
-  --verdigris-bright: #6dbb9e;
-  --verdigris-wash: rgba(85, 160, 135, 0.15);
+  /* --verdigris* is the status green (healthy/running). */
+  --verdigris: #22c55e;
+  --verdigris-bright: #22c55e;
+  --verdigris-wash: rgba(34, 197, 94, 0.15);
 
-  --red: #cc5c53;
-  --red-bright: #e0776c;
-  --red-wash: rgba(204, 92, 83, 0.14);
+  --red: #ef4444;
+  --red-bright: #f87171;
+  --red-wash: rgba(239, 68, 68, 0.15);
 
-  --ochre: #c98a3d;
-  --ochre-bright: #dca158;
-  --ochre-wash: rgba(201, 138, 61, 0.15);
+  --ochre: #f59e0b;
+  --ochre-bright: #fbbf24;
+  --ochre-wash: rgba(245, 158, 11, 0.15);
 
-  --gray-wash: rgba(169, 155, 131, 0.14);
+  --gray-wash: rgba(156, 163, 175, 0.14);
 
-  --mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sans: "Inter Variable", "Inter", "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
 
   /* Spacing scale in rem, not fixed px, so it grows with the user's text
      size setting rather than only the font growing while paddings stay
@@ -85,9 +79,9 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
-  --radius-sm: 5px;
+  --radius-sm: 8px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 16px;
   --radius-full: 999px;
 
   /* Offset + blur, never a zero-offset colored halo -- depth reads as a
@@ -102,7 +96,7 @@
   /* Translucent surfaces (sidebar, modal backdrop) -- content scrolls
      underneath rather than sitting on a flat opaque strip. Disabled under
      prefers-reduced-transparency below. */
-  --material-sidebar: rgba(20, 16, 10, 0.78);
+  --material-sidebar: rgba(11, 12, 14, 0.85);
   --material-backdrop: rgba(6, 4, 2, 0.6);
 }
 
@@ -209,8 +203,12 @@ button, input, select, textarea {
    Shell / sidebar / station switcher
    ========================================================================== */
 
+/* Floating-sidebar shell: the sidebar is its own rounded card, inset from
+   the viewport edges, with a gap before the main column. */
 .app-shell {
   display: flex;
+  gap: 16px;
+  padding: 16px;
   min-height: 100vh;
 }
 
@@ -219,7 +217,14 @@ button, input, select, textarea {
   flex-shrink: 0;
   background: var(--material-sidebar);
   backdrop-filter: blur(20px) saturate(140%);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 16px;
+  align-self: flex-start;
+  height: calc(100vh - 32px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 18px 12px;
@@ -389,7 +394,7 @@ button, input, select, textarea {
 .station-switcher-item.active { color: var(--text); background: var(--leaf-wash); }
 .station-switcher-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
 .station-switcher-item.active .dot { background: var(--leaf); }
-.station-switcher-item-count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.station-switcher-item-count { margin-left: auto; font-size: 11px; color: var(--text-faint); }
 
 .station-switcher-divider { height: 1px; background: var(--border); margin: 5px 3px; }
 
@@ -445,7 +450,6 @@ button, input, select, textarea {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-faint);
-  font-family: var(--mono);
   font-size: 10px;
   pointer-events: none;
 }
@@ -542,8 +546,8 @@ button, input, select, textarea {
 .main {
   flex: 1;
   min-width: 0;
-  padding: 32px 40px 56px;
-  max-width: 1120px;
+  padding: 16px 24px 56px;
+  max-width: 1280px;
 }
 
 /* ==========================================================================
@@ -609,7 +613,7 @@ button, input, select, textarea {
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 16px;
 }
@@ -658,7 +662,9 @@ button, input, select, textarea {
 /* Projects specifically get a wider minimum than deployments/templates --
    at a realistic project count (2-6), 260px cards left a populated grid
    photographing nearly as empty as a zero-project state (critique finding). */
-.project-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.project-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .project-grid { grid-template-columns: 1fr; } }
 
 /* Resource-list toolbar: search, status filter chips, and the grid/list
    view toggle share one row above the grid, wrapping on narrow screens
@@ -675,7 +681,7 @@ button, input, select, textarea {
 .filter-chips { display: flex; gap: 6px; }
 .filter-chip {
   padding: 6px 12px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-dim);
@@ -775,12 +781,12 @@ button, input, select, textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 2px 8px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   font-size: 11px;
 }
 .project-card-workspace:hover { color: var(--brass-bright); border-color: var(--border-hover); }
-.project-card-created { font-family: var(--mono); font-size: 11.5px; flex-shrink: 0; }
+.project-card-created { font-size: 11.5px; flex-shrink: 0; }
 
 /* Expand/collapse chevron on a project card with deployments -- reuses the
    station-switcher's own rotate-on-expand idiom for consistency. */
@@ -894,12 +900,12 @@ button, input, select, textarea {
    a third column into a phone width. */
 .projects-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
 .projects-main { min-width: 0; }
-.activity-panel { position: sticky; top: 24px; margin-bottom: 0; }
+.activity-panel { margin-bottom: 0; }
 @media (max-width: 900px) {
   .projects-layout { grid-template-columns: 1fr; }
   .activity-panel { position: static; }
@@ -1097,12 +1103,11 @@ tr.row-link:hover { background: var(--bg-elevated); }
   align-items: center;
   gap: 6px;
   padding: 3px 9px 3px 7px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  font-family: var(--mono);
 }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .pill-green { background: var(--verdigris-wash); color: var(--verdigris-bright); }
@@ -1268,7 +1273,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
    ========================================================================== */
 
 .stat-tile { display: flex; flex-direction: column; gap: 4px; }
-.stat-value { font-size: 26px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.stat-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 11.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* A row of instrument readouts sharing one panel, divided by hairlines
@@ -1333,7 +1338,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .timeline-marker .dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--bg-card); box-shadow: 0 0 0 1px var(--border); }
 .timeline-body { flex: 1; min-width: 0; }
 .timeline-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-.timeline-time { color: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
+.timeline-time { color: var(--text-dim); font-size: 11.5px; }
 .timeline-msg { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
 .timeline-item-link { display: block; color: inherit; text-decoration: none; }
 .timeline-item-link:hover .timeline-msg { color: var(--text); }
@@ -1359,7 +1364,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .run-step-icon-success { color: var(--verdigris); }
 .run-step-icon-failed { color: var(--red); }
 .run-step-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-step-duration { font-family: var(--mono); font-size: 12px; flex-shrink: 0; }
+.run-step-duration { font-size: 12px; flex-shrink: 0; }
 .run-step-no-output { margin: 0; }
 
 /* ==========================================================================
@@ -1566,7 +1571,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
 
 .kv-list { display: flex; flex-direction: column; gap: 9px; }
 .kv-row { display: flex; align-items: center; gap: 10px; }
-.kv-key { font-family: var(--mono); font-size: 12.5px; color: var(--text-dim); min-width: 150px; }
+.kv-key { font-size: 12.5px; color: var(--text-dim); min-width: 150px; }
 .kv-value { font-family: var(--mono); font-size: 12.5px; flex: 1; }
 
 /* ==========================================================================
@@ -1669,11 +1674,12 @@ tr.row-link:hover { background: var(--bg-elevated); }
 
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
+  .app-shell { padding: 10px; gap: 10px; }
   .sidebar {
     width: 100%;
+    position: static;
+    height: auto;
     flex-direction: column;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
     padding: 12px 14px;
   }
   .sidebar-brand { padding: 2px 0; }
@@ -1685,7 +1691,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
   .sidebar.mobile-open .sidebar-body { display: flex; }
   .sidebar-footer { margin-top: 18px; padding: 14px 4px 2px; border-top: 1px solid var(--border); }
   .station-switcher-panel { right: 0; }
-  .main { padding: 22px 18px 40px; max-width: 100%; }
+  .main { padding: 12px 8px 40px; max-width: 100%; }
   .page-header { flex-wrap: wrap; }
   .page-header .flex { flex-wrap: wrap; }
   .instrument-row { flex-direction: column; }
@@ -1697,3 +1703,30 @@ tr.row-link:hover { background: var(--bg-elevated); }
   }
   .instrument-cell:last-child { border-bottom: none; padding-bottom: 0; }
 }
+
+/* ==========================================================================
+   Icon box, card meta, deployment hero
+   ========================================================================== */
+.icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+.icon-box-lg { width: 52px; height: 52px; border-radius: var(--radius-lg); }
+.project-card-lastdeployed { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; }
+.project-card-lastdeployed strong { color: var(--text); font-weight: 500; }
+
+.detail-hero .page-header { align-items: center; }
+.detail-hero-actions { margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
+.detail-hero-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.detail-hero .page-header p { margin: 0; }
+.tabs { background: transparent; padding: 0; gap: 6px; }
+.tab { border: 1px solid var(--border); background: var(--bg-card); }
+.tab.active { border-color: transparent; background: var(--leaf); color: var(--leaf-text-on); }
+.tab.active .tab-count { background: rgba(255,255,255,0.2); color: inherit; }

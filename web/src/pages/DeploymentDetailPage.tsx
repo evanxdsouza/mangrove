@@ -187,13 +187,14 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
       <div className="breadcrumb">
         <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> / {deployment?.name ?? "..."}
       </div>
+      <div className="project-hero detail-hero">
       <div className="page-header">
-        <div className="flex gap-8" style={{ alignItems: "flex-start" }}>
-          <PlantGlyph status={deployment?.status} size={26} burstKey={burstKey} />
+        <div className="flex gap-8" style={{ alignItems: "center" }}>
+          <span className="icon-box icon-box-lg"><PlantGlyph status={deployment?.status} size={30} burstKey={burstKey} /></span>
           <div>
           <h1>{deployment?.name ?? "Loading..."}</h1>
           {deployment && (
-            <p className="flex gap-8" style={{ alignItems: "center" }}>
+            <p className="detail-hero-meta">
               <StatusPill status={deployment.status} />
               <span className="pill pill-gray">{deployment.build_strategy}</span>
               <span className="pill pill-gray mono">{deployment.slug}</span>
@@ -205,7 +206,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
           )}
           </div>
         </div>
-        <div className="flex gap-8">
+        <div className="flex gap-8 detail-hero-actions">
           {deployment?.status === "building" || deployment?.status === "pending" ? (
             <button className="btn btn-danger" onClick={cancel} disabled={canceling}>
               {canceling ? "Cancelling..." : "Cancel deploy"}
@@ -251,6 +252,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             </button>
           )}
         </div>
+      </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}

@@ -16,7 +16,7 @@ export interface ThemeDef {
 }
 
 export const THEMES: ThemeDef[] = [
-  { id: "brass", label: "Brass", accent: "#caa057" },
+  { id: "brass", label: "Brass", accent: "#9ca3af" },
   { id: "copper", label: "Copper", accent: "#c97b4a" },
   { id: "iron", label: "Iron", accent: "#8fa3b0" },
   { id: "silver", label: "Silver", accent: "#c7c2b4" },
@@ -45,7 +45,7 @@ function readStored(): string {
 // MangroveIcon's path data (see icons.tsx) on the same dark rounded-square
 // badge as the static web/public/favicon.svg.
 function faviconMarkup(accent: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#14100a"/><g fill="none" stroke="${accent}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.3" r="3.3"/><circle cx="8.3" cy="10.3" r="2.4"/><circle cx="15.7" cy="10.3" r="2.4"/><path d="M12 13v3.4"/><path d="M12 16.4c-2.6 1-4.4 2.1-5.4 4.1"/><path d="M12 16.4v4.1"/><path d="M12 16.4c2.6 1 4.4 2.1 5.4 4.1"/></g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#0b0c0e"/><g fill="none" stroke="${accent}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.3" r="3.3"/><circle cx="8.3" cy="10.3" r="2.4"/><circle cx="15.7" cy="10.3" r="2.4"/><path d="M12 13v3.4"/><path d="M12 16.4c-2.6 1-4.4 2.1-5.4 4.1"/><path d="M12 16.4v4.1"/><path d="M12 16.4c2.6 1 4.4 2.1 5.4 4.1"/></g></svg>`;
 }
 
 function applyFavicon(def: ThemeDef) {
