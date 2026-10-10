@@ -255,7 +255,7 @@ export function AdminPage() {
                 <tbody>
                   {ports.map((p) => (
                     <tr key={p.id}>
-                      <td className="mono">{p.port}</td>
+                      <td>{p.port}</td>
                       <td className="text-dim">{humanLabel(p.allocation_type)}</td>
                       <td className="text-dim">{p.note || "—"}</td>
                       <td>
@@ -295,7 +295,7 @@ export function AdminPage() {
                   {sessions.map((s) => (
                     <tr key={s.id}>
                       <td>{s.user_email}</td>
-                      <td className="mono text-dim">{s.ip_address}</td>
+                      <td className="text-dim">{s.ip_address}</td>
                       <td className="text-dim">{fmtWhen(s.created_at)}</td>
                       <td>
                         <button className="btn btn-sm btn-danger" onClick={() => revokeSession(s.id)}>

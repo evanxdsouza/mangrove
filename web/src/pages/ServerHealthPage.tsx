@@ -86,11 +86,11 @@ export function ServerHealthPage() {
               <tbody>
                 <tr>
                   <td className="text-dim">Host</td>
-                  <td className="mono">{health.hostname}</td>
+                  <td>{health.hostname}</td>
                 </tr>
                 <tr>
                   <td className="text-dim">Kernel</td>
-                  <td className="mono">{health.kernel || "—"}</td>
+                  <td>{health.kernel || "—"}</td>
                 </tr>
                 <tr>
                   <td className="text-dim">Uptime</td>

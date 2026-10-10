@@ -169,7 +169,7 @@ export function ProjectsPage() {
               </div>
               <div className="project-child-tile-meta">
                 <StatusPill status={d.status} />
-                <span className="mono text-dim">{d.build_strategy}</span>
+                <span className="text-dim">{d.build_strategy}</span>
               </div>
               <div className="text-dim project-child-tile-time">
                 {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
@@ -196,10 +196,10 @@ export function ProjectsPage() {
             <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
               {p.name}
             </Link>
-            <span className="mono text-dim project-card-slug">{p.slug}</span>
+            <span className="text-dim project-card-slug">{p.slug}</span>
           </div>
           {s == null ? (
-            <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
+            <span className="text-faint" style={{ fontSize: 12 }}>...</span>
           ) : s.worst != null ? (
             <StatusPill status={s.worst} />
           ) : null}
@@ -303,7 +303,7 @@ export function ProjectsPage() {
               <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
                 {p.name}
               </Link>
-              <span className="mono text-dim project-card-slug">{p.slug}</span>
+              <span className="text-dim project-card-slug">{p.slug}</span>
             </span>
             <span className="text-dim project-list-row-rollup">
               {s == null

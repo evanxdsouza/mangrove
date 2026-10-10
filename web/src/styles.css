@@ -17,11 +17,11 @@
      with real separation between page/sidebar/card/border, instead of the
      original palette's four surfaces sitting within a few percent of each
      other's lightness. */
-  --bg: #0b0c0e;
-  --bg-elevated: #111317;
-  --bg-card: #16181d;
+  --bg: #090a0c;
+  --bg-elevated: #0d0f12;
+  --bg-card: #111318;
   --bg-recorder: #060708; /* logs, terminal, code -- the darkest surface */
-  --bg-inset: #0e1013; /* recessed fields inside a card */
+  --bg-inset: #0c0e11; /* recessed fields inside a card */
 
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.16);
@@ -52,8 +52,8 @@
 
   /* --verdigris* is the status green (healthy/running). */
   --verdigris: #22c55e;
-  --verdigris-bright: #22c55e;
-  --verdigris-wash: rgba(34, 197, 94, 0.15);
+  --verdigris-bright: #4ade80;
+  --verdigris-wash: rgba(34, 197, 94, 0.12);
 
   --red: #ef4444;
   --red-bright: #f87171;
@@ -66,7 +66,7 @@
   --gray-wash: rgba(156, 163, 175, 0.14);
 
   --mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  --sans: "Inter Variable", "Inter", "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  --sans: "Inter Variable", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
 
   /* Spacing scale in rem, not fixed px, so it grows with the user's text
      size setting rather than only the font growing while paddings stay
@@ -96,7 +96,7 @@
   /* Translucent surfaces (sidebar, modal backdrop) -- content scrolls
      underneath rather than sitting on a flat opaque strip. Disabled under
      prefers-reduced-transparency below. */
-  --material-sidebar: rgba(11, 12, 14, 0.85);
+  --material-sidebar: #111318;
   --material-backdrop: rgba(6, 4, 2, 0.6);
 }
 
@@ -482,7 +482,7 @@ button, input, select, textarea {
   font-size: 13px;
 }
 .sidebar-search-item:hover, .sidebar-search-item.active { background: var(--bg-card); }
-.sidebar-search-item-slug { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
+.sidebar-search-item-slug { color: var(--text-dim); font-size: 11px; }
 .sidebar-search-empty { padding: 10px 8px; color: var(--text-dim); font-size: 12.5px; }
 .sidebar-search-collapsed-btn { width: 100%; text-align: left; background: none; border: none; font-family: inherit; cursor: pointer; margin-bottom: 14px; }
 
@@ -1110,11 +1110,10 @@ tr.row-link:hover { background: var(--bg-elevated); }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
-.pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .pill-green { background: var(--verdigris-wash); color: var(--verdigris-bright); }
-.pill-green .pill-dot { background: var(--verdigris); box-shadow: 0 0 6px 1px var(--verdigris); }
+.pill-green .pill-dot { background: var(--verdigris); box-shadow: 0 0 6px 1px rgba(34, 197, 94, 0.7); }
 .pill-red { background: var(--red-wash); color: var(--red-bright); }
 .pill-red .pill-dot { background: var(--red); }
 .pill-yellow { background: var(--ochre-wash); color: var(--ochre-bright); }
@@ -1311,7 +1310,7 @@ tr.row-link:hover { background: var(--bg-elevated); }
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.gauge-readout .n { font-family: var(--mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gauge-readout .n { font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ==========================================================================
    Timeline / deploy history (ledger of events)
@@ -1334,7 +1333,6 @@ tr.row-link:hover { background: var(--bg-elevated); }
   gap: 6px;
 }
 .timeline-index {
-  font-family: var(--mono);
   font-size: 10px;
   color: var(--text-faint);
 }
@@ -1564,7 +1562,6 @@ tr.row-link:hover { background: var(--bg-elevated); }
   background: var(--bg-elevated);
   color: var(--text-dim);
   font-size: 11px;
-  font-family: var(--mono);
   vertical-align: 1px;
 }
 
@@ -1575,7 +1572,8 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .kv-list { display: flex; flex-direction: column; gap: 9px; }
 .kv-row { display: flex; align-items: center; gap: 10px; }
 .kv-key { font-size: 12.5px; color: var(--text-dim); min-width: 150px; }
-.kv-value { font-family: var(--mono); font-size: 12.5px; flex: 1; }
+.kv-value { font-size: 13px; flex: 1; }
+.kv-value.mono { font-size: 12.5px; }
 
 /* ==========================================================================
    Misc
@@ -1730,9 +1728,10 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .detail-hero-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .detail-hero .page-header p { margin: 0; }
 .tabs { background: transparent; padding: 0; gap: 6px; }
-.tab { border: 1px solid var(--border); background: var(--bg-card); }
-.tab.active { border-color: transparent; background: var(--leaf); color: var(--leaf-text-on); }
-.tab.active .tab-count { background: rgba(255,255,255,0.2); color: inherit; }
+.tab { border: 1px solid transparent; background: transparent; border-radius: var(--radius-full); }
+.tab:hover { background: rgba(255, 255, 255, 0.04); }
+.tab.active { border-color: var(--border-hover); background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.tab.active .tab-count { background: var(--leaf-wash); color: var(--leaf-bright); }
 
 /* ---- Service / app icon container (Node, Redis, Postgres, ...) ---- */
 .service-icon {
@@ -1746,3 +1745,8 @@ tr.row-link:hover { background: var(--bg-elevated); }
   color: var(--leaf-bright);
 }
 .service-icon svg { width: 58%; height: 58%; }
+
+/* Card header: brand logo top-left, status pill top-right. */
+.deployment-card-top .service-icon { order: 0; }
+.deployment-card-top .pill { margin-left: auto; }
+.deployment-card-meta { display: flex; align-items: center; gap: 8px; }

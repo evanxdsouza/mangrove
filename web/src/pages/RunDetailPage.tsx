@@ -139,7 +139,7 @@ export function RunDetailPage({
             <StatusPill status={entry.status} />
           )}
           <span className="run-step-title">{entry.commit_message || entry.git_ref || deployment.name}</span>
-          <span className="mono text-dim">{deployment.build_strategy}</span>
+          <span className="text-dim">{deployment.build_strategy}</span>
           {duration && <span className="text-dim run-step-duration">{duration}</span>}
         </div>
         {entry.error_message ? (

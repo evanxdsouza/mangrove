@@ -49,7 +49,7 @@ export function DeployTimeline({
             <div className="timeline-meta">
               <StatusPill status={h.status} />
               {h.is_current && <span className="pill pill-gray">current</span>}
-              <span className="mono text-dim">{h.commit_sha ? h.commit_sha.slice(0, 8) : h.triggered_by}</span>
+              <span className="text-dim">{h.commit_sha ? h.commit_sha.slice(0, 8) : h.triggered_by}</span>
               {h.rollback_of_deploy_history_id && (
                 <span className="text-dim" style={{ fontSize: 12 }}>
                   rollback of #{h.rollback_of_deploy_history_id}

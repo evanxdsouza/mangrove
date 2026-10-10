@@ -76,7 +76,7 @@ export function WorkspacesPage() {
                       {w.workspace.name}
                     </a>
                   </td>
-                  <td className="mono text-dim">{w.workspace.slug}</td>
+                  <td className="text-dim">{w.workspace.slug}</td>
                   <td className="text-dim">{w.project_count}</td>
                   <td className="text-right">
                     {!!w.your_role && (

@@ -357,11 +357,11 @@ function DeploymentSections({
           <div className="deployment-card-top">
             <ServiceIcon size={32} imageRef={d.build_strategy === "image" ? d.image_ref : null} />
             <span className="deployment-card-name">{d.name}</span>
-            <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
             <StatusPill status={d.status} />
           </div>
           <div className="deployment-card-meta">
-            <span className="mono">{d.build_strategy}</span>
+            <PlantGlyph status={d.status} size={16} burstKey={burstKeys.get(d.id)} />
+            <span>{d.build_strategy}</span>
             {d.environment !== "production" && (
               <span className="pill pill-yellow">
                 {d.environment}
