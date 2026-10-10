@@ -154,6 +154,15 @@ function CubeStack(props: IconProps) {
   );
 }
 
+function NodeHex(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z" />
+      <path d="M12 8.2v7.6M9.2 14.2c.6.9 1.7 1.2 2.8 1.2" />
+    </svg>
+  );
+}
+
 function Wing(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -178,6 +187,9 @@ export const TEMPLATE_ICONS: Record<string, (props: IconProps) => React.ReactEle
   mongodb: Leaf,
   redis: CubeStack,
   nephthys: Wing,
+  node: NodeHex,
+  nodejs: NodeHex,
+  postgresql: Elephant,
 };
 
 const CATEGORY_ICON: Record<string, (props: IconProps) => React.ReactElement> = {
@@ -211,4 +223,21 @@ export function imageIconKey(imageRef: string | undefined | null): string | null
   const segments = withoutTag.split("/");
   const base = segments[segments.length - 1].toLowerCase();
   return TEMPLATE_ICONS[base] ? base : null;
+}
+
+// Which icon identifies a service/app: a recognizable image first, then a
+// build-strategy fallback ("node" for nixpacks/dockerfile builds is not
+// guessed -- only the explicit image name `node` earns the Node mark).
+export function serviceIconKey(imageRef: string | undefined | null): string | null {
+  return imageIconKey(imageRef);
+}
+
+// Clean rounded container holding the service's icon, for service/app cards.
+export function ServiceIcon({ imageRef, size = 36 }: { imageRef?: string | null; size?: number }) {
+  const key = serviceIconKey(imageRef);
+  return (
+    <span className="service-icon" style={{ width: size, height: size }} aria-hidden="true">
+      <TemplateIcon templateKey={key ?? ""} category="" />
+    </span>
+  );
 }

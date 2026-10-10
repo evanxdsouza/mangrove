@@ -616,7 +616,9 @@ button, input, select, textarea {
   border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 16px;
+  transition: box-shadow 0.2s var(--ease-standard), border-color 0.2s var(--ease-standard);
 }
+.card:hover { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); border-color: var(--border-hover); }
 
 /* Only cards that are actually clickable (e.g. the template gallery) get
    hover feedback -- a blanket .card:hover would make every plain content
@@ -1103,15 +1105,16 @@ tr.row-link:hover { background: var(--bg-elevated); }
   align-items: center;
   gap: 6px;
   padding: 3px 9px 3px 7px;
-  border-radius: var(--radius-md);
+  border-radius: 9999px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
-.pill-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .pill-green { background: var(--verdigris-wash); color: var(--verdigris-bright); }
-.pill-green .pill-dot { background: var(--verdigris); }
+.pill-green .pill-dot { background: var(--verdigris); box-shadow: 0 0 6px 1px var(--verdigris); }
 .pill-red { background: var(--red-wash); color: var(--red-bright); }
 .pill-red .pill-dot { background: var(--red); }
 .pill-yellow { background: var(--ochre-wash); color: var(--ochre-bright); }
@@ -1730,3 +1733,16 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .tab { border: 1px solid var(--border); background: var(--bg-card); }
 .tab.active { border-color: transparent; background: var(--leaf); color: var(--leaf-text-on); }
 .tab.active .tab-count { background: rgba(255,255,255,0.2); color: inherit; }
+
+/* ---- Service / app icon container (Node, Redis, Postgres, ...) ---- */
+.service-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--leaf-wash);
+  border: 1px solid var(--border-hover);
+  color: var(--leaf-bright);
+}
+.service-icon svg { width: 58%; height: 58%; }

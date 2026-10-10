@@ -15,6 +15,7 @@ import { fmtWhen } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { firstTime } from "../lib/milestones";
 import { PlantGlyph } from "../components/PlantGlyph";
+import { ServiceIcon } from "../templateIcons";
 
 type Tab = "overview" | "history" | "logs" | "env";
 
@@ -1301,8 +1302,11 @@ function ServiceCard({ service, isStatic }: { service: Service; isStatic: boolea
   return (
     <div className="card">
       <div className="flex-between" style={{ marginBottom: 12 }}>
-        <div className="card-title" style={{ margin: 0 }}>
-          {service.name}
+        <div className="flex gap-8" style={{ alignItems: "center", minWidth: 0 }}>
+          <ServiceIcon imageRef={service.image_tag_current} size={32} />
+          <div className="card-title" style={{ margin: 0 }}>
+            {service.name}
+          </div>
         </div>
         <StatusPill status={service.status} />
       </div>

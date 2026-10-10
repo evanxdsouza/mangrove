@@ -10,6 +10,7 @@ import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
 import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
 import { PlantGlyph } from "../components/PlantGlyph";
+import { ServiceIcon } from "../templateIcons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_DEPLOYMENTS } from "../lib/copy";
 import { hashString } from "../lib/hash";
@@ -354,8 +355,9 @@ function DeploymentSections({
       {list.map((d) => (
         <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
           <div className="deployment-card-top">
-            <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
+            <ServiceIcon size={32} imageRef={d.build_strategy === "image" ? d.image_ref : null} />
             <span className="deployment-card-name">{d.name}</span>
+            <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
             <StatusPill status={d.status} />
           </div>
           <div className="deployment-card-meta">
