@@ -6,13 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mangrove</title>
     <script>
-      // Applied before the app mounts so a stored non-default theme doesn't
-      // flash the default palette for a frame -- lib/stores/theme.svelte.ts
+      // Applied before the app mounts so a stored metal or a dark appearance
+      // doesn't flash the default palette for a frame -- lib/stores/theme.svelte.ts
       // re-applies (and keeps in sync) once it loads.
       try {
         var t = localStorage.getItem("mangrove-theme");
         if (t) document.documentElement.setAttribute("data-theme", t);
       } catch (e) {}
+      // Same for light/dark: an explicit choice wins, otherwise follow the OS.
+      var a = null;
+      try { a = localStorage.getItem("mangrove-appearance"); } catch (e) {}
+      var dark = a === "dark" || (a !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.setAttribute("data-color-scheme", dark ? "dark" : "light");
     </script>
     %sveltekit.head%
   </head>

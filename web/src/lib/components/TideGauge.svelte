@@ -56,7 +56,7 @@
   <defs>
     <clipPath id={clipId}><rect x="1" y="1" width="12" height="28" rx="6" /></clipPath>
   </defs>
-  <rect x="1" y="1" width="12" height="28" rx="6" fill="var(--bg-card)" stroke={level === "dry" ? "var(--red)" : "var(--tide-rim)"} />
+  <rect x="1" y="1" width="12" height="28" rx="6" fill="var(--gauge-fill)" stroke={level === "dry" ? "var(--red)" : "var(--tide-rim)"} />
   {#if level === "dry"}
     <path d="M3 25h8" stroke="var(--red)" stroke-width="1.6" stroke-linecap="round" />
   {:else}

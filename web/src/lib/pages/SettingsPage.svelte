@@ -1,7 +1,14 @@
 <script lang="ts">
   import { api, ApiError } from "../api";
-  import { setTheme, THEMES, themeState } from "../stores/theme.svelte";
+  import { appearanceState, setAppearance, setTheme, THEMES, themeState, type Appearance } from "../stores/theme.svelte";
+  import type { IconName } from "../icons";
   import Icon from "../components/Icon.svelte";
+
+  const APPEARANCES: { id: Appearance; label: string; icon: IconName }[] = [
+    { id: "light", label: "Light", icon: "sun" },
+    { id: "dark", label: "Dark", icon: "moon" },
+    { id: "system", label: "System", icon: "screen" },
+  ];
 
   let currentPassword = $state("");
   let newPassword = $state("");
@@ -39,6 +46,27 @@
     <p>Manage your account.</p>
   </div>
   <Icon name="gear" />
+</div>
+
+<div class="card">
+  <div class="card-title">Appearance</div>
+  <p class="text-dim" style="margin-top: 0">
+    Light, dark, or follow this device's setting. Saved in this browser only.
+  </p>
+  <div class="appearance-toggle" role="radiogroup" aria-label="Appearance">
+    {#each APPEARANCES as a (a.id)}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={appearanceState.appearance === a.id}
+        class="appearance-option {appearanceState.appearance === a.id ? 'active' : ''}"
+        onclick={() => setAppearance(a.id)}
+      >
+        <Icon name={a.icon} />
+        {a.label}
+      </button>
+    {/each}
+  </div>
 </div>
 
 <div class="card">

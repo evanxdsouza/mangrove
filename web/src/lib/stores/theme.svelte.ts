@@ -42,3 +42,51 @@ export function setTheme(id: string) {
     // applies for this session, just doesn't persist across reloads.
   }
 }
+
+// ---- Appearance: light, dark, or follow the system ------------------------
+// Stored per browser. "system" (the default) follows prefers-color-scheme
+// live. Whatever is chosen always resolves to data-color-scheme="light" or
+// "dark" on <html> -- the one attribute styles.css's dark block keys on.
+// app.html applies the same resolution before first paint, so a reload
+// never flashes the wrong scheme.
+export type Appearance = "light" | "dark" | "system";
+const APPEARANCE_KEY = "mangrove-appearance";
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function readAppearance(): Appearance {
+  try {
+    const v = window.localStorage.getItem(APPEARANCE_KEY);
+    return v === "light" || v === "dark" ? v : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function resolve(a: Appearance): "light" | "dark" {
+  return a === "system" ? (darkQuery.matches ? "dark" : "light") : a;
+}
+
+export const appearanceState = $state<{ appearance: Appearance; scheme: "light" | "dark" }>({
+  appearance: readAppearance(),
+  scheme: "light",
+});
+
+function applyScheme() {
+  appearanceState.scheme = resolve(appearanceState.appearance);
+  document.documentElement.setAttribute("data-color-scheme", appearanceState.scheme);
+}
+applyScheme();
+darkQuery.addEventListener("change", () => {
+  if (appearanceState.appearance === "system") applyScheme();
+});
+
+export function setAppearance(a: Appearance) {
+  appearanceState.appearance = a;
+  applyScheme();
+  try {
+    if (a === "system") window.localStorage.removeItem(APPEARANCE_KEY);
+    else window.localStorage.setItem(APPEARANCE_KEY, a);
+  } catch {
+    // localStorage unavailable -- still applies for this session.
+  }
+}
