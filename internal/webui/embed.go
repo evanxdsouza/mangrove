@@ -1,9 +1,9 @@
-// Package webui embeds the built dashboard SPA (web/dist, copied here by
-// `npm run build` -- see web/vite.config.ts's outDir) into the Go binary,
+// Package webui embeds the built dashboard SPA (written here by `npm run
+// build` -- see web/svelte.config.js's adapter-static output) into the Go binary,
 // so Mangrove ships as one file with no separate static-asset directory to
 // deploy alongside it.
 //
-// dist/ ships a placeholder index.html in git (everything else in it is
+// dist/ ships a .gitkeep placeholder in git (everything else in it is
 // gitignored) so `go build` always succeeds even before the frontend has
 // ever been built -- see .gitignore.
 package webui
@@ -19,9 +19,9 @@ import (
 var distFS embed.FS
 
 // Handler serves the SPA: real files by path, falling back to index.html
-// for any path that doesn't match a built asset so client-side routing
-// (internal/web/src/router.tsx) works on a hard refresh of a deep link
-// like /projects/3.
+// for any path that doesn't match a built asset so SvelteKit's client-side
+// router (web/src/routes/) works on a hard refresh of a deep link like
+// /projects/3.
 func Handler() http.Handler {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -38,10 +38,11 @@ func Handler() http.Handler {
 			r.URL.Path = "/"
 			path = "index.html"
 		}
-		// Vite's build fingerprints every file under assets/ with a content
-		// hash in its name (index-<hash>.js), so it's safe -- correct,
-		// even -- to cache those forever: a rebuild produces a new
-		// filename, never a changed one under the same name. index.html
+		// SvelteKit fingerprints every file under assets/immutable/ with a
+		// content hash in its name (start.<hash>.js), so it's safe --
+		// correct, even -- to cache those forever: a rebuild produces a new
+		// filename, never a changed one under the same name. Anything else
+		// under assets/ (version.json) is not hashed and stays uncached. index.html
 		// (and the SPA-fallback path above, which serves it too) is the
 		// opposite: it's the one thing whose *content* changes on every
 		// deploy while its URL never does, so it must never be cached at
@@ -53,7 +54,7 @@ func Handler() http.Handler {
 		// "always refetch" -- not something to leave to chance) would keep
 		// serving a stale dashboard indefinitely after an update, since a
 		// SPA has no way to notice its own JS bundle changed at runtime.
-		if strings.HasPrefix(path, "assets/") {
+		if strings.HasPrefix(path, "assets/immutable/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-store")

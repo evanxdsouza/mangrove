@@ -3,8 +3,10 @@
 The dashboard has two front-end flows sharing one backend, toggled from
 the sidebar (persisted in `localStorage`, so the choice survives a
 reload). This isn't a relabeling of the same screens -- simple mode is a
-genuinely separate set of pages, routed by `web/src/App.tsx` based on
-`web/src/uiMode.tsx`'s `UiMode` (`"technical" | "simple"`).
+genuinely separate set of pages: each route under `web/src/routes/`
+renders a technical page or its simple-mode counterpart from
+`web/src/lib/pages/simple/` based on `web/src/lib/stores/ui-mode.svelte.ts`'s
+`UiMode` (`"technical" | "simple"`).
 
 ## Technical mode
 
@@ -51,13 +53,13 @@ someone who wants to configure a Dockerfile. Concretely:
   that wouldn't do anything real.
 - **Escape hatch, not a dead end**: a "Switch to advanced view" button on
   `SimpleAppDetailPage` flips the global mode back to technical *on the
-  same URL* -- `App.tsx`'s route dispatch just renders
+  same URL* -- that route's `+page.svelte` just renders
   `DeploymentDetailPage` instead of `SimpleAppDetailPage` for that same
   `/projects/:id/deployments/:id` path, so nothing about the underlying
   data changes, only which component renders it.
 - **Admin stays technical-only.** Users, ports, GitHub tokens, resource
   pruning -- none of it has a simple-mode equivalent; the nav link is
-  simply hidden in simple mode (`Layout.tsx`). It's still reachable by
+  simply hidden in simple mode (`lib/components/Layout.svelte`). It's still reachable by
   switching back to technical mode, or by navigating to `/admin` directly
   (the route itself doesn't check mode -- only the sidebar entry point is
   hidden).

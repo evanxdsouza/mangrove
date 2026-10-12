@@ -1,293 +1,178 @@
 ---
 name: Mangrove
-description: A self-hosted PaaS dashboard styled as a field station's instrument room monitoring a living mangrove system.
+description: A self-hosted PaaS dashboard in the "Intertidal" language -- a light page, a deep-green floating sidebar, status told by a tide gauge.
+source: https://claude.ai/artifact/XYbG54xxgtdKpmqneRdGxE (design canvas "Mangrove Intertidal: All Pages")
 colors:
-  bg: "#0a0f0b"
-  bg-elevated: "#121a15"
-  bg-card: "#1b2620"
-  bg-inset: "#070a08"
-  bg-recorder: "#050805"
-  border: "#362a1a"
-  border-hover: "#4d3c25"
-  border-strong: "#5e4a2d"
-  text: "#ece3d2"
-  text-dim: "#a99b83"
-  text-faint: "#6f6250"
-  leaf: "#4fae42"
-  leaf-bright: "#6fcf5c"
-  leaf-dim: "#35692e"
-  brass: "#caa057"
-  brass-bright: "#e2bd76"
-  brass-dim: "#7a6236"
-  verdigris: "#55a087"
-  verdigris-bright: "#6dbb9e"
-  red: "#cc5c53"
-  red-bright: "#e0776c"
-  ochre: "#c98a3d"
-  ochre-bright: "#dca158"
+  bg: "#f2f1ec"
+  bg-card: "#ffffff"
+  bg-elevated: "#fbfbf8"
+  bg-inset: "#e9e7df"
+  bg-recorder: "#0f1b18"
+  border: "#e4e2da"
+  border-soft: "#efede6"
+  text: "#1b2420"
+  text-strong: "#44504a"
+  text-dim: "#6b746e"
+  side: "#173d31"
+  leaf: "#1f5c47"
+  tide-high: "#2f8f83"
+  tide-mid: "#c98a2b"
+  tide-low: "#8fa89b"
+  red: "#b5472f"
 typography:
   display:
-    fontFamily: "Space Grotesk, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
-    fontSize: "22px"
-    fontWeight: 600
-    lineHeight: 1.2
+    fontFamily: "Figtree, system-ui, sans-serif"
+    fontSize: "28px"
+    fontWeight: 700
     letterSpacing: "-0.02em"
   body:
-    fontFamily: "Space Grotesk, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+    fontFamily: "Figtree, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: "-0.006em"
+    lineHeight: 1.45
   label:
-    fontFamily: "Space Grotesk, sans-serif"
+    fontFamily: "Figtree, sans-serif"
     fontSize: "12px"
     fontWeight: 600
-    letterSpacing: "0.06em"
   mono:
-    fontFamily: "IBM Plex Mono, SF Mono, ui-monospace, Menlo, Consolas, monospace"
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "12.5px"
     fontWeight: 400
 rounded:
-  sm: "5px"
-  md: "8px"
-  lg: "12px"
+  sm: "8px"
+  md: "10px"
+  lg: "14px"
+  xl: "20px"
   full: "999px"
-spacing:
-  1: "0.25rem"
-  2: "0.5rem"
-  3: "0.75rem"
-  4: "1rem"
-  5: "1.25rem"
-  6: "1.5rem"
-  8: "2rem"
-components:
-  button-primary:
-    backgroundColor: "{colors.leaf}"
-    textColor: "#0c1509"
-    rounded: "{rounded.sm}"
-    padding: "8px 14px"
-  button-primary-hover:
-    backgroundColor: "{colors.leaf-bright}"
-  button-danger:
-    backgroundColor: "transparent"
-    textColor: "{colors.red-bright}"
-    rounded: "{rounded.sm}"
-    padding: "8px 14px"
-  card:
-    backgroundColor: "{colors.bg-card}"
-    rounded: "{rounded.md}"
-    padding: "20px"
-  pill:
-    backgroundColor: "{colors.verdigris}"
-    rounded: "{rounded.full}"
-    padding: "3px 9px"
 ---
 
-# Design System: Mangrove
+# Design System: Mangrove -- Intertidal
 
 ## Overview
 
-**Creative North Star: "Field Station / Instrument Room," now with something alive in it**
+One visual language for every page of the dashboard: **a light page, a
+deep-green floating sidebar, status told by a tide gauge, banners that
+follow deployment state, and a root line that shows what belongs to what.**
 
-Mangrove's dashboard reads as the instrument room of a field station monitoring a living system: an operator's own infrastructure, glanced at through gauges, ledgers, beacons, and living resource cards rather than through a generic SaaS admin shell. The system refuses the category default for self-hosted ops tools — a navy-blue-on-near-black panel with a stock blue accent, cards-with-icons, and a kicker over every heading. Nothing here pretends to be a *physical* instrument (no fake bevels, no stamped-metal CSS, no faux-brass gradients standing in for the real material) — the instrument-room feeling comes from vocabulary and structure: gauge dials for resource readings, ruled-ledger tables for what's deployed, engraved-plaque uppercase labels for section titles, and a strip-chart trace for live logs, all rendered as flat, legible, digital instrumentation.
-
-This is a from-a-real-critique revision of that original system: the first version leaned entirely on brass-as-hero and read as low-contrast and funereal rather than alive, internal enum values leaked into copy, the same content type (raw failure output) got two different treatments in two different tabs, and project/deployment pages were mostly dead space below a few small cards. This pass keeps the concept — swamp/field-station, self-hosted, built by a teenager, not an enterprise SaaS vendor — but promotes a real, living leaf green to the accent that actually carries the brand, widens the gap between surfaces so the screen has real depth, and gives every resource (project, deployment) a face instead of a table row.
-
-The ground is now a cooler "swamp water at night" near-black-green rather than a warm brown-black, lit by brass-trimmed instrumentation — a deliberate warm-metal-in-a-cool-swamp duality — with real separation between page, sidebar, card, and border. Two audiences (a technical operator's full dashboard, and a plain-language "Simple mode" for someone who just wants an app running) still share the exact same system at two different densities, never two different skins.
-
-**Key Characteristics:**
-- A cool, near-black "swamp at night" ground, never navy or pure black, with brass-tinted borders/dividers as the warm counterpoint.
-- One living/primary accent (leaf green), used for every primary action and active state; brass is the secondary structural metal — see the Two-Accent Rule below.
-- Real gauges, real ledgers, real beacons, real plant glyphs — always paired with the actual number/word/status they represent, never standing in for it.
-- No card-in-a-card nesting; a sub-panel living inside a card is visually distinct (recessed inset, not a second bordered box).
-- The workspace/"station" switcher is pinned ambient context at the top of the sidebar, not a page you navigate away to.
-- A resource (project, deployment) is a card with an identity — a plant glyph, a name, a status — not a row in a table; a project rolls up its deployments' counts rather than making you drill in to see how many are healthy.
+The source of truth is the design canvas linked in the frontmatter (17
+boards: tokens and parts, setup/sign-in/404, shell states, Simple mode,
+Projects grid/list/states, project tabs, deployment Overview/History/Logs/
+Env, run detail, workspaces, admin, health/settings, storage, and every
+dialog). `web/src/lib/styles.css` implements it as CSS custom properties; class
+names predate the redesign and were kept so page code didn't churn.
 
 ## Colors
 
-Two families now carry the palette: a living leaf green (the one primary accent) and brass (the secondary structural metal), both sitting on a cool, low-saturation near-black ground.
+| Role | Token | Value |
+|---|---|---|
+| Page | `--bg` | `#F2F1EC` |
+| Surface (cards, dialogs) | `--bg-card` | `#FFFFFF` |
+| Field fill, hovered rows | `--bg-elevated` | `#FBFBF8` |
+| Segmented-control track | `--bg-inset` | `#E9E7DF` |
+| Line / hairline | `--border` / `--border-soft` | `#E4E2DA` / `#EFEDE6` |
+| Ink / labels / muted | `--text` / `--text-strong` / `--text-dim` | `#1B2420` / `#44504A` / `#6B746E` |
+| Sidebar | `--side` | `#173D31` |
+| Accent (primary buttons, focus, checkboxes) | `--leaf` | `#1F5C47` |
+| Terminal | `--bg-recorder` | `#0F1B18` |
 
-### Primary
-- **Leaf** (`#4fae42`, bright `#6fcf5c`, dim `#35692e`): the one living/primary accent — primary buttons, active nav/tab, the station mark's icon and active state, focus rings, the default (healthy-range) gauge fill, hover feedback on a clickable card. Deliberately hued toward grass/lime rather than verdigris's teal-green, so a status beacon sitting right next to it never blends in. Used on interactive/primary elements only, never as a large background field — the one exception is `.project-hero-motif` (`ProjectDetailPage`'s decorative banner watermark), a large glyph at 16% opacity that carries no status of its own and is explicitly art, not data, per the Do/Don't list below.
+**Tide (status) colors** -- the only colors that carry meaning:
 
-### Secondary
-- **Brass** (`#caa057`, bright `#e2bd76`, dim `#7a6236`): the secondary metallic accent — borders, dividers, `.card-title` "engraved plaque" labels, page-identifier icons, the log/resource strip-chart trace, texture. Never used for a primary call-to-action; if something needs a second interactive emphasis, it's a leaf variant (wash/dim/bright), not brass promoted back to primary. Settings > Theme still lets an operator swap which metal plays this role (Copper/Iron/Silver/Indigo) — see Instrument Metal Themes below.
+| Level | Statuses | Gauge fill | Pill |
+|---|---|---|---|
+| High | running, success, healthy | `#2F8F83` | `#DDF1EE` / `#1D6B61` |
+| Mid (working) | building, healthchecking, queued, timeout, rolled_back | `#C98A2B` | `#FFE5BC` / `#7A4E0E` |
+| Low (at rest) | stopped, sleeping, pending (never deployed), unknown | `#8FA89B` | `#EFEDE6` / `#44504A` |
+| Dry (needs you) | failed, unhealthy, error | red rim, no water | `#F8E1DB` / `#A23B2A` |
 
-### Neutral
-- **Swamp Black** (`#0a0f0b`): the page ground — cooler and darker than the sidebar/card surfaces above it.
-- **Panel** (`#121a15`): the sidebar/elevated surface.
-- **Card** (`#1b2620`): card backgrounds — a clear, deliberate step up from the sidebar, not a few percent of lightness apart.
-- **Inset** (`#070a08`): recessed surfaces set *into* a card — form inputs, gauge sockets, the log/terminal recorder body — darker than the page ground itself.
-- **Recorder Black** (`#050805`): the darkest surface, reserved for the log viewer, terminal, and `CodeBlock`, evoking a sealed instrument bay.
-- **Parchment** (`#ece3d2`): primary text.
-- **Dim Parchment** (`#a99b83`): secondary text, table body copy, and *any real identifying content that happens to be secondary* — slugs, timestamps, build-strategy tags, meta lines. `text-dim` clears WCAG AA (5–6:1 against every surface it sits on); `text-faint` does not (~2.6–3.3:1) and must never carry content a user needs to actually read.
-- **Faint Parchment** (`#6f6250`): reserved for genuinely decorative/transient text only — a `...` loading placeholder, "(detecting...)", "waiting for log output" — never a slug, timestamp, branch name, or anything else an operator identifies a resource by. An audit found this line crossed in ~10 places across the app (project slugs, deployment timestamps, git branches, template memory footprints) and promoted them all to `text-dim`; keep new secondary-but-real content on `text-dim` from the start.
-- **Border** (`#362a1a`, hover `#4d3c25`, strong `#5e4a2d`): all hairline dividers and default borders — kept warm/brass-tinted against the now-cooler ground on purpose.
+A project shows the **worst** level among its deployments (dry, then
+working, then at rest, then running). Only building, healthchecking and
+queued pulse.
 
-### Semantic
-- **Verdigris** (`#55a087`, bright `#6dbb9e`): success/healthy/running — an oxidized-copper teal-green, deliberately hued away from both brass *and* the new leaf primary so a status pill always reads as its own signal rather than blending into either accent.
-- **Sealing-Wax Red** (`#cc5c53`, bright `#e0776c`): failed/danger/error.
-- **Ochre** (`#c98a3d`, bright `#dca158`): building/healthchecking/queued/in-progress/warning — visually distinct from both brass and leaf so an in-progress beacon never reads as a call-to-action. `pending` is deliberately *not* ochre (see `IN_PROGRESS_STATUSES` in `StatusPill.tsx`): for a Deployment record it means "created, never deployed" — nothing is actually happening — so it renders gray/dormant like `stopped` rather than pulsing as if work were underway. `sleeping` (idle-sleep auto-stopped, see [idle-sleep.md](docs/idle-sleep.md)) is gray/dormant for the same reason: a sleeping deployment has no container running either, and isn't "in progress" toward anything until a visitor's request actually triggers a wake.
+### Instrument metal (Settings > Theme)
 
-### Named Rules
-**The Two-Accent Rule.** Leaf is the one living/primary accent — reserved for primary actions and active/selected state, used consistently everywhere across the app. Brass is the one secondary/structural accent — chrome, borders, plaque labels, never a call-to-action. Verdigris, red, and ochre are exclusively status semantics and are never repurposed as either accent. This replaces the original single-accent system's "One Accent Rule": there are now exactly two accent roles, each with exactly one color at a time, never three, and never the same color playing both roles.
-
-### Instrument Metal Themes
-Settings > "Instrument metal" (`web/src/theme.tsx`) lets an operator swap which single metal plays the *secondary* role — Brass (default), Copper, Iron, Silver, or Indigo — persisted to `localStorage` and applied by overriding just `--brass`/`--brass-bright`/`--brass-dim`/`--brass-wash`/`--brass-wash-strong` per `[data-theme="..."]` in `styles.css`. The living `--leaf*` primary and the semantic colors (verdigris/red/ochre) stay fixed across every theme — switching metals never touches the primary accent. This keeps the Two-Accent Rule true at every instant: exactly one metal is ever live in the secondary role, and leaf never stops being the primary one. The theme-swatch preview itself (`.theme-swatch`) is the one place a swatch's own color is read as a scoped inline `--brass`, not the globally active theme, so each swatch always previews in its own metal.
+The `--brass*` family is swappable (Brass/Copper/Iron/Silver/Indigo). In
+Intertidal it only tints the sidebar's small section labels and the station
+eyebrow; the deep-green sidebar, leaf-green buttons, and tide colors never
+change. The default (Brass) is `#8FB0A2`, matching the canvas.
 
 ## Typography
 
-**Display/UI Font:** Space Grotesk (self-hosted via `@fontsource`, latin + latin-ext subsets; system sans fallback stack)
-**Mono Font:** IBM Plex Mono (self-hosted via `@fontsource`, same subsets)
+Figtree for everything, JetBrains Mono for slugs, ports, env keys, image
+refs, and logs. Self-hosted via `@fontsource` (latin + latin-ext only), never
+a CDN -- the dashboard ships inside the box it manages.
 
-**Character:** Space Grotesk's slightly geometric, faintly technical letterforms read as engineering/drafting lettering without tipping into a display-serif or a coded "hacker" mono-everywhere costume. IBM Plex Mono carries every value that is actually data — slugs, ports, timestamps, log lines, env vars, commit SHAs — so monospace always signals "this is a real measured value," never "this page is technical" as decoration.
-
-### Hierarchy
-- **Display** (600, 22px, -0.02em): page `<h1>` titles (`.page-header h1`).
-- **Title** (600, 16.5px, -0.015em): modal titles, card section headers rendered as body-weight text.
-- **Label** (600, 11–12px, 0.05–0.09em, uppercase): `.card-title`, table `<th>`, `.nav-section-label`, `.station-switcher-eyebrow` — the "engraved plaque" voice, always brass, never the primary leaf accent.
-- **Body** (400, 13.5–14px, -0.006em): running copy, table cells, form labels' companion text.
-- **Mono/Readout** (400–600, 11–13px, tabular-nums): every numeric or log/code value, via `.mono`, `.stat-value`, `.gauge-readout .n`, `.pill` text, `.kv-key`/`.kv-value`.
-
-### Named Rules
-**The Mono-Means-Measured Rule.** Monospace is reserved for values that are actually data (slugs, ports, hashes, timestamps, log/terminal output, numeric readouts). It is never applied to prose or labels purely to look "technical."
-
-## Copy
-
-**The swamp voice.** A handful of secondary-surface strings (loading, empty states) speak in the world's own voice instead of generic system text — `web/src/lib/copy.ts` is the one place these live (`"Still growing roots…"` for loading, `"Nothing planted here yet"` for an empty project list, etc.), used via the shared `CenterLoading` component and inline in empty-state copy. This is deliberately confined to secondary surfaces: error banners, failure detail, and anything an operator needs to act on fast stay in plain, direct language — see the Do/Don't list.
-
-**Internal values never leak verbatim.** `web/src/lib/format.ts`'s `humanLabel()` maps a backend enum/DB value (port allocation type, audit-log action/resource type) to a real label, falling back to a generic snake_case→Title Case transform for anything not explicitly listed, so a future value never regresses to raw `snake_case` in the UI. `fmtWhen()`/`fmtWhenFull()` are the one date formatter used everywhere a timestamp renders — no inline `.toLocaleString()` variant per file.
-
-## Layout
-
-Sidebar (240px, fixed) + fluid main content (`max-width: 1120px`, `padding: 32px 40px`). The sidebar is a two-part flex column: a `sidebar-topbar` (brand mark + a mobile-only menu toggle) and a `sidebar-body` (station switcher, primary nav, mode toggle, user, settings, log out) — on screens ≤760px the body collapses behind the toggle into an off-canvas drawer rather than wrapping into an unreadable row of nav links.
-
-Cards stack with a consistent 16px gap. A card whose only content is a table (`.card:has(> table)`) loses its own padding and gains a faint vertical rule near the left edge (`background-image` gradient at 40–41px) so the table itself reads as a ruled ledger page, plus `overflow-x: auto` so a table wider than its card scrolls instead of clipping the last column.
-
-A grid of readouts that would otherwise repeat as identical bordered tiles (resource gauges, in particular) is instead laid out as `.instrument-row`/`.instrument-cell`: one shared panel, cells divided by a hairline `border-right` (stacking to `border-bottom` on mobile), never N separate same-size cards.
-
-**Resource cards, not tables.** Projects (`.project-grid`/`.project-card`) and a project's own deployments (`.deployment-grid`/`.deployment-card`) render as a card grid (`auto-fill, minmax(260px, 1fr)`), not a ledger table — each card carries a `PlantGlyph` (status-reflecting glyph), name, slug, status pill, and a rollup line (`"2 of 3 deployments running"` at the project level). `WorkspacesPage` stays a table — a workspace is an admin-list concept, not a living resource, and forcing every list into a card grid regardless of what it lists is exactly the kind of uniform-default this system otherwise refuses.
-
-**Resource list page.** `ProjectsPage` is a two-column `.projects-layout`: the main column plus a persistent `.activity-panel` rail listing the most recently deployed things across every loaded project — built entirely from data the page already fetches per project (no separate endpoint), so it's honest about showing nothing until something has actually been deployed, not just created. Above the main column, `.projects-toolbar` holds a `.search-field` (client-side, no server round-trip), status filter chips (All/Running/Needs attention — the same worst-status classification `StatusPill` already computes, no new vocabulary), and a `.view-toggle` between the card grid and a full-width `.project-list` row layout, persisted to `localStorage` like `uiMode`. A project with deployments gets a `.project-card-chevron-btn` (the same rotate-on-expand idiom as the station switcher's own chevron) that reveals its deployments directly beneath it as `.project-card-children`: a grid of small `.project-child-tile`s set into a recessed `bg-inset` block (each tile its own hairline-bordered rect, the same "instrument socket" idiom `.instrument-cell` already uses — never a second bordered `.card`, see "no card-in-a-card nesting" above). Each tile shows `PlantGlyph` (status) beside, not stacked on, a recognizable tech icon (`imageIconKey` in `templateIcons.tsx` — an honest, narrow match: an `image`-strategy deployment's `image_ref` base name against Mangrove's own curated template-icon keys, e.g. `postgres:16` earns the elephant glyph; nothing recognized just shows `PlantGlyph` alone, never a guessed icon) plus build strategy, status pill, and last-deployed time — wrapping naturally at any width instead of truncating. A card/row's chevron area also carries a `.project-card-quick-add` (`PlusIcon`) that opens `CreateDeploymentModal` (exported from `ProjectDetailPage.tsx`) scoped to that project without navigating in first. Expanding is independent of a card's click-to-navigate behavior (the chevron and quick-add both stop propagation), and expand state is shared between the grid and list views of the same project. The workspace-switcher link on each card/row is its own bordered pill, not plain text, since it's a scope-changing action sitting next to passive metadata (a timestamp) and needs to read as a control, not a label. An expanded card/row gets a soft `leaf-wash` gradient (`.project-list-row-expanded`) — an interaction-state wash, the same idiom `.nav-link.active` already uses, just applied to a whole row so an open group visually separates from its still-collapsed peers — and the list row adds an explicit circular "open" arrow-button (`.project-list-row-open`, `ArrowRightIcon`) alongside the already-clickable row, matching the reference dashboard's own affordance for "this row leads somewhere."
-
-**Project/group page.** `ProjectDetailPage` leads with `.project-hero`: a full-width decorative band (a subtle `bg-elevated`→`bg-card` gradient with a large, low-opacity `MangroveIcon` watermark bleeding off the right edge) behind the project name, description, and primary actions — art, not data, so it's exempt from the neutral-card-background rule below. Below that, the project's own sections are real tabs (`Deployments` / `GitHub` / `Workspace`) rather than a stack of always-visible cards, each with its own neutral `.tab-count` badge standing in for what would otherwise be a separate stat row (a count is structural content, so the badge is never tinted to the active tab's leaf color). Only the active tab's content renders, so the page never opens onto dead space below a short section. Inside the Deployments tab, `DeploymentSections` groups the grid under labeled headers (Production / Staging / Previews) whenever a project actually has more than one environment present — real, already-tracked data, not a guess at "kind" (Mangrove doesn't track which template, if any, produced a deployment, so grouping by Apps/Databases/Template-instances the way the reference does would be fabricated); the common single-environment project still renders as one flat grid, no redundant section label.
-
-**Resource detail page.** `DeploymentDetailPage` leads with a header (plant glyph, name, status pill, a row of neutral `.pill-gray` tag chips for build strategy and slug, right-aligned actions — one primary, and Redeploy/Restart/Stop now icon-prefixed like the reference's own action row). Directly below and above the tab bar, `ServiceStatRow` renders a plain `.instrument-row` stat strip (Image / Internal port / Internal address / Resources / Replicas / Host port / Health) for the deployment's one primary service — no card, no per-number border, just hairline dividers (`.deployment-stat-row`). "Internal address" (`{container_name}:{internal_port}`) is real, already-known data: every managed container joins one shared Docker network with its container name as a stable alias, so this is genuinely how another deployment reaches this one, not a fabricated "connection string" — Mangrove has no per-service credentials/URI concept the way a database-flavored reference resource does, so this is the honest equivalent, not a full Connection tab. This only fires for the common single-service case; a compose deployment has no one canonical service, so it falls back to per-service `ServiceCard`s inside the Overview tab instead (which carries the same Internal address row), and the two never render the same service's vitals twice (`useLatestHealth` is the one hook both pull from, so they can't drift). Overview/History/Logs/Env then render as real per-tab content, not a stack of always-visible cards. The deployment's name is plain text, not inline-editable — there is no rename endpoint in the API, and this page never fakes an affordance nothing behind it can fulfill. Mangrove's browser Terminal tab was deliberately removed in an earlier pass (it "didn't work reliably in the browser" — see git history) and stays removed; the backend websocket it used is untouched for `mangrove-tui`, but the dashboard doesn't get it back just because a reference screenshot has one.
-
-**Run/log page.** Each deploy history entry now has its own route, `RunDetailPage` (`/projects/:id/deployments/:id/history/:historyId`) — breadcrumb back through the project and deployment, a header (`Run #N` + `StatusPill`), a meta line (triggered-by, start time, `fmtDuration`), and the run itself as one labeled step block (`CheckCircleIcon`/`XCircleIcon`, a title, the build-strategy tag, duration) followed by a `CodeBlock` of `error_message` on failure. `DeployTimeline` (the History tab's list) links each entry to its own run page instead of only ever showing the flat list. Mangrove's data model doesn't have discrete named build steps, a persisted stdout for a *successful* run, or a numeric exit code (only `error_message` on failure) — so a successful run's step says plainly that no output is kept for it rather than fabricating one, and there's exactly one step per run, not an invented multi-step breakdown.
-
-### Named Rules
-**The One Panel Rule.** A row of related instrument readings (CPU/memory/disk/load, memory budget, a deployment's own service vitals) lives in one shared panel divided by hairlines, never as a repeated grid of identically-bordered tiles.
-**The Living-Resource Rule.** A project or a deployment is a card with a plant glyph and a rollup, never a bare table row — reserve tables for genuinely list-shaped, non-"alive" data (ports, sessions, team members, audit log, workspaces).
-
-## Elevation & Depth
-
-Mostly flat. Cards and inputs sit on a single hairline border (`--border`), not a shadow — this is a screen full of instruments set into one panel, not a stack of floating material cards. Depth exists only where something is genuinely lifted off the surface behind it: modals (`--shadow-lg`, real offset + blur, never a flat colored halo), the station-switcher dropdown panel (`--shadow-lg`), and milestone toasts (`--shadow-md`). Hover/active feedback on buttons and clickable cards is a border-color and background shift, not a shadow.
-
-### Shadow Vocabulary
-- **sm** (`0 1px 2px rgba(0,0,0,0.4)`): minor separation, rarely used directly.
-- **md** (`0 10px 28px rgba(0,0,0,0.45)`): hover state on a clickable card, milestone toasts.
-- **lg** (`0 28px 72px rgba(0,0,0,0.55)`): modals, the station-switcher dropdown — anything genuinely floating above the page.
-
-### Named Rules
-**The Flat-Panel Rule.** Nothing on the page is a floating card by default. Elevation is reserved for content that is genuinely temporary/overlaid (modals, dropdowns, toasts).
-
-## Shapes
-
-Small, consistent corner radii throughout: 5px (`sm` — buttons, inputs, pills-as-rectangles), 8px (`md` — cards, the log/terminal frame), 12px (`lg` — modals), and a full pill radius for status beacons and the mode toggle. Nothing sharp-cornered, nothing heavily rounded — the radius scale itself reads as machined rather than soft. Icons (see `src/icons.tsx`) are a single authored line-icon set at 1.7px stroke weight, round caps/joins, drawn in the world's own grammar (a mangrove's prop roots, a ruled ledger, a half-circle gauge, a stacked-drawer cabinet) rather than a generic icon-font import. Per-template icons (`src/templateIcons.tsx`) extend the same grammar with one recognizable glyph per template (Ghost's ghost, Postgres' elephant, Redis's cube stack, Gitea's teacup, Supabase's bolt, MongoDB's leaf, …), falling back to a category icon so a future template never regresses to plain text.
+| Use | Spec |
+|---|---|
+| Page title | Figtree 700 · 28 · -0.02em |
+| Dialog title | Figtree 700 · 20 |
+| Card title | Figtree 700 · 15 (no uppercase eyebrow) |
+| Body | Figtree 400 · 14 |
+| Controls | Figtree 600 · 13 |
+| Labels, hints | Figtree 600 · 12 / 400 · 12 muted |
+| Terminal | JetBrains Mono 12 on `#0F1B18`, text `#BFD6CB` |
 
 ## Components
 
-### Buttons
-- **Shape:** 5px radius, 8px 14px padding (`.btn-sm`: 5px 10px).
-- **Primary:** solid leaf fill, near-black text (`#0c1509`) for contrast, 600 weight — the only solid-fill button on the page, reserved for the one primary action per view.
-- **Danger:** transparent fill, red-bright text, red border on hover/wash background — never solid red at rest.
-- **Default/Secondary:** `bg-elevated` fill, border, text color; border brightens on hover.
-- **Hover/Active:** border-color shift + subtle background shift; `transform: scale(0.97)` on press (skipped entirely under `prefers-reduced-motion`).
-- **Icon-prefixed lifecycle actions:** Deploy/Redeploy/Restart/Start/Stop/Delete all pair an icon with the label (`DeployIcon`/`RestartIcon`/`StopIcon`/`TrashIcon`) — a deliberate, deployment-detail-header-specific density; a plain secondary button elsewhere in the app (Cancel, Back, form Save) stays text-only.
-- **A resource-detail header's Delete stays outline, not solid**, even though the reference dashboard renders its own equivalent as a solid-fill red button: the page's `Deploy` action already claims the one solid-fill slot (the Two-Accent Rule's "one primary action per view" extends to danger actions competing for the same visual weight) — flagged as a deliberate divergence from a literal 1:1 match, open to revisiting if `Deploy`/`Delete` ever stop appearing together.
-
-### Status Beacons (`.pill`)
-- **Style:** full-radius pill, a small solid dot + uppercase mono label, background at ~14% tint of the semantic color.
-- **In-progress state:** the dot gets a `beacon-live` pulsing ring (`box-shadow`-free, pure `border` + `opacity`/`scale` keyframe) — the one authored motion moment for status, exempted from `prefers-reduced-motion` the same way a spinner is, since it is the only signal of ongoing activity.
-
-### Tabs (`.tabs`/`.tab`)
-A segmented control, not an underlined bar: tabs sit in a recessed `bg-inset` track with 3px of padding, the active tab a `leaf-wash` filled pill (the same active-tab color the earlier underline treatment used, just filled instead of ruled — no new accent introduced). A tab's own count badge (`.tab-count`) stays neutral (`bg-elevated`/`text-dim`) even when active, since a count is structural content per the color rules, never tinted to match. Used on `ProjectDetailPage` (Deployments/GitHub/Workspace) and `DeploymentDetailPage` (Overview/History/Logs/Env).
-
-### Plant Glyph (`src/components/PlantGlyph.tsx`)
-A small root-and-sprout SVG whose posture reflects real status, reusing `StatusPill`'s own green/yellow/red/gray classification so a card's glyph and its pill always agree: upright and full (leaf-bright) when healthy, still uncurling with a gentle sway animation (ochre) while building, drooping (red) on failure, a bare stem (text-faint) when stopped. A never-yet-deployed (`pending`) resource shares the same bare-stem pose honestly — see the Ochre color note above on why `pending` doesn't pulse as if it were active. A `sleeping` deployment (idle-sleep auto-stopped, see [idle-sleep.md](docs/idle-sleep.md)) shares the same bare-stem pose too -- it reads as "dormant," not "wilted," which is the honest distinction: nothing is wrong, it's just quiet until the next visitor wakes it. The standalone "waking up" page a visitor sees in the meantime (`internal/api/gate_templates.go`'s `sleepTpl`, outside the SPA bundle) uses a different, livelier motif instead -- a swaying sprout icon in leaf green -- since *that* page specifically wants to read as "something is actively starting up," not dormant. Sits on every project/deployment card and the deployment-detail header. A fresh transition into "running" triggers a one-shot spring-driven scale pop (`lib/spring.ts`, not a CSS keyframe, so it can be interrupted/retargeted the same way `Modal`'s open/close already is) — a real growth burst tied to a real state change, never a decoration on a timer.
-
-### Gauges (`src/components/Gauge.tsx`)
-- **Style:** a 250°-sweep SVG arc (track + value stroke) with quarter-turn tick marks and a centered numeric readout — never a full circle (which would read as a generic "progress ring"), and always rendered beside its actual value/label text, never replacing it.
-- **Tone:** leaf at rest (the default/healthy range), ochre >70%, red >90%.
-
-### Cards / Containers
-- **Corner:** 8px radius.
-- **Background:** `bg-card` on `bg`; a nested "instrument socket" (folded into `.instrument-cell`) uses `bg-inset` instead of stacking another bordered card.
-- **Border:** 1px `--border`, no shadow at rest; `--leaf-dim` on hover for a clickable card (`.card-clickable`).
-- **Padding:** 20px (0 when the card's sole content is a table).
-- **Resource cards** (`.project-card`/`.deployment-card`): see Layout's "Resource cards, not tables" above.
-
-### CodeBlock (`src/components/CodeBlock.tsx`)
-The one component for a finished block of raw machine output an operator might need to read closely — a build failure, a run-command result — rendered in the same `bg-recorder` terminal-box treatment `LogViewer` uses for a *live* stream. `LogViewer` owns the live-tail case (its strip-chart + recorder status only make sense for an active connection); `CodeBlock` is the static counterpart, so a finished error dump and a live log tail never diverge into two different visual treatments for the same kind of content again (this was a real defect in the previous pass — History's build-failure text was bare red paragraph text next to Logs' proper terminal box).
-
-### Inputs / Fields
-- **Style:** `bg-inset` fill, 1px border, 5px radius, 8px 11px padding.
-- **Focus:** border shifts to leaf; global `:focus-visible` also gets a 2px leaf-bright outline with offset, for keyboard navigation everywhere (not just inputs).
-- **Search field** (`.search-field`, e.g. `ProjectsPage`): the same `.input`, icon-prefixed, width-capped rather than stretched full-page — a client-side filter over data the page already loaded, not a new endpoint.
-
-### Navigation
-- **Sidebar nav-link:** icon + label, 8px radius, leaf-wash background + leaf-bright text when active. Active-state membership is explicit (`path === "/"` or a `/projects/...` prefix for "Projects", etc.) rather than an inverse "not one of the other pages" check, so an unmatched path never lights up a nav item by accident.
-- **Station switcher:** pinned above the nav list — eyebrow label ("Station") + current workspace name + chevron, opening a dropdown listing every workspace with its project count, a "Manage workspaces" exit, and re-affirming the active selection with a filled leaf dot.
-- **Sidebar search** (`SidebarSearch` in `Layout.tsx`, technical mode only): sits directly under the station switcher, Ctrl/Cmd+K-focusable from anywhere, filtering the one `/api/projects` call it makes on mount by name/slug and jumping straight to a match on Enter/click — no new endpoint, no fuzzy backend search. Nav items below it are grouped under `.nav-section-label`s ("Workspace" for Projects, "Host" for Admin/Server health/Storage), the same functional-label idiom `<th>` already uses, not a decorative kicker.
-- **Collapse to an icon rail** (technical mode only, `localStorage`-persisted): every label collapses via a dedicated `-label`/`-labels` class going `display: none` rather than the whole element unmounting, so every icon (each already an explicit px size, never em-based) stays full-size and every remaining control gets a `title` tooltip. Ctrl/Cmd+K while collapsed re-expands the sidebar first, then focuses search once the real input is back in the DOM — a hidden input can't take focus, so the shortcut can't just fire blind.
-- **Mobile:** the whole nav collapses behind a top-bar hamburger toggle into a full-width drawer, rather than wrapping into a multi-row jumble.
-- **Sidebar mark reacts to real state:** an owner-only poll of the same resource budget Admin shows (every 5 minutes — that endpoint's own disk scan is expensive, so this deliberately doesn't poll faster than the backend's own resource-sampler cadence) tints the mark to the danger color when memory or disk is critical, instead of it being a static logo.
-
-### Modal (`src/components/Modal.tsx`)
-Spring-driven open/close (`lib/spring.ts`, critically damped) with two widths: `size="md"` (460px, the default, for a form) and `size="lg"` (720px, `.modal-lg`) for anything that lays out a card grid inside itself — the template gallery and GitHub repo picker used to squeeze a `grid-2` into a 460px modal, which is what clipped template descriptions mid-sentence and forced a horizontal scroll on a popup.
-
-### Toast (`src/components/Toast.tsx`)
-Rare, on-brand milestone moments (first project ever, first deploy ever, first rollback ever — gated by a one-time `localStorage` flag via `lib/milestones.ts`'s `firstTime(key)` so they stay genuinely rare) surface as a small spring-animated toast, bottom-right, `--leaf-dim` bordered. Never used for routine status or errors — those stay in an `.error-banner` or a status pill, read instantly, no animation to wait out.
-
-### Skeleton loading (`src/components/Skeleton.tsx`)
-`SkeletonLine`/`SkeletonCircle` (a CSS-only animated-gradient shimmer, `background-position` sweeping across a `bg-elevated`/`bg-card` gradient) compose into shape-matched placeholders (`ProjectCardSkeleton`, `ProjectRowSkeleton`, `DeploymentCardSkeleton`) for the first load of a list, replacing a single centered `CenterLoading` spinner with something that previews the real layout. Automatically respects the app-wide `prefers-reduced-motion` rule already in `styles.css` — it's a loading indicator, not a status animation, so no separate exemption was needed.
-
-### Staggered card entrance
-`.project-card`/`.project-list-row`/`.deployment-card` each play a one-shot 0.3s fade-and-rise (`card-enter` keyframe) on mount, staggered by `:nth-child` position (0-210ms). Relies on React's keyed-list reconciliation (`key={p.id}`) to fire only on a genuine first mount, not on the 4s status-poll re-renders that already touch these lists — a stable key means the DOM node is reused, not remounted, so the animation doesn't replay every poll tick.
-
-### Per-project hero art
-`ProjectDetailPage`'s `.project-hero` band derives its gradient angle, `MangroveIcon` watermark rotation/scale, and leaf-vs-brass tint from `hashString(project.slug)` (`lib/hash.ts`, a djb2 variant) rather than randomness — so a given project always renders the same hero art across reloads, and no two differently-named projects look identical by chance.
-
-### Command palette (`SidebarSearch` in `Layout.tsx`)
-Extends the original project-only search into a combined project+deployment picker: typing lazy-loads every workspace's deployments (one parallel fetch across all visible projects, done once per session and cached, not per keystroke) and merges them with the already-loaded project list into one ranked, capped-at-8 result set, each row showing a kind-specific icon (`LedgerIcon` for a project, `DeployIcon` for a deployment) and its parent project as secondary text. Still no new backend endpoint — it composes the same per-project deployment-list call the Deployments tab already makes.
-
-### Deploy history sparkline (`src/components/DeployHistorySparkline.tsx`)
-A compact row of colored ticks (reusing `DeployTimeline`'s own `DOT_COLOR` map, exported for this purpose) above the full `DeployTimeline` list on a deployment's History tab — the last 40 runs, oldest to newest, so a long-lived deployment's recent reliability reads at a glance before scrolling the detailed log below it.
-
-### Projects summary strip
-A single `text-dim` line under the Projects page header ("3 of 5 deployments running · 1 needs attention · across 2 workspaces") computed from data the page already fetched for its cards — no new endpoint. Only renders once at least one project exists, and the "across N workspaces" clause only appears when no single workspace is selected.
-
-### Log Viewer / Strip-Chart (`src/components/LogViewer.tsx`)
-A signature component: live logs render inside a `log-viewer-frame` with a `log-strip` above the text — one thin vertical tick per received line (height derived from that line's length, a taller red tick when the line matches an error/fail/panic pattern), scrolling right-aligned like a seismograph drum. `ResourceHistoryStrip` reuses the same idiom for periodic resource snapshots, with a `.chart-legend` explaining its tone colors and a capped per-tick width (`flex: 0 1 10px`) so a fresh instance with only one or two samples reads as "a few real readings," not one bar stretched to fill the whole strip like a decorative fill.
+- **Tide gauge** (`web/src/lib/components/TideGauge.svelte`) -- the one status mark, used on
+  every project card, deployment card, child tile, search result, activity
+  row, and the deployment header (sizes sm 12×26, md 14×30, lg 22×48). The
+  water line animates slowly only for in-progress statuses; a spring "pop"
+  (`burstKey`) marks a fresh successful deploy.
+- **Tide banner** (`TideBanner.svelte`) -- mangrove-at-the-waterline
+  art over a project card, the project header, the login card, and the
+  first-run empty state. Art, not data, but it follows the same level as the
+  gauge: high tide, turning, low tide, storm.
+- **Root line** -- an expanded project's deployments hang off one vertical
+  line, each joined by a curved root (`.project-card-children`), ending in a
+  dashed "+ Add a deployment" tile. The deploy-history timeline is the same
+  line running vertically.
+- **Resource tide bars** (`Gauge.svelte`) -- replace the old arc
+  dial. Teal to 70%, amber above 70%, red above 90%; the number always sits
+  beside the bar.
+- **Sidebar** -- floating, 264px, 20px radius, `#173D31`. Station switcher
+  ("Station  All workspaces"), ⌘K search, Workspace and Host sections, a
+  Technical/Simple toggle, Collapse, and the user's email with Settings / Log
+  out links. Collapsed: a 72px icon rail. Phone: a dark top bar plus a drawer
+  over a scrim. The brand mark turns red (with a note) when host memory or
+  disk exceeds 90% (owner only).
+- **Buttons** -- 10px radius, Figtree 600 13. Primary: leaf fill. Default:
+  white with a hairline. Danger: red text with a pink hairline; "Delete
+  deployment" in the header is a borderless red ghost.
+- **Segmented control** (`.tabs`, `.view-toggle`, `.mode-toggle`) -- a
+  `#E9E7DF` track, the active segment white with a soft shadow. A tab's count
+  reads "Deployments · 3", never tinted.
+- **Chips** (`.filter-chip`) -- pills; the selected one is filled sidebar
+  green.
+- **Pills** (`.pill`) -- sentence case, 12px 600, a 6px dot.
+- **Cards** -- white, 20px radius, 1px line, near-invisible shadow. Project
+  cards put the banner on top (96px) and body below.
+- **Breadcrumb** -- a white "‹ Projects" back pill, then plain crumbs.
+- **Dialogs** -- 20px radius, 460px (760px for the large size), over a
+  translucent sidebar-green scrim.
+- **Toasts** -- sidebar-green, white text, the mark in pale green.
+- **Empty states** -- say what the thing is, then how to start; no icon. The
+  page-level empty state is bold 16px over muted 13px.
+- **Skeletons** -- the real card outline with shimmering bars.
+- **Terminal** -- logs, run output, and code blocks share the `#0F1B18`
+  surface; the log viewer has a "STDOUT · RECORDING" header bar.
 
 ## Do's and Don'ts
 
-### Do:
-- **Do** pair every gauge/beacon/plant-glyph with its real numeric or word value in text — the visualization augments the content, it never replaces it.
-- **Do** use `.instrument-row`/`.instrument-cell` (a divided panel) for any new row of related readouts, not a grid of separate bordered tiles.
-- **Do** render a project or deployment as a card with a `PlantGlyph` and a rollup, not a bare table row (the Living-Resource Rule) — reserve tables for genuinely list-shaped data.
-- **Do** keep the station/workspace switcher as ambient, always-visible sidebar context — never move workspace management back to a flat top-level nav item.
-- **Do** use the authored icon set in `src/icons.tsx` (or `src/templateIcons.tsx` for a template) for any new icon; extend it in the same 1.7px stroke/round-cap grammar rather than importing an icon font.
-- **Do** reserve monospace for genuinely measured/logged values.
-- **Do** route any internal enum/DB value through `humanLabel()` and any timestamp through `fmtWhen()`/`fmtWhenFull()` before it reaches JSX.
-- **Do** keep swamp-voice copy confined to loading/empty states (`lib/copy.ts`) — errors and anything an operator must act on stay plain and legible first.
+**Do**
+- Let the tide gauge be the status signal; pair it with a pill, never
+  replace the pill's text.
+- Keep color for status. Everything structural (counts, workspace pills,
+  metadata) stays neutral.
+- Use JetBrains Mono for anything a user might copy (slugs, ports, env,
+  image refs, commands).
+- Make every page work at 390px: the sidebar becomes a drawer, toolbars
+  wrap, tables scroll inside their card.
 
-### Don't:
-- **Don't** use brass for a primary call-to-action, or leaf for structural chrome (borders, plaque labels, dividers) — the Two-Accent Rule is directional, not just "don't add a third color."
-- **Don't** fake physical material (embossing, stamped-metal gradients, skeuomorphic bevels) — the instrument-room feeling comes from vocabulary and structure, not costume CSS.
-- **Don't** add a kicker/eyebrow label above a page or card heading purely for decoration (the `station-switcher-eyebrow` and table `<th>` labels are functional value-labels for a live control or column, not decorative kickers, and that distinction should hold for anything new).
-- **Don't** let a table's row-action button be the thing that determines whether the layout overflows — give a data-dense table its own full-width row rather than fighting it into half a `grid-2`.
-- **Don't** give the same content type (e.g. raw build/command output) two different visual treatments in two different places — use `CodeBlock` for a finished dump, `LogViewer` for a live stream, never a bare `<p>`/inline style.
-- **Don't** let an unmatched route silently render an existing page (it used to fall through to Projects/Your-apps) — `NotFoundPage` renders for anything that isn't an explicitly matched path.
-- **Don't** fill a card/panel background with an accent color because something inside it is positive/active/important — the one narrow exception is a page-level decorative banner (`.project-hero`) that carries no status of its own; a card or panel always stays neutral (`bg-card`/`bg-elevated`/`bg-inset`) regardless of what's inside it.
+**Don't**
+- Don't introduce a new hue per project or per feature; banners vary by
+  tide level only.
+- Don't nest a bordered card inside a card; child deployments are tiles on
+  the root line.
+- Don't use emoji or an icon font; icons live in `web/src/lib/icons.ts`, rendered by `Icon.svelte` (1.9 stroke,
+  round caps, 24px grid).
+- Don't load fonts or scripts from a CDN.

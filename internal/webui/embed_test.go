@@ -28,33 +28,60 @@ func TestIndexNeverCached(t *testing.T) {
 }
 
 // TestHashedAssetsCachedForever checks the other half of the same policy:
-// vite fingerprints every file under assets/ with a content hash in its
-// name, so unlike index.html it's correct -- not just permissible -- to
-// cache those forever, a rebuild produces a new filename rather than a
-// changed one under the same name. Skips if the frontend hasn't been
-// built (dist/ ships only a placeholder index.html in git -- see
-// embed.go's doc comment), rather than failing: this package must still
-// build and pass tests before `npm run build` has ever run.
+// SvelteKit fingerprints every file under assets/immutable/ with a content
+// hash in its name, so unlike index.html it's correct -- not just
+// permissible -- to cache those forever, a rebuild produces a new filename
+// rather than a changed one under the same name. Skips if the frontend
+// hasn't been built (dist/ ships only a .gitkeep in git -- see embed.go's
+// doc comment), rather than failing: this package must still build and
+// pass tests before `npm run build` has ever run.
 func TestHashedAssetsCachedForever(t *testing.T) {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		t.Fatalf("fs.Sub: %v", err)
 	}
-	entries, err := fs.ReadDir(sub, "assets")
-	if err != nil || len(entries) == 0 {
-		t.Skip("no built assets/ present (frontend not built) -- run `cd web && npm run build` to exercise this test")
+	var hashed string
+	_ = fs.WalkDir(sub, "assets/immutable", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && hashed == "" {
+			hashed = path
+		}
+		return nil
+	})
+	if hashed == "" {
+		t.Skip("no built assets/immutable/ present (frontend not built) -- run `cd web && npm run build` to exercise this test")
 	}
 
 	h := Handler()
-	req := httptest.NewRequest(http.MethodGet, "/assets/"+entries[0].Name(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/"+hashed, nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /assets/%s: status %d", entries[0].Name(), rec.Code)
+		t.Fatalf("GET /%s: status %d", hashed, rec.Code)
 	}
 	want := "public, max-age=31536000, immutable"
 	if got := rec.Header().Get("Cache-Control"); got != want {
 		t.Errorf("Cache-Control = %q, want %q", got, want)
+	}
+}
+
+// TestUnhashedAssetsNotCached: SvelteKit also writes assets/version.json,
+// whose content changes on every build under a fixed name -- it must not
+// inherit the immutable policy just because it lives under assets/.
+func TestUnhashedAssetsNotCached(t *testing.T) {
+	sub, err := fs.Sub(distFS, "dist")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+	if _, err := fs.Stat(sub, "assets/version.json"); err != nil {
+		t.Skip("no built assets/version.json present (frontend not built)")
+	}
+
+	h := Handler()
+	req := httptest.NewRequest(http.MethodGet, "/assets/version.json", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
 	}
 }
