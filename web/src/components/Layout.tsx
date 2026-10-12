@@ -7,16 +7,16 @@ import {
   CabinetIcon,
   ChevronDownIcon,
   CloseIcon,
-  DeployIcon,
   DialsIcon,
   GaugeIcon,
   GearIcon,
   LedgerIcon,
   MangroveIcon,
   MenuIcon,
+  PanelIcon,
   SearchIcon,
-  UserIcon,
 } from "../icons";
+import { TideGauge } from "./TideGauge";
 
 const SIDEBAR_COLLAPSE_KEY = "mangrove-sidebar-collapsed";
 
@@ -64,6 +64,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
               <MangroveIcon className={`sidebar-brand-mark ${critical ? "sidebar-brand-mark-critical" : ""}`} />
             </span>
             <span className="sidebar-brand-label">Mangrove</span>
+            {critical && <span className="sidebar-critical-dot" aria-hidden="true" />}
           </div>
           <button
             type="button"
@@ -77,6 +78,11 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
         </div>
 
         <div className="sidebar-body">
+          {critical && (
+            <Link to="/server-health" className="sidebar-critical-note">
+              Host memory or disk above 90%
+            </Link>
+          )}
           {!simple && <StationSwitcher collapsed={collapsed} />}
           {!simple && <SidebarSearch collapsed={collapsed} onRequestExpand={() => setCollapsed(false)} />}
 
@@ -92,6 +98,7 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
           {!simple && (
             <>
               <div className="nav-section-label">Host</div>
+              <div className="sidebar-rail-divider sidebar-collapsed-only" aria-hidden="true" />
               <Link to="/admin" className={`nav-link ${path === "/admin" ? "active" : ""}`} title={collapsed ? "Admin" : undefined}>
                 <DialsIcon />
                 <span className="nav-link-label">Admin</span>
@@ -139,22 +146,15 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
                 Simple
               </button>
             </div>
-            <div className="sidebar-user" title={collapsed ? (user.email ?? `user #${user.id}`) : undefined}>
-              <UserIcon />
-              <span>{user.email ?? `user #${user.id}`}</span>
-            </div>
+            {simple && <div className="sidebar-mode-hint">Plain-language view for non-technical use</div>}
             <Link
               to="/settings"
-              className={`nav-link ${path === "/settings" ? "active" : ""}`}
-              style={{ marginBottom: 8 }}
-              title={collapsed ? "Settings" : undefined}
+              className={`nav-link sidebar-collapsed-only ${path === "/settings" ? "active" : ""}`}
+              title="Settings"
+              aria-label="Settings"
             >
               <GearIcon />
-              <span className="nav-link-label">Settings</span>
             </Link>
-            <button className="btn btn-sm" onClick={onLogout} style={{ width: "100%" }} title={collapsed ? "Log out" : undefined}>
-              {collapsed ? <UserIcon style={{ width: 14, height: 14 }} /> : "Log out"}
-            </button>
             {!simple && (
               <button
                 type="button"
@@ -163,10 +163,21 @@ export function Layout({ user, onLogout, children }: { user: CurrentUser; onLogo
                 title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 onClick={() => setCollapsed(!collapsed)}
               >
-                <ChevronDownIcon />
+                <PanelIcon />
                 <span className="sidebar-collapse-toggle-label">Collapse</span>
               </button>
             )}
+            <div className="sidebar-user">
+              <span className="sidebar-user-email">{user.email ?? `user #${user.id}`}</span>
+              <span className="sidebar-user-links">
+                <Link to="/settings" className={path === "/settings" ? "active" : undefined}>
+                  Settings
+                </Link>
+                <button type="button" onClick={onLogout}>
+                  Log out
+                </button>
+              </span>
+            </div>
           </div>
         </div>
       </aside>
@@ -228,6 +239,7 @@ interface SearchMatch {
   slug: string;
   projectId: number;
   projectName?: string; // only set for a deployment match
+  status?: string; // only set for a deployment match
 }
 
 function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onRequestExpand: () => void }) {
@@ -325,6 +337,7 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
                 slug: d.slug,
                 projectId: Number(projectId),
                 projectName: projectNameById.get(Number(projectId)),
+                status: d.status,
               }),
             ),
         ),
@@ -395,7 +408,7 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
         <div className="sidebar-search-panel">
           {matches.length === 0 ? (
             <div className="sidebar-search-empty">
-              {loadingDeployments ? "Searching..." : <>No projects or deployments match &ldquo;{query}&rdquo;.</>}
+              {loadingDeployments ? "Searching..." : <>No projects or deployments match &ldquo;{query}&rdquo;</>}
             </div>
           ) : (
             matches.map((m, i) => (
@@ -407,12 +420,16 @@ function SidebarSearch({ collapsed, onRequestExpand }: { collapsed: boolean; onR
                 onClick={() => go(m)}
               >
                 {m.kind === "project" ? (
-                  <LedgerIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
+                  <LedgerIcon style={{ width: 16, height: 16, flexShrink: 0, color: "var(--leaf)" }} />
                 ) : (
-                  <DeployIcon style={{ width: 14, height: 14, flexShrink: 0, color: "var(--text-faint)" }} />
+                  <TideGauge status={m.status} size="sm" />
                 )}
-                {m.name}
-                <span className="sidebar-search-item-slug">{m.kind === "deployment" ? m.projectName : m.slug}</span>
+                <span className="sidebar-search-item-text">
+                  <b>{m.name}</b>
+                  <span className={`sidebar-search-item-slug ${m.kind === "project" ? "mono" : ""}`}>
+                    {m.kind === "deployment" ? m.projectName : m.slug}
+                  </span>
+                </span>
               </button>
             ))
           )}
@@ -473,7 +490,6 @@ function StationSwitcher({ collapsed }: { collapsed: boolean }) {
         title={collapsed ? label : undefined}
         onClick={() => setOpen((v) => !v)}
       >
-        <MangroveIcon className="station-switcher-icon" />
         <span className="station-switcher-labels">
           <span className="station-switcher-eyebrow">Station</span>
           <span className="station-switcher-name">{label}</span>
@@ -484,8 +500,7 @@ function StationSwitcher({ collapsed }: { collapsed: boolean }) {
       {open && (
         <div className="station-switcher-panel" role="listbox">
           <button type="button" className={`station-switcher-item ${activeWorkspaceId == null ? "active" : ""}`} onClick={() => pick(null)}>
-            <span className="dot" />
-            All workspaces
+            <span>All workspaces</span>
           </button>
           {workspaces.map((w) => (
             <button
@@ -494,9 +509,10 @@ function StationSwitcher({ collapsed }: { collapsed: boolean }) {
               className={`station-switcher-item ${activeWorkspaceId === w.workspace.id ? "active" : ""}`}
               onClick={() => pick(w.workspace.id)}
             >
-              <span className="dot" />
-              {w.workspace.name}
-              <span className="station-switcher-item-count">{w.project_count}</span>
+              <span>{w.workspace.name}</span>
+              <span className="station-switcher-item-count">
+                {w.project_count} project{w.project_count === 1 ? "" : "s"}
+              </span>
             </button>
           ))}
           <div className="station-switcher-divider" />

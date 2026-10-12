@@ -5,8 +5,9 @@ import { Modal, useModalClose } from "../components/Modal";
 import { ProjectCardSkeleton, ProjectRowSkeleton } from "../components/Skeleton";
 import { useWorkspaces } from "../workspaceContext";
 import { StatusPill, worstStatus } from "../components/StatusPill";
-import { PlantGlyph } from "../components/PlantGlyph";
-import { ArrowRightIcon, ChevronDownIcon, EmptyLedgerIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
+import { TideGauge } from "../components/TideGauge";
+import { TideBanner } from "../components/TideBanner";
+import { ArrowRightIcon, BoxIcon, ChevronDownIcon, GridIcon, ListViewIcon, PlusIcon, SearchIcon } from "../icons";
 import { imageIconKey, TemplateIcon } from "../templateIcons";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_PROJECTS, EMPTY_PROJECTS_WORKSPACE } from "../lib/copy";
@@ -151,98 +152,127 @@ export function ProjectsPage() {
           const iconKey = d.build_strategy === "image" ? imageIconKey(d.image_ref) : null;
           return (
             <Link key={d.id} to={`/projects/${p.id}/deployments/${d.id}`} className="project-child-tile">
-              <div className="project-child-tile-top">
-                <PlantGlyph status={d.status} size={16} />
-                {/* A recognizable tech icon sits beside PlantGlyph, not
-                    stacked on it -- the plant glyph stays the one
-                    load-bearing status signal (DESIGN.md's Living-Resource
-                    Rule); this is identity, not status, and an overlaid
-                    corner badge at this size read as visual noise rather
-                    than a legible mark. */}
-                {iconKey && <TemplateIcon templateKey={iconKey} category="" className="project-child-tile-tech-icon" />}
-                <span className="project-child-tile-name">{d.name}</span>
-              </div>
-              <div className="project-child-tile-meta">
-                <StatusPill status={d.status} />
-                <span className="mono text-dim">{d.build_strategy}</span>
-              </div>
-              <div className="text-dim project-child-tile-time">
-                {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never deployed"}
-              </div>
+              <span className="project-child-tile-icon">
+                {iconKey ? <TemplateIcon templateKey={iconKey} category="" className="project-child-tile-tech-icon" /> : <BoxIcon />}
+              </span>
+              <TideGauge status={d.status} size="sm" />
+              <span className="project-child-tile-name">{d.name}</span>
+              <span className="mono text-dim">{d.build_strategy}</span>
+              <span className="project-child-tile-meta">
+                {d.last_deployed_at || d.status !== "pending" ? (
+                  <StatusPill status={d.status} />
+                ) : (
+                  <span className="project-child-tile-time">never deployed</span>
+                )}
+              </span>
             </Link>
           );
         })}
+        <button
+          type="button"
+          className="project-child-add"
+          onClick={(e) => {
+            e.stopPropagation();
+            setQuickAddProjectId(p.id);
+          }}
+        >
+          + Add a deployment
+        </button>
       </div>
     );
   };
 
+  const lastDeployedAt = (p: Project): string | null => {
+    const stamps = (deploymentsByProject[p.id] ?? []).map((d) => d.last_deployed_at).filter((t): t is string => !!t);
+    if (stamps.length === 0) return null;
+    return stamps.reduce((a, b) => (new Date(a).getTime() >= new Date(b).getTime() ? a : b));
+  };
+
+  const rollup = (s: ProjectStatus | undefined) =>
+    s == null ? (
+      "loading..."
+    ) : s.count === 0 ? (
+      "no deployments yet"
+    ) : (
+      <>
+        <b>
+          {s.runningCount} of {s.count}
+        </b>{" "}
+        deployment{s.count === 1 ? "" : "s"} running
+      </>
+    );
+
   const renderGridCard = (p: Project) => {
     const s = status[p.id];
     const isExpanded = expanded.has(p.id);
+    const last = lastDeployedAt(p);
     return (
       <div
         key={p.id}
-        className={`card card-clickable project-card ${isExpanded ? "project-list-row-expanded" : ""}`}
+        className={`card card-clickable project-card ${isExpanded ? "project-card-wide" : ""}`}
         onClick={() => navigate(`/projects/${p.id}`)}
       >
-        <div className="project-card-top">
-          <PlantGlyph status={s?.worst} size={20} />
-          <div className="project-card-heading">
-            <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
-              {p.name}
-            </Link>
-            <span className="mono text-dim project-card-slug">{p.slug}</span>
-          </div>
-          {s == null ? (
-            <span className="text-faint mono" style={{ fontSize: 12 }}>...</span>
-          ) : s.worst != null ? (
-            <StatusPill status={s.worst} />
-          ) : null}
-          <button
-            type="button"
-            className="project-card-quick-add"
-            aria-label={`New deployment in ${p.name}`}
-            title="New deployment"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setQuickAddProjectId(p.id);
-            }}
-          >
-            <PlusIcon />
-          </button>
-          {s != null && s.count > 0 && (
-            <button
-              type="button"
-              className="project-card-chevron-btn"
-              aria-expanded={isExpanded}
-              aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleExpanded(p.id);
-              }}
-            >
-              <ChevronDownIcon className="project-card-chevron" />
-            </button>
-          )}
+        <div className="project-card-banner">
+          <TideBanner status={s?.worst} />
         </div>
+        <div className="project-card-body">
+          <div className="project-card-top">
+            <TideGauge status={s?.worst} />
+            <div className="project-card-heading">
+              <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+                {p.name}
+              </Link>
+              <span className="mono text-dim project-card-slug">{p.slug}</span>
+            </div>
+            {s == null ? null : s.worst != null ? (
+              <StatusPill status={s.worst} />
+            ) : (
+              <span className="pill pill-gray">
+                <span className="pill-dot" />
+                no deployments
+              </span>
+            )}
+            <span className="project-card-actions">
+              <button
+                type="button"
+                className="project-card-quick-add"
+                aria-label={`New deployment in ${p.name}`}
+                title="New deployment"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setQuickAddProjectId(p.id);
+                }}
+              >
+                <PlusIcon />
+              </button>
+              {s != null && s.count > 0 && (
+                <button
+                  type="button"
+                  className="project-card-chevron-btn"
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? "Collapse deployments" : "Expand deployments"}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleExpanded(p.id);
+                  }}
+                >
+                  <ChevronDownIcon className="project-card-chevron" />
+                </button>
+              )}
+            </span>
+          </div>
 
-        {p.description && <p className="project-card-description">{p.description}</p>}
+          <p className="project-card-description">{p.description || "No description"}</p>
 
-        <div className="project-card-footer">
-          <span className="project-card-rollup">
-            {s == null
-              ? "loading..."
-              : s.count === 0
-                ? "no deployments yet"
-                : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
-          </span>
-          <div className="project-card-footer-meta">
-            {p.workspace_name ? (
+          <div className="project-card-footer">
+            <span className="project-card-rollup">{rollup(s)}</span>
+            {p.workspace_name && (
               <a
                 href="/"
                 className="project-card-workspace"
+                title={`Show only ${p.workspace_name}`}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -251,14 +281,12 @@ export function ProjectsPage() {
               >
                 {p.workspace_name}
               </a>
-            ) : (
-              <span />
             )}
-            <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
+            <span className="project-card-created">Last deployed {last ? fmtWhen(last) : "never"}</span>
           </div>
-        </div>
 
-        {renderChildren(p, isExpanded)}
+          {renderChildren(p, isExpanded)}
+        </div>
       </div>
     );
   };
@@ -290,22 +318,14 @@ export function ProjectsPage() {
           ) : (
             <span className="project-list-row-chevron-spacer" />
           )}
-          <PlantGlyph status={s?.worst} size={20} />
+          <TideGauge status={s?.worst} size="sm" />
           <div className="project-list-row-heading">
-            <span className="flex gap-8" style={{ alignItems: "baseline" }}>
-              <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
-                {p.name}
-              </Link>
-              <span className="mono text-dim project-card-slug">{p.slug}</span>
-            </span>
-            <span className="text-dim project-list-row-rollup">
-              {s == null
-                ? "loading..."
-                : s.count === 0
-                  ? "no deployments yet"
-                  : `${s.runningCount} of ${s.count} deployment${s.count === 1 ? "" : "s"} running`}
-            </span>
+            <Link to={`/projects/${p.id}`} className="project-card-name" onClick={(e) => e.stopPropagation()}>
+              {p.name}
+            </Link>
+            <span className="mono text-dim project-card-slug">{p.slug}</span>
           </div>
+          <span className="text-dim project-list-row-rollup">{rollup(s)}</span>
           <div className="project-list-row-end">
             {p.workspace_name && (
               <a
@@ -321,7 +341,14 @@ export function ProjectsPage() {
               </a>
             )}
             <span className="text-dim project-card-created">{fmtWhen(p.created_at)}</span>
-            {s?.worst != null && <StatusPill status={s.worst} />}
+            {s?.worst != null ? (
+              <StatusPill status={s.worst} />
+            ) : s != null ? (
+              <span className="pill pill-gray">
+                <span className="pill-dot" />
+                no deployments
+              </span>
+            ) : null}
             <button
               type="button"
               className="project-card-quick-add"
@@ -377,8 +404,19 @@ export function ProjectsPage() {
 
       {projects !== null && projects.length > 0 && (
         <p className="projects-summary-strip">
-          {totalRunning} of {totalDeployments} deployment{totalDeployments === 1 ? "" : "s"} running
-          {attentionCount > 0 && <> &middot; {attentionCount} need{attentionCount === 1 ? "s" : ""} attention</>}
+          <b>
+            {totalRunning} of {totalDeployments}
+          </b>{" "}
+          deployment{totalDeployments === 1 ? "" : "s"} running
+          {attentionCount > 0 && (
+            <>
+              {" "}
+              &middot;{" "}
+              <b className="attention">
+                {attentionCount} need{attentionCount === 1 ? "s" : ""} attention
+              </b>
+            </>
+          )}
           {activeWorkspaceId == null && workspaces.length > 1 && <> &middot; across {workspaces.length} workspaces</>}
         </p>
       )}
@@ -454,13 +492,19 @@ export function ProjectsPage() {
             )
           ) : projects.length === 0 ? (
             <div className="card empty-state">
-              <EmptyLedgerIcon />
+              {activeWorkspaceId == null && (
+                <div className="empty-state-banner">
+                  <TideBanner level="low" />
+                </div>
+              )}
               <p>{activeWorkspaceId != null ? EMPTY_PROJECTS_WORKSPACE : EMPTY_PROJECTS}</p>
               <div className="field-hint">Create one to deploy your first app.</div>
+              <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                <PlusIcon /> New project
+              </button>
             </div>
           ) : filteredProjects.length === 0 ? (
             <div className="card empty-state">
-              <EmptyLedgerIcon />
               <p>
                 {q && statusFilter !== "all"
                   ? <>No {statusFilter === "running" ? "running" : "attention-needing"} projects match &ldquo;{search}&rdquo;.</>
@@ -554,7 +598,9 @@ function RecentActivityPanel({
         <div className="activity-list">
           {items.map((d) => (
             <Link key={d.id} to={`/projects/${d.projectId}/deployments/${d.id}`} className="activity-item">
-              <PlantGlyph status={d.status} size={14} />
+              <span className="activity-item-rail">
+                <TideGauge status={d.status} size="sm" />
+              </span>
               <span className="activity-item-body">
                 <span className="activity-item-name">{d.name}</span>
                 <span className="text-dim activity-item-meta">
@@ -631,7 +677,13 @@ function CreateProjectModal({
         </div>
         <div className="field">
           <label htmlFor="project-description">Description (optional)</label>
-          <input id="project-description" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <textarea
+            id="project-description"
+            className="input"
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </div>
         <div className="field">
           <label htmlFor="project-workspace">Workspace</label>

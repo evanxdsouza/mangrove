@@ -201,7 +201,7 @@ export function TemplateIcon({ templateKey, category, ...props }: { templateKey:
 // "postgres:16"` matches the "postgres" key that already has an elephant
 // glyph) -- an honest, narrow heuristic, not a guess: it only ever returns
 // a key this file already has a *real*, deliberately-authored icon for,
-// never a fabricated/generic match. Returns null (render PlantGlyph alone)
+// never a fabricated/generic match. Returns null (render the TideGauge alone)
 // for anything else, including well-known non-template images like nginx
 // that have no authored glyph here.
 export function imageIconKey(imageRef: string | undefined | null): string | null {

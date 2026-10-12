@@ -11,7 +11,7 @@ import {
 import { Modal, useModalClose } from "./Modal";
 import { CenterLoading } from "./CenterLoading";
 import { slugify } from "../pages/ProjectsPage";
-import { BranchIcon, EmptyLedgerIcon } from "../icons";
+import { BranchIcon } from "../icons";
 
 type Strategy = "dockerfile" | "nixpacks" | "compose" | "static";
 type Step = "connect" | "repo" | "configure" | "result";
@@ -172,7 +172,6 @@ export function GithubDeployWizard({
             <CenterLoading />
           ) : filteredRepos.length === 0 ? (
             <div className="card empty-state">
-              <EmptyLedgerIcon />
               <p>No matching repos.</p>
             </div>
           ) : (

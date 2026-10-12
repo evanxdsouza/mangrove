@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type CustomDomain } from "../api";
-import { EmptyLedgerIcon, GlobeIcon, PlusIcon, TrashIcon } from "../icons";
+import { GlobeIcon, PlusIcon, TrashIcon } from "../icons";
 
 function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
@@ -150,7 +150,6 @@ export function DomainsPanel({ deploymentId, canEdit, isAdmin }: { deploymentId:
       )}
       {domains && domains.length === 0 && (
         <div className="empty-state">
-          <EmptyLedgerIcon />
           <p>No custom domains yet.</p>
         </div>
       )}

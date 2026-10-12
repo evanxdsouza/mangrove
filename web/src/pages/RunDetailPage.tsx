@@ -4,7 +4,7 @@ import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
 import { CodeBlock } from "../components/CodeBlock";
 import { CenterLoading } from "../components/CenterLoading";
-import { CheckCircleIcon, EmptyLedgerIcon, XCircleIcon } from "../icons";
+import { CheckCircleIcon, ChevronDownIcon, XCircleIcon } from "../icons";
 import { fmtDuration, fmtWhenFull } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { firstTime } from "../lib/milestones";
@@ -85,12 +85,18 @@ export function RunDetailPage({
   if (!entry) {
     return (
       <>
-        <div className="breadcrumb">
-          <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> /{" "}
-          <Link to={`/projects/${projectId}/deployments/${deploymentId}`}>{deployment.name}</Link> / Run
-        </div>
+        <nav className="breadcrumb" aria-label="Breadcrumb">
+          <Link to="/" className="breadcrumb-back">
+            <ChevronDownIcon /> Projects
+          </Link>
+          <span>/</span>
+          <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link>
+          <span>/</span>
+          <Link to={`/projects/${projectId}/deployments/${deploymentId}`}>{deployment.name}</Link>
+          <span>/</span>
+          <span>Run</span>
+        </nav>
         <div className="card empty-state">
-          <EmptyLedgerIcon />
           <p>This run no longer exists -- deploy history is pruned over time.</p>
         </div>
       </>
@@ -103,10 +109,17 @@ export function RunDetailPage({
 
   return (
     <>
-      <div className="breadcrumb">
-        <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> /{" "}
-        <Link to={`/projects/${projectId}/deployments/${deploymentId}`}>{deployment.name}</Link> / Run #{runNumber}
-      </div>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-back">
+          <ChevronDownIcon /> Projects
+        </Link>
+        <span>/</span>
+        <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link>
+        <span>/</span>
+        <Link to={`/projects/${projectId}/deployments/${deploymentId}`}>{deployment.name}</Link>
+        <span>/</span>
+        <span>Run #{runNumber}</span>
+      </nav>
       <div className="page-header">
         <div>
           <h1 className="flex gap-8" style={{ alignItems: "center" }}>

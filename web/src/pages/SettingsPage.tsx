@@ -32,8 +32,8 @@ function ThemePicker() {
   return (
     <>
       <p className="text-dim" style={{ marginTop: 0 }}>
-        Pick which metal trims the panel -- borders, labels, and secondary chrome re-color to match. The living
-        leaf-green accent (primary buttons, active nav) stays put regardless.
+        Pick which metal trims the panel -- the sidebar's small section labels re-color to match. The deep-green
+        sidebar, leaf-green buttons, and tide status colors stay put regardless.
       </p>
       <div className="theme-grid">
         {THEMES.map((t) => (

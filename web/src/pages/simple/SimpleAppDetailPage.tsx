@@ -6,7 +6,7 @@ import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill
 import { useWorkspaceRole } from "../../workspaceContext";
 import { useUiMode } from "../../uiMode";
 import { plainStatus } from "./plainCopy";
-import { DeployIcon, GearIcon, TrashIcon } from "../../icons";
+import { ChevronDownIcon, DeployIcon, GearIcon, TrashIcon } from "../../icons";
 
 // The simple-mode counterpart to DeploymentDetailPage -- no raw env var
 // table, no CPU/memory numbers, no build-strategy internals. Just status,
@@ -64,9 +64,13 @@ export function SimpleAppDetailPage({ deploymentId }: { deploymentId: number }) 
 
   return (
     <>
-      <div className="breadcrumb">
-        <Link to="/">Your apps</Link> / {deployment?.name ?? "..."}
-      </div>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-back">
+          <ChevronDownIcon /> Your apps
+        </Link>
+        <span>/</span>
+        <span>{deployment?.name ?? "..."}</span>
+      </nav>
       <div className="page-header">
         <div>
           <h1>{deployment?.name ?? "Loading..."}</h1>

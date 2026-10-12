@@ -2,7 +2,6 @@ import type { DeployHistory } from "../api";
 import { Link } from "../router";
 import { StatusPill } from "./StatusPill";
 import { CodeBlock } from "./CodeBlock";
-import { EmptyLedgerIcon } from "../icons";
 import { fmtDuration, fmtWhen } from "../lib/format";
 
 export const DOT_COLOR: Record<string, string> = {
@@ -34,7 +33,6 @@ export function DeployTimeline({
   if (history.length === 0) {
     return (
       <div className="empty-state">
-        <EmptyLedgerIcon />
         <p>No deploys yet.</p>
       </div>
     );

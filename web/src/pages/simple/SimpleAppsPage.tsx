@@ -5,10 +5,10 @@ import { IN_PROGRESS_STATUSES, STATUS_COLORS } from "../../components/StatusPill
 import { AddAppModal } from "../../components/simple/AddAppModal";
 import { GithubDeployWizard } from "../../components/GithubDeployWizard";
 import { CenterLoading } from "../../components/CenterLoading";
-import { PlantGlyph } from "../../components/PlantGlyph";
+import { TideGauge } from "../../components/TideGauge";
 import { plainStatus } from "./plainCopy";
 import { EMPTY_APPS } from "../../lib/copy";
-import { BranchIcon, EmptyLedgerIcon, PlusIcon } from "../../icons";
+import { BranchIcon, PlusIcon } from "../../icons";
 
 interface FlatApp {
   deployment: Deployment;
@@ -72,7 +72,6 @@ export function SimpleAppsPage() {
         <CenterLoading />
       ) : apps.length === 0 ? (
         <div className="card empty-state">
-          <EmptyLedgerIcon />
           <p>{EMPTY_APPS}</p>
           <div className="field-hint">Add one to get started -- pick a template or connect a GitHub repo above.</div>
         </div>
@@ -86,7 +85,7 @@ export function SimpleAppsPage() {
             >
               <div className="flex-between" style={{ marginBottom: 0, gap: 10 }}>
                 <span className="flex gap-8" style={{ alignItems: "center", minWidth: 0 }}>
-                  <PlantGlyph status={deployment.status} size={18} />
+                  <TideGauge status={deployment.status} size="sm" />
                   <span className="card-title" style={{ margin: 0 }}>
                     {deployment.name}
                   </span>

@@ -5,7 +5,7 @@ import { Link } from "../router";
 import { Modal } from "../components/Modal";
 import { CenterLoading } from "../components/CenterLoading";
 import { slugify } from "./ProjectsPage";
-import { AlertIcon, CabinetIcon, EmptyLedgerIcon } from "../icons";
+import { AlertIcon, CabinetIcon } from "../icons";
 
 function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : "Something went wrong";
@@ -108,13 +108,11 @@ function StoragePageInner() {
 
       {!drivesResp.helper_available ? (
         <div className="card empty-state">
-          <EmptyLedgerIcon />
           <p>The storage helper (mangrove-mountd) isn't reachable on this box.</p>
           <div className="field-hint">It's a separate, optional component -- see docs/storage.md for what it does and how to install it.</div>
         </div>
       ) : drivesResp.drives.length === 0 ? (
         <div className="card empty-state">
-          <EmptyLedgerIcon />
           <p>No removable drives detected.</p>
           <div className="field-hint">Plug one in, then reload this page.</div>
         </div>

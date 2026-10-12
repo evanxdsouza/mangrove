@@ -5,7 +5,7 @@ import { Modal, useModalClose } from "../components/Modal";
 import { CenterLoading } from "../components/CenterLoading";
 import { AuditLogTable } from "../components/AuditLogTable";
 import { useWorkspaces } from "../workspaceContext";
-import { LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
+import { ChevronDownIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
 
 export function WorkspacesPage() {
   const { navigate } = useRouter();
@@ -32,9 +32,13 @@ export function WorkspacesPage() {
 
   return (
     <>
-      <div className="breadcrumb">
-        <Link to="/">Projects</Link> / Workspaces
-      </div>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-back">
+          <ChevronDownIcon /> Projects
+        </Link>
+        <span>/</span>
+        <span>Workspaces</span>
+      </nav>
       <div className="page-header">
         <div>
           <h1>Workspaces</h1>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement, type SVGProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Deployment, type DeployHistory, type HealthCheckEntry, type Service, type WebhookEvent } from "../api";
 import { Link } from "../router";
 import { StatusPill } from "../components/StatusPill";
@@ -10,20 +10,13 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { RunCommandCard } from "../components/RunCommandCard";
 import { DomainsPanel } from "../components/DomainsPanel";
 import { useWorkspaceRole } from "../workspaceContext";
-import { DeployIcon, DialsIcon, EmptyLedgerIcon, GaugeIcon, LedgerIcon, RestartIcon, StopIcon, StripChartIcon, TrashIcon } from "../icons";
+import { ChevronDownIcon, GlobeIcon, LockIcon, TrashIcon } from "../icons";
 import { fmtWhen } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { firstTime } from "../lib/milestones";
-import { PlantGlyph } from "../components/PlantGlyph";
+import { TideGauge } from "../components/TideGauge";
 
 type Tab = "overview" | "history" | "logs" | "env";
-
-const TAB_ICON: Record<Tab, (props: SVGProps<SVGSVGElement>) => ReactElement> = {
-  overview: GaugeIcon,
-  history: LedgerIcon,
-  logs: StripChartIcon,
-  env: DialsIcon,
-};
 
 export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: number; deploymentId: number }) {
   const [projectWorkspaceId, setProjectWorkspaceId] = useState<number | null>(null);
@@ -184,35 +177,53 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
 
   return (
     <>
-      <div className="breadcrumb">
-        <Link to="/">Projects</Link> / <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link> / {deployment?.name ?? "..."}
-      </div>
-      <div className="page-header">
-        <div className="flex gap-8" style={{ alignItems: "flex-start" }}>
-          <PlantGlyph status={deployment?.status} size={26} burstKey={burstKey} />
-          <div>
-          <h1>{deployment?.name ?? "Loading..."}</h1>
-          {deployment && (
-            <p className="flex gap-8" style={{ alignItems: "center" }}>
-              <StatusPill status={deployment.status} />
-              <span className="pill pill-gray">{deployment.build_strategy}</span>
-              <span className="pill pill-gray mono">{deployment.slug}</span>
-              {deployment.environment === "staging" && <span className="pill pill-yellow">staging</span>}
-              {deployment.environment === "preview" && (
-                <span className="pill pill-yellow">preview{deployment.pr_number ? ` (PR #${deployment.pr_number})` : ""}</span>
-              )}
-            </p>
-          )}
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-back">
+          <ChevronDownIcon /> Projects
+        </Link>
+        <span>/</span>
+        <Link to={`/projects/${projectId}`}>{projectName ?? "..."}</Link>
+        <span>/</span>
+        <span>{deployment?.name ?? "..."}</span>
+      </nav>
+
+      <section className="card deployment-header">
+        <div className="deployment-header-id">
+          <TideGauge status={deployment?.status} size="lg" burstKey={burstKey} />
+          <div style={{ minWidth: 0 }}>
+            <div className="deployment-header-title">
+              <h1>{deployment?.name ?? "Loading..."}</h1>
+              {deployment && <StatusPill status={deployment.status} />}
+            </div>
+            {deployment && (
+              <div className="deployment-header-meta">
+                <span className="mono">{deployment.build_strategy}</span>
+                <span className="mono">{deployment.slug}</span>
+                {deployment.environment === "staging" && <span className="pill pill-yellow">staging</span>}
+                {deployment.environment === "preview" && (
+                  <span className="pill pill-gray">preview{deployment.pr_number ? ` · PR #${deployment.pr_number}` : ""}</span>
+                )}
+                {deployment.is_public && deployment.password_protected ? (
+                  <span>
+                    <LockIcon /> Password-protected
+                  </span>
+                ) : deployment.is_public ? (
+                  <span>
+                    <GlobeIcon /> Public
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex gap-8">
+        <div className="deployment-header-actions">
           {deployment?.status === "building" || deployment?.status === "pending" ? (
             <button className="btn btn-danger" onClick={cancel} disabled={canceling}>
               {canceling ? "Cancelling..." : "Cancel deploy"}
             </button>
           ) : (
             <button className="btn btn-primary" onClick={deploy} disabled={deploying}>
-              <DeployIcon /> {deploying ? "Deploying..." : "Deploy"}
+              {deploying ? "Deploying..." : "Deploy"}
             </button>
           )}
           <button
@@ -221,37 +232,37 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
             disabled={redeploying}
             title="Rebuild and redeploy from the currently configured source (linked repo branch, or image ref)"
           >
-            <RestartIcon /> {redeploying ? "Redeploying..." : "Redeploy"}
+            {redeploying ? "Redeploying..." : "Redeploy"}
           </button>
           {deployment?.build_strategy !== "static" && (
             <>
               {deployment?.status === "stopped" ? (
                 <button className="btn" onClick={restart} disabled={restarting}>
-                  <RestartIcon /> {restarting ? "Starting..." : "Start"}
+                  {restarting ? "Starting..." : "Start"}
                 </button>
               ) : deployment?.status === "sleeping" ? (
                 <button className="btn" onClick={restart} disabled={restarting} title="Wake it up now instead of waiting for the next visitor to trigger it">
-                  <RestartIcon /> {restarting ? "Waking up..." : "Wake up"}
+                  {restarting ? "Waking up..." : "Wake up"}
                 </button>
               ) : (
                 <>
                   <button className="btn" onClick={restart} disabled={restarting}>
-                    <RestartIcon /> {restarting ? "Restarting..." : "Restart"}
+                    {restarting ? "Restarting..." : "Restart"}
                   </button>
                   <button className="btn" onClick={stop} disabled={stopping}>
-                    <StopIcon /> {stopping ? "Stopping..." : "Stop"}
+                    {stopping ? "Stopping..." : "Stop"}
                   </button>
                 </>
               )}
             </>
           )}
           {isAdmin && (
-            <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+            <button className="btn btn-ghost-danger" onClick={() => setShowDelete(true)}>
               <TrashIcon /> Delete deployment
             </button>
           )}
         </div>
-      </div>
+      </section>
 
       {error && <div className="error-banner">{error}</div>}
 
@@ -266,24 +277,27 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <ServiceStatRow service={services[0]} isStatic={deployment?.build_strategy === "static"} />
       )}
 
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label="Deployment sections">
         {/* A static site has no container to stream logs from --
             Caddy serves the built files directly. */}
         {(["overview", "history", "logs", "env"] as Tab[])
           .filter((t) => t !== "logs" || deployment?.build_strategy !== "static")
-          .map((t) => {
-            const Icon = TAB_ICON[t];
-            return (
-              <div key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-                <Icon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
-                {t[0].toUpperCase() + t.slice(1)}
-              </div>
-            );
-          })}
+          .map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              className={`tab ${tab === t ? "active" : ""}`}
+              onClick={() => setTab(t)}
+            >
+              {t[0].toUpperCase() + t.slice(1)}
+            </button>
+          ))}
       </div>
 
       {tab === "overview" && (
-        <>
+        <div className="overview-grid">
           <OverviewTab services={services} deployment={deployment} canEdit={canEdit} />
           <AccessControlCard deploymentId={deploymentId} deployment={deployment} onSaved={load} isAdmin={isAdmin} />
           <SleepCard deploymentId={deploymentId} deployment={deployment} onSaved={load} canEdit={canEdit} />
@@ -300,7 +314,7 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
               </>
             )
           )}
-        </>
+        </div>
       )}
       {tab === "history" && (
         <div className="card">
@@ -313,7 +327,6 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <div className="card">
           {services.length === 0 ? (
             <div className="empty-state">
-              <EmptyLedgerIcon />
               <p>No services yet.</p>
             </div>
           ) : (
@@ -345,7 +358,6 @@ export function DeploymentDetailPage({ projectId, deploymentId }: { projectId: n
         <div className="card">
           {services.length === 0 ? (
             <div className="empty-state">
-              <EmptyLedgerIcon />
               <p>No services yet.</p>
             </div>
           ) : (
@@ -794,7 +806,7 @@ function WebhookHealth({ projectId, repo }: { projectId: number; repo: ProjectRe
   };
 
   return (
-    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border, #2a2f3a)" }}>
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-soft)" }}>
       <div className="flex-between" style={{ marginBottom: 8 }}>
         <span className="text-dim" style={{ fontSize: 13 }}>
           GitHub webhook:{" "}
@@ -1096,7 +1108,6 @@ function OverviewTab({
   if (services.length === 0) {
     return (
       <div className="card empty-state">
-        <EmptyLedgerIcon />
         <p>No services yet.</p>
       </div>
     );

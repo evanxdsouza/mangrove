@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { MangroveIcon } from "../icons";
+import { TideBanner } from "../components/TideBanner";
 
 export function LoginPage({ mode, onSuccess }: { mode: "setup" | "login"; onSuccess: () => void }) {
   const [email, setEmail] = useState("");
@@ -29,6 +30,10 @@ export function LoginPage({ mode, onSuccess }: { mode: "setup" | "login"; onSucc
   return (
     <div className="login-shell">
       <div className="card login-card">
+        <div className="login-card-banner">
+          <TideBanner level="high" />
+        </div>
+        <div className="login-card-body">
         <MangroveIcon className="login-mark" />
         <h1>{mode === "setup" ? "Welcome to Mangrove" : "Sign in"}</h1>
         <p className="subtitle">
@@ -70,6 +75,7 @@ export function LoginPage({ mode, onSuccess }: { mode: "setup" | "login"; onSucc
             {busy ? "..." : mode === "setup" ? "Create account" : "Sign in"}
           </button>
         </form>
+        </div>
       </div>
     </div>
   );

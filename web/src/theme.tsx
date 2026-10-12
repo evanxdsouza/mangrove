@@ -1,14 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-// A color theme -- swaps the --brass* SECONDARY-metal variables in
-// styles.css's per-theme [data-theme="..."] blocks. The living --leaf*
-// primary accent and the semantic colors (--verdigris/--red/--ochre,
-// --text*, --bg*) intentionally stay constant across themes -- DESIGN.md's
-// "Two-Accent Rule" says leaf is always the one living/primary accent, and
-// switching between named metal presets only ever changes which single
-// metal plays the secondary/structural role alongside it. "brass" is the
-// default and needs no override block since it matches styles.css's :root
-// values.
+// An "instrument metal" -- swaps the --brass* variables in styles.css's
+// per-theme [data-theme="..."] blocks. In Intertidal the metal only tints
+// the sidebar's small section labels and the station eyebrow; the
+// deep-green sidebar, leaf-green buttons, and tide status colors never
+// change. "brass" is the default and needs no override block since it
+// matches styles.css's :root values.
 export interface ThemeDef {
   id: string;
   label: string;
@@ -16,7 +13,7 @@ export interface ThemeDef {
 }
 
 export const THEMES: ThemeDef[] = [
-  { id: "brass", label: "Brass", accent: "#caa057" },
+  { id: "brass", label: "Brass", accent: "#8fb0a2" },
   { id: "copper", label: "Copper", accent: "#c97b4a" },
   { id: "iron", label: "Iron", accent: "#8fa3b0" },
   { id: "silver", label: "Silver", accent: "#c7c2b4" },
@@ -38,34 +35,11 @@ function readStored(): string {
   return THEMES.some((t) => t.id === stored) ? stored! : DEFAULT_THEME;
 }
 
-// Standalone SVG markup (a literal color, no CSS vars) for the browser-tab
-// favicon -- a separate document context that can't see the app's
-// stylesheet, so it's regenerated as a data: URI whenever the theme
-// changes, keeping the tab icon in sync with the sidebar mark. Mirrors
-// MangroveIcon's path data (see icons.tsx) on the same dark rounded-square
-// badge as the static web/public/favicon.svg.
-function faviconMarkup(accent: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#14100a"/><g fill="none" stroke="${accent}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.3" r="3.3"/><circle cx="8.3" cy="10.3" r="2.4"/><circle cx="15.7" cy="10.3" r="2.4"/><path d="M12 13v3.4"/><path d="M12 16.4c-2.6 1-4.4 2.1-5.4 4.1"/><path d="M12 16.4v4.1"/><path d="M12 16.4c2.6 1 4.4 2.1 5.4 4.1"/></g></svg>`;
-}
-
-function applyFavicon(def: ThemeDef) {
-  if (typeof document === "undefined") return;
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-  if (!link) {
-    link = document.createElement("link");
-    link.rel = "icon";
-    link.type = "image/svg+xml";
-    document.head.appendChild(link);
-  }
-  link.href = `data:image/svg+xml,${encodeURIComponent(faviconMarkup(def.accent))}`;
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<string>(readStored);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    applyFavicon(THEMES.find((t) => t.id === theme) ?? THEMES[0]);
   }, [theme]);
 
   const setTheme = (id: string) => {

@@ -1,5 +1,4 @@
 import type { AuditEvent } from "../api";
-import { EmptyLedgerIcon } from "../icons";
 import { fmtWhen, humanLabel } from "../lib/format";
 
 // AuditLogTable is the shared rendering for both the per-workspace log
@@ -14,7 +13,6 @@ export function AuditLogTable({ events, showWorkspace }: { events: AuditEvent[] 
   if (events.length === 0) {
     return (
       <div className="empty-state">
-        <EmptyLedgerIcon />
         <p>No activity recorded yet.</p>
       </div>
     );

@@ -13,20 +13,15 @@ export function SkeletonCircle({ size = 20 }: { size?: number }) {
   return <span className="skeleton-circle" style={{ width: size, height: size }} />;
 }
 
-/** Matches .project-card's shape: icon + name/slug, description line, footer. */
+/** Matches .project-card's shape: banner, name/slug, description, footer. */
 export function ProjectCardSkeleton() {
   return (
-    <div className="card skeleton-card">
-      <div className="project-card-top">
-        <SkeletonCircle size={20} />
-        <div className="project-card-heading" style={{ gap: 6 }}>
-          <SkeletonLine width="60%" height={14} />
-          <SkeletonLine width="35%" height={10} />
-        </div>
-      </div>
-      <SkeletonLine width="80%" height={12} />
-      <div className="project-card-footer" style={{ marginTop: 10 }}>
-        <SkeletonLine width="50%" height={11} />
+    <div className="card skeleton-card project-card">
+      <span className="skeleton-line" style={{ height: 96, borderRadius: 0, display: "block" }} />
+      <div className="project-card-body">
+        <SkeletonLine width="46%" height={16} />
+        <SkeletonLine width="80%" height={12} />
+        <SkeletonLine width="38%" height={12} />
       </div>
     </div>
   );
@@ -38,7 +33,7 @@ export function ProjectRowSkeleton() {
     <div className="card skeleton-card project-list-row">
       <div className="project-list-row-main">
         <span className="project-list-row-chevron-spacer" />
-        <SkeletonCircle size={20} />
+        <SkeletonLine width={12} height={26} />
         <div className="project-list-row-heading" style={{ gap: 6 }}>
           <SkeletonLine width="30%" height={14} />
           <SkeletonLine width="20%" height={10} />
@@ -52,9 +47,9 @@ export function ProjectRowSkeleton() {
 /** Matches .deployment-card's shape. */
 export function DeploymentCardSkeleton() {
   return (
-    <div className="card skeleton-card">
+    <div className="card skeleton-card deployment-card">
       <div className="deployment-card-top">
-        <SkeletonCircle size={20} />
+        <SkeletonLine width={34} height={34} />
         <SkeletonLine width="50%" height={14} />
       </div>
       <SkeletonLine width="40%" height={11} />

@@ -48,12 +48,15 @@ export function LogViewer({ serviceId }: { serviceId: number }) {
   );
 
   return (
-    <div>
+    <div className="log-viewer-frame">
       <div className={`recorder-status ${connected ? "live" : ""}`}>
-        <span className="rec-dot" />
-        {connected ? "Recording" : "Connecting..."}
+        <span>Stdout</span>
+        <span className="flex gap-8" style={{ alignItems: "center", gap: 6 }}>
+          <span className="rec-dot" />
+          {connected ? "Recording" : "Connecting..."}
+        </span>
       </div>
-      <div className="log-viewer-frame">
+      <div>
         <div className="log-strip" aria-hidden="true">
           {ticks.map((t, i) => (
             <span key={i} className={`log-strip-tick ${t.danger ? "danger" : ""}`} style={{ height: `${t.h}%` }} />
@@ -61,7 +64,7 @@ export function LogViewer({ serviceId }: { serviceId: number }) {
         </div>
         <div className="log-viewer" ref={containerRef} onScroll={onScroll}>
           {lines.length === 0 ? (
-            <span className="text-faint">Waiting for log output...</span>
+            <span style={{ color: "var(--recorder-faint)" }}>Waiting for log output...</span>
           ) : (
             lines.map((l, i) => (
               <div className="line" key={i}>

@@ -3,16 +3,16 @@ import { api, ApiError, type Deployment, type Project, type Workspace } from "..
 import { Link } from "../router";
 import { Modal, useModalClose } from "../components/Modal";
 import { ConfirmModal } from "../components/ConfirmModal";
-import { StatusPill } from "../components/StatusPill";
+import { StatusPill, worstStatus } from "../components/StatusPill";
 import { TemplateGalleryModal } from "../components/TemplateGalleryModal";
 import { GithubDeployWizard } from "../components/GithubDeployWizard";
 import { slugify } from "./ProjectsPage";
 import { useWorkspaces, useWorkspaceRole } from "../workspaceContext";
-import { BranchIcon, EmptyLedgerIcon, LedgerIcon, MangroveIcon, PlusIcon, TrashIcon, UserIcon } from "../icons";
-import { PlantGlyph } from "../components/PlantGlyph";
+import { BoxIcon, BranchIcon, ChevronDownIcon, GlobeIcon, LayersIcon, LockIcon, PlusIcon, TrashIcon } from "../icons";
+import { TideGauge } from "../components/TideGauge";
+import { TideBanner } from "../components/TideBanner";
 import { fmtWhen } from "../lib/format";
 import { EMPTY_DEPLOYMENTS } from "../lib/copy";
-import { hashString } from "../lib/hash";
 import { DeploymentCardSkeleton } from "../components/Skeleton";
 
 type ProjectTab = "deployments" | "github" | "workspace";
@@ -107,54 +107,44 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Every project gets its own hero banner "skin" -- deterministic from its
-  // slug (same project always looks the same, no backend field, no upload),
-  // varying only composition within the already-approved palette (gradient
-  // angle, watermark rotation/scale, and which of the two sanctioned accents
-  // tints it) so the Two-Accent Rule still holds: never a new hue per project.
-  const heroSeed = project ? hashString(project.slug) : 0;
-  const heroAngle = 105 + (heroSeed % 60);
-  const heroMotifRotate = ((heroSeed >> 3) % 50) - 25;
-  const heroMotifScale = 0.85 + ((heroSeed >> 7) % 30) / 100;
-  const heroMotifColor = heroSeed % 2 === 0 ? "var(--leaf-dim)" : "var(--brass-dim)";
+  // The header banner follows the project's worst deployment status, the
+  // same tide level its card on the Projects page shows.
+  const heroStatus = deployments && deployments.length > 0 ? worstStatus(deployments.map((d) => d.status)) : null;
 
   return (
     <>
-      <div className="breadcrumb">
-        <Link to="/">Projects</Link> / {project?.name ?? "..."}
-      </div>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-back">
+          <ChevronDownIcon /> Projects
+        </Link>
+        <span>/</span>
+        <span>{project?.name ?? "..."}</span>
+      </nav>
 
-      {/* A decorative banner behind the project identity -- art, not data,
-          per DESIGN.md's color rules: it carries no status/health signal of
-          its own, so it's the one place a large field of accent color is
-          fine (a faint watermark, not a wash standing in for state). */}
-      <div className="project-hero" style={{ background: `linear-gradient(${heroAngle}deg, var(--bg-elevated), var(--bg-card))` }}>
-        <MangroveIcon
-          className="project-hero-motif"
-          style={{ transform: `translateY(-50%) rotate(${heroMotifRotate}deg) scale(${heroMotifScale})`, color: heroMotifColor }}
-        />
-        <div className="page-header">
-          <div>
-            <h1>{project?.name ?? "Loading..."}</h1>
-            {project?.description && <p>{project.description}</p>}
-          </div>
-          <div className="flex gap-8">
-            <button className="btn" onClick={() => setShowTemplates(true)}>
-              <LedgerIcon /> Deploy from template
-            </button>
-            <button className="btn" onClick={() => setShowGithubWizard(true)}>
-              <BranchIcon /> Deploy from GitHub
-            </button>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-              <PlusIcon /> New deployment
-            </button>
-            {isAdmin && (
-              <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
-                <TrashIcon /> Delete project
-              </button>
-            )}
-          </div>
+      <section className="project-hero">
+        <TideBanner status={heroStatus} />
+        <div className="project-hero-text">
+          <h1>{project?.name ?? "Loading..."}</h1>
+          {project?.description && <p>{project.description}</p>}
         </div>
+      </section>
+
+      <div className="project-actions">
+        <button className="btn" onClick={() => setShowTemplates(true)}>
+          <LayersIcon /> Deploy from template
+        </button>
+        <button className="btn" onClick={() => setShowGithubWizard(true)}>
+          <BranchIcon /> Deploy from GitHub
+        </button>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+          <PlusIcon /> New deployment
+        </button>
+        <span className="spacer" />
+        {isAdmin && (
+          <button className="btn btn-danger" onClick={() => setShowDelete(true)}>
+            <TrashIcon /> Delete project
+          </button>
+        )}
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -164,21 +154,18 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           tab's own count badge (neutral, per DESIGN.md's color rules: a
           count is structural, never colored) stands in for the plain stat
           row a project with more resource kinds would show up here. */}
-      <div className="tabs">
-        <div className={`tab ${tab === "deployments" ? "active" : ""}`} onClick={() => setTab("deployments")}>
-          <LedgerIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+      <div className="tabs" role="tablist" aria-label="Project sections">
+        <button type="button" role="tab" aria-selected={tab === "deployments"} className={`tab ${tab === "deployments" ? "active" : ""}`} onClick={() => setTab("deployments")}>
           Deployments
           {deployments != null && <span className="tab-count">{deployments.length}</span>}
-        </div>
-        <div className={`tab ${tab === "github" ? "active" : ""}`} onClick={() => setTab("github")}>
-          <BranchIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "github"} className={`tab ${tab === "github" ? "active" : ""}`} onClick={() => setTab("github")}>
           GitHub
           {repo && <span className="tab-count">1</span>}
-        </div>
-        <div className={`tab ${tab === "workspace" ? "active" : ""}`} onClick={() => setTab("workspace")}>
-          <UserIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: -2 }} />
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "workspace"} className={`tab ${tab === "workspace" ? "active" : ""}`} onClick={() => setTab("workspace")}>
           Workspace
-        </div>
+        </button>
       </div>
 
       {tab === "deployments" &&
@@ -188,7 +175,6 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
           </div>
         ) : deployments.length === 0 ? (
           <div className="card empty-state">
-            <EmptyLedgerIcon />
             <p>{EMPTY_DEPLOYMENTS}</p>
             <div className="field-hint">
               A deployment is one running thing -- an app built from a repo, an image, or a template. Deploy from
@@ -354,21 +340,34 @@ function DeploymentSections({
       {list.map((d) => (
         <Link key={d.id} to={`/projects/${projectId}/deployments/${d.id}`} className="card card-clickable deployment-card">
           <div className="deployment-card-top">
-            <PlantGlyph status={d.status} size={20} burstKey={burstKeys.get(d.id)} />
-            <span className="deployment-card-name">{d.name}</span>
+            <span className="deployment-card-icon">
+              <BoxIcon />
+            </span>
+            <TideGauge status={d.status} size="sm" burstKey={burstKeys.get(d.id)} />
+            <span className="deployment-card-heading">
+              <span className="deployment-card-name">{d.name}</span>
+              <span className="mono">{d.build_strategy}</span>
+            </span>
             <StatusPill status={d.status} />
           </div>
           <div className="deployment-card-meta">
-            <span className="mono">{d.build_strategy}</span>
-            {d.environment !== "production" && (
-              <span className="pill pill-yellow">
-                {d.environment}
-                {d.pr_number ? ` #${d.pr_number}` : ""}
-              </span>
+            {d.environment === "staging" && <span className="pill pill-yellow">staging</span>}
+            {d.environment === "preview" && (
+              <span className="pill pill-gray">preview{d.pr_number ? ` · PR #${d.pr_number}` : ""}</span>
             )}
-            <span>{d.is_public ? (d.password_protected ? "Password-protected" : "Public") : "Internal only"}</span>
+            {d.is_public && d.password_protected ? (
+              <span>
+                <LockIcon /> Password-protected
+              </span>
+            ) : d.is_public ? (
+              <span>
+                <GlobeIcon /> Public
+              </span>
+            ) : (
+              <span>Internal only</span>
+            )}
+            <span>Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}</span>
           </div>
-          <div className="deployment-card-footer text-dim">Last deployed {d.last_deployed_at ? fmtWhen(d.last_deployed_at) : "never"}</div>
         </Link>
       ))}
     </div>
@@ -382,7 +381,7 @@ function DeploymentSections({
     <>
       {environments.map((env) => (
         <div key={env} className="deployment-section">
-          <div className="card-title">
+          <div className="deployment-section-title">
             {ENV_LABEL[env] ?? env}
             <span className="tab-count">{deployments.filter((d) => d.environment === env).length}</span>
           </div>
