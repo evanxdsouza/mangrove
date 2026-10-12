@@ -82,12 +82,15 @@ shared drive.
    rather than into a clean data dir. `systemctl stop mangrove` first if
    it already auto-started.
 2. Extract the backup's two files into the box's data directory --
-   `/var/lib/mangrove` in a `setup.sh` install (`MANGROVE_DATA_DIR`
-   otherwise):
+   `/var/lib/mangrove/data` in a `setup.sh` install (the unit's
+   `WorkingDirectory=/var/lib/mangrove` plus `MANGROVE_DATA_DIR`'s
+   default of `./data`; `MANGROVE_DATA_DIR` otherwise):
    ```sh
-   tar xzf mangrove-backup-<timestamp>.tar.gz -C /var/lib/mangrove mangrove.db master.key
-   chown mangrove:mangrove /var/lib/mangrove/mangrove.db /var/lib/mangrove/master.key
-   chmod 600 /var/lib/mangrove/mangrove.db /var/lib/mangrove/master.key
+   install -d -o mangrove -g mangrove -m 700 /var/lib/mangrove/data
+   rm -f /var/lib/mangrove/data/mangrove.db-wal /var/lib/mangrove/data/mangrove.db-shm
+   tar xzf mangrove-backup-<timestamp>.tar.gz -C /var/lib/mangrove/data mangrove.db master.key
+   chown mangrove:mangrove /var/lib/mangrove/data/mangrove.db /var/lib/mangrove/data/master.key
+   chmod 600 /var/lib/mangrove/data/mangrove.db /var/lib/mangrove/data/master.key
    ```
    (matching `setup.sh`'s own system user/perms -- see `deploy/systemd/mangrove.service`'s
    `User=mangrove`/`Group=mangrove` and the 0700 data dir it creates.)

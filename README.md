@@ -15,11 +15,11 @@ Beyond the port-based routing every deployment gets automatically, an owner
 can point a custom domain at one straight from its dashboard, with Caddy
 provisioning and renewing TLS for it automatically -- including from behind
 a home router with no static IP, via a built-in DDNS updater (see
-[docs/deployment.md](docs/deployment.md#custom-domains)). Every service also
-gets a full interactive terminal in the browser (xterm.js over a websocket,
-attached to a real pseudo-terminal via `docker exec -it`), not just a log
-tail -- see
-[docs/architecture.md](docs/architecture.md#lifecycle-actions-short-of-a-full-deploy).
+[docs/deployment.md](docs/deployment.md#custom-domains)). Every service gets
+live log streaming and one-off commands from the dashboard, and a full
+interactive shell from the terminal UI (`docker exec -it` over a websocket,
+attached to a real pseudo-terminal) -- see
+[docs/run/logs-and-shell.md](docs/run/logs-and-shell.md).
 It also ships a library
 of one-click templates (Ghost, WordPress, Gitea, Supabase, PocketBase,
 NocoDB, Vaultwarden, Uptime Kuma, n8n, Umami, and standalone
@@ -38,6 +38,30 @@ For non-technical users, the dashboard has a **Simple mode** toggle that
 swaps the technical view (projects, deployments, build strategies, env
 vars) for a plain-language "your apps" flow built on the same API -- see
 [docs/modes.md](docs/modes.md).
+
+## Documentation
+
+**[docs/](docs/README.md)** is the full manual, organised like a hosted
+platform's docs:
+
+- **Start**: [what it is](docs/start/what-is-mangrove.md),
+  [install](docs/start/install.md), [first deploy](docs/start/first-deploy.md),
+  [concepts](docs/start/concepts.md)
+- **Deploy**: [from GitHub](docs/deploy/from-github.md),
+  [builds](docs/deploy/builds.md), [domains and HTTPS](docs/deploy/domains.md),
+  [scaling](docs/deploy/scaling.md), [rollbacks](docs/deploy/rollbacks.md),
+  [protection](docs/deploy/protection.md), and more
+- **Data**, **Run**, **Account**, **Teams**: databases, backups,
+  environments, templates, logs, roles, audit logs
+- **Operate**: [configuration](docs/operate/configuration.md),
+  [going to production](docs/operate/production.md),
+  [upgrades](docs/operate/upgrades.md), [security](docs/operate/security.md),
+  [troubleshooting](docs/operate/troubleshooting.md)
+- **Interfaces**: [CLI and TUI](docs/interfaces/cli.md),
+  [HTTP API](docs/interfaces/api.md), [MCP for agents](docs/interfaces/mcp.md)
+
+Design-level documents (the "why") are listed under **Internals** in the
+[docs index](docs/README.md).
 
 ## How it fits together
 

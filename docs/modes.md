@@ -26,8 +26,9 @@ someone who wants to configure a Dockerfile. Concretely:
   across every project into one "Your apps" list -- a user never sees or
   manages a project as a separate thing.
 - **"Add an app" is one click**, not two. `AddAppModal` shows only
-  user-facing templates (blog, password manager, website monitor,
-  automation, website builder, visitor stats -- see
+  user-facing templates (blog, website builder, password manager, website
+  monitor, automation, visitor stats, spreadsheet database, app backend,
+  Git hosting, app platform -- see
   `SIMPLE_TEMPLATES` in `web/src/lib/plainCopy.ts`) with plain
   names and one-sentence blurbs, deliberately excluding the standalone
   database templates (Postgres/MySQL/MongoDB/Redis): those exist as

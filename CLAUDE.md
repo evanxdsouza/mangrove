@@ -15,3 +15,10 @@ pointer, or the verified-status snapshot at the bottom — update
 the "Last verified" date rather than leaving a stale snapshot. If you're
 unsure whether an edit is map-worthy, prefer updating it over leaving it
 stale — the map is only useful if it stays accurate.
+
+User-facing docs live in `docs/` by section (`start/`, `deploy/`, `data/`,
+`run/`, `account/`, `teams/`, `operate/`, `interfaces/`), indexed by
+[docs/README.md](docs/README.md). When a change alters something a user sees
+or configures, update the matching page in the same change. The
+design-level docs at the top of `docs/` (architecture.md, deployment.md,
+etc.) are linked from code comments by path -- don't move or rename them.
