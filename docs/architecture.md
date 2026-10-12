@@ -3,7 +3,7 @@
 ## Request path
 
 ```
-Browser (React SPA, web/)
+Browser (SvelteKit SPA, web/)
   |
   v
 chi router (internal/api/router.go)
@@ -39,12 +39,17 @@ than reconciling against live container state.
   single-file artifact with no libsqlite3 dependency to install on the
   target box -- matters for the "small VPS" deployment story in
   [deployment.md](deployment.md), where the binary is just `scp`'d over.
-- **Hand-rolled frontend router/state** (`web/src/router.tsx`,
-  `userContext.tsx`, `uiMode.tsx`): the dashboard only has a handful of
-  views. Pulling in react-router-dom or a state library would be a real
-  dependency (and, in react-router-dom's current major version, an
-  audit-noise CVE in an RSC code path this SPA never exercises) for
-  something a `useState`/`useContext` pair covers in under 40 lines.
+- **SvelteKit as a static SPA** (`web/`, `@sveltejs/adapter-static`,
+  `ssr = false`): file-based routes in `web/src/routes/` and Svelte 5
+  rune modules for shared state (`web/src/lib/stores/*.svelte.ts`) replace
+  what was a hand-rolled React router plus contexts. There is still no
+  Node server: the build is a plain directory of files embedded into the
+  Go binary (`internal/webui`), which serves `index.html` for any path that
+  isn't a real file so client-side routing handles deep links. SvelteKit's
+  server-side features (`+page.server.ts`, form actions, SSR) are
+  deliberately unused, so its server-only dependencies never ship.
+  Pinned to SvelteKit 2.x -- 3.0 shipped in October 2026 and hasn't been
+  evaluated yet.
 
 ## The blue/green deploy flow
 

@@ -58,7 +58,7 @@ The source of truth is the design canvas linked in the frontmatter (17
 boards: tokens and parts, setup/sign-in/404, shell states, Simple mode,
 Projects grid/list/states, project tabs, deployment Overview/History/Logs/
 Env, run detail, workspaces, admin, health/settings, storage, and every
-dialog). `web/src/styles.css` implements it as CSS custom properties; class
+dialog). `web/src/lib/styles.css` implements it as CSS custom properties; class
 names predate the redesign and were kept so page code didn't churn.
 
 ## Colors
@@ -113,12 +113,12 @@ a CDN -- the dashboard ships inside the box it manages.
 
 ## Components
 
-- **Tide gauge** (`components/TideGauge.tsx`) -- the one status mark, used on
+- **Tide gauge** (`web/src/lib/components/TideGauge.svelte`) -- the one status mark, used on
   every project card, deployment card, child tile, search result, activity
   row, and the deployment header (sizes sm 12×26, md 14×30, lg 22×48). The
   water line animates slowly only for in-progress statuses; a spring "pop"
   (`burstKey`) marks a fresh successful deploy.
-- **Tide banner** (`components/TideBanner.tsx`) -- mangrove-at-the-waterline
+- **Tide banner** (`TideBanner.svelte`) -- mangrove-at-the-waterline
   art over a project card, the project header, the login card, and the
   first-run empty state. Art, not data, but it follows the same level as the
   gauge: high tide, turning, low tide, storm.
@@ -126,7 +126,7 @@ a CDN -- the dashboard ships inside the box it manages.
   line, each joined by a curved root (`.project-card-children`), ending in a
   dashed "+ Add a deployment" tile. The deploy-history timeline is the same
   line running vertically.
-- **Resource tide bars** (`components/Gauge.tsx`) -- replace the old arc
+- **Resource tide bars** (`Gauge.svelte`) -- replace the old arc
   dial. Teal to 70%, amber above 70%, red above 90%; the number always sits
   beside the bar.
 - **Sidebar** -- floating, 264px, 20px radius, `#173D31`. Station switcher
@@ -173,6 +173,6 @@ a CDN -- the dashboard ships inside the box it manages.
   tide level only.
 - Don't nest a bordered card inside a card; child deployments are tiles on
   the root line.
-- Don't use emoji or an icon font; icons live in `src/icons.tsx` (1.9 stroke,
+- Don't use emoji or an icon font; icons live in `web/src/lib/icons.ts`, rendered by `Icon.svelte` (1.9 stroke,
   round caps, 24px grid).
 - Don't load fonts or scripts from a CDN.

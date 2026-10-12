@@ -45,9 +45,9 @@ vars) for a plain-language "your apps" flow built on the same API -- see
   (via `modernc.org/sqlite`, no cgo) as the sole source of truth, Docker as
   the executor, [Caddy](https://caddyserver.com/) as the reverse proxy
   (driven entirely through its admin API -- no hand-written Caddyfile).
-- **Frontend**: a small React 19 SPA (`web/`), hand-rolled routing and
-  state (no react-router, no Redux/Zustand) -- see
-  [docs/architecture.md](docs/architecture.md) for why.
+- **Frontend**: a SvelteKit (Svelte 5) single-page app (`web/`), built
+  with adapter-static and embedded in the Go binary -- no Node server at
+  runtime. See [docs/architecture.md](docs/architecture.md) for why.
 - **Multi-user**: owner/member roles, session-cookie auth -- see
   [docs/multi-user.md](docs/multi-user.md).
 - **Clients**: the dashboard, plus a CLI, a terminal UI, and an MCP server

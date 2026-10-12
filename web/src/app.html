@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mangrove</title>
+    <script>
+      // Applied before the app mounts so a stored non-default theme doesn't
+      // flash the default palette for a frame -- lib/stores/theme.svelte.ts
+      // re-applies (and keeps in sync) once it loads.
+      try {
+        var t = localStorage.getItem("mangrove-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
+    %sveltekit.head%
+  </head>
+  <body>
+    <div id="root">%sveltekit.body%</div>
+  </body>
+</html>

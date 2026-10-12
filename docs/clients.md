@@ -27,7 +27,7 @@ no `json` tags at all, so `GET /api/workspaces` serialized as
 frontend expectation was `{"workspace":...,"project_count":...}` --
 every row silently failed to decode, and with no error boundary anywhere
 in the SPA at the time, that took down the *entire* dashboard, not just
-the Workspaces tab (see `web/src/components/ErrorBoundary.tsx`). Reusing
+the Workspaces tab (see the `<svelte:boundary>` in `web/src/routes/+layout.svelte`). Reusing
 the backend's actual Go types for two more clients, rather than writing a
 third and fourth hand-shaped guess at the JSON shape, means that class of
 bug becomes a compile error here instead of a silent runtime mismatch.
