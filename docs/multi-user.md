@@ -203,8 +203,9 @@ already had. New workspaces/users after the upgrade get their membership
 from `CreateWorkspace` (creator becomes admin) and `CreateUser` (auto-joins
 the default workspace as editor) instead of the migration.
 
-On the frontend, `web/src/userContext.tsx`'s `useIsOwner()` (global) and
-`web/src/workspaceContext.tsx`'s `useWorkspaceRole(workspaceId)`
+On the frontend, `web/src/lib/stores/user.svelte.ts`'s `isOwner()` (global) and
+`web/src/lib/stores/workspaces.svelte.ts`'s `workspaceRole(workspaceId)`
 (per-workspace, derived from the already-loaded workspace list, no extra
-fetch) both exist side by side -- purely cosmetic either way, since the API
+fetch; returns `""` when unknown so `=== "admin"` checks fail closed) both
+exist side by side -- purely cosmetic either way, since the API
 enforces the real boundary regardless of what the UI shows or hides.

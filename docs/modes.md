@@ -28,7 +28,7 @@ someone who wants to configure a Dockerfile. Concretely:
 - **"Add an app" is one click**, not two. `AddAppModal` shows only
   user-facing templates (blog, password manager, website monitor,
   automation, website builder, visitor stats -- see
-  `SIMPLE_TEMPLATES` in `web/src/pages/simple/plainCopy.ts`) with plain
+  `SIMPLE_TEMPLATES` in `web/src/lib/plainCopy.ts`) with plain
   names and one-sentence blurbs, deliberately excluding the standalone
   database templates (Postgres/MySQL/MongoDB/Redis): those exist as
   backing services other templates install alongside themselves, not
@@ -78,5 +78,5 @@ matter in practice.
 ## Adding a new template to simple mode
 
 A template only appears in simple mode's gallery if it has an entry in
-`SIMPLE_TEMPLATES` (`web/src/pages/simple/plainCopy.ts`). See
+`SIMPLE_TEMPLATES` (`web/src/lib/plainCopy.ts`). See
 [templates.md](templates.md)'s "Adding a new template" section, step 3.

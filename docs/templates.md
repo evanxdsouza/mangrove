@@ -253,7 +253,7 @@ alias:
    at build/boot time, not silently at install time), so this alone
    catches most schema mistakes.
 3. If it's meant to be user-facing (not a bare backing database), add it
-   to `SIMPLE_TEMPLATES` in `web/src/pages/simple/plainCopy.ts` with a
+   to `SIMPLE_TEMPLATES` in `web/src/lib/plainCopy.ts` with a
    plain-language label and one-sentence blurb -- otherwise it only shows
    up in the technical dashboard's gallery. See
    [modes.md](modes.md) for why databases are deliberately left out of

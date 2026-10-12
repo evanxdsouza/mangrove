@@ -183,6 +183,72 @@ a CDN -- the dashboard ships inside the box it manages.
 - **Terminal** -- logs, run output, and code blocks share the `#0F1B18`
   surface; the log viewer has a "STDOUT · RECORDING" header bar.
 
+## Layout and breakpoints
+
+The shell is the floating sidebar plus a content column. Breakpoints are
+few and live next to the rules they change in `styles.css`:
+
+| Width | What changes |
+|---|---|
+| ≤ 1100px | The Projects page drops its recent-activity rail below the grid. |
+| ≤ 960px | `.grid-2/3/4` stat and card grids collapse to one column. |
+| ≤ 760px | Phone: the sidebar becomes a dark top bar plus a drawer over a scrim. |
+| ≤ 720px | Project list rows wrap their trailing metadata. |
+
+Check new pages at 1440px and 390px. Wide tables scroll inside their card;
+the page itself never scrolls sideways.
+
+## Motion
+
+Motion is there to explain a change of state, never to decorate.
+
+- **Springs, not durations.** Dialogs, toasts and the gauge's deploy "pop"
+  use `web/src/lib/spring.ts`, a critically damped spring that can be
+  re-targeted mid-flight. A dialog closing while still opening reverses
+  from where it is instead of jumping.
+- **Only live states move.** The gauge's water drifts and the beacon pulses
+  only for building, healthchecking and queued.
+- **Reduced motion is honoured.** Under `prefers-reduced-motion: reduce`,
+  springs jump straight to their end value (`prefersReducedMotion()`),
+  transitions become near-instant, and the gauge's wave stops. The spinner
+  and the in-progress beacon keep moving, because there they are the only
+  sign that something is still happening.
+
+## Voice
+
+Plain and calm by default, with a little tidal personality where it
+can't get in the way.
+
+- **Errors are literal.** Show the server's message, say what failed, and
+  never joke near a failure.
+- **Personality stays on secondary surfaces.** Loading and empty-state
+  lines live in `web/src/lib/copy.ts` ("Still growing roots…", "Nothing
+  planted here yet — start something."). Add new ones there, sparingly.
+- **Milestones are rare.** First deploy and first rollback each get one
+  toast per browser, ever (`lib/milestones.ts`). There are no streaks or
+  invented achievements: only things the client actually observed.
+- **Simple mode has its own words.** Status and template names come from
+  `web/src/lib/plainCopy.ts` ("Starting up", "Having a problem"), never the
+  raw enum. See [docs/modes.md](docs/modes.md).
+- **Sentence case** for pills, buttons and titles.
+
+## Accessibility
+
+- **Focus** is always visible: a 2px leaf outline (pale green in the
+  sidebar, teal in dark mode) via `:focus-visible`.
+- **Contrast**: body text and pills meet WCAG AA in both appearances (the
+  canvas's measured ratios are listed under Dark appearance).
+  `prefers-contrast: more` darkens lines and muted text and thickens the
+  borders of buttons, inputs and cards.
+- **Transparency**: `prefers-reduced-transparency` makes the dialog scrim
+  much more opaque.
+- **Colour is never the only signal.** A gauge always comes with a pill or
+  label that says the status in words.
+- **Semantics**: segmented controls are `role="radiogroup"` or tabs,
+  toasts are `role="status"`, dialogs close on Escape, a tide gauge is
+  `role="img"` with a label naming the status, and banner art is
+  `aria-hidden`.
+
 ## Do's and Don'ts
 
 **Do**

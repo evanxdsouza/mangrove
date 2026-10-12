@@ -126,9 +126,19 @@ defaults (see `internal/config/config.go`):
 
 ```sh
 go test ./...              # unit + integration tests (real SQLite, fake or real Docker depending on package)
-cd web && npx tsc -b       # frontend typecheck
+cd web && npm run check && npm run lint   # frontend: svelte-check (types) + oxlint
 ./e2e/run.sh                # full end-to-end: real Docker + real Caddy, Playwright-driven
 ```
+
+## Working on the dashboard
+
+The dashboard in `web/` is a SvelteKit (Svelte 5) single-page app that
+builds to static files embedded in the Go binary -- no Node at runtime.
+For live reload, run a backend on `:7777` and `cd web && npm run dev`
+(Vite proxies `/api` to it). [docs/frontend.md](docs/frontend.md) covers
+the layout, state, polling and styling patterns, light/dark appearance,
+and how to QA against a throwaway instance; [DESIGN.md](DESIGN.md) is the
+visual language.
 
 ## Production deployment
 

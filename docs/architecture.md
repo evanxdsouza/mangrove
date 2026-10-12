@@ -50,6 +50,8 @@ than reconciling against live container state.
   deliberately unused, so its server-only dependencies never ship.
   Pinned to SvelteKit 2.x -- 3.0 shipped in October 2026 and hasn't been
   evaluated yet.
+  The working guide (layout, stores, polling, styling) is
+  [frontend.md](frontend.md).
 
 ## The blue/green deploy flow
 
