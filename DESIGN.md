@@ -95,6 +95,32 @@ Intertidal it only tints the sidebar's small section labels and the station
 eyebrow; the deep-green sidebar, leaf-green buttons, and tide colors never
 change. The default (Brass) is `#8FB0A2`, matching the canvas.
 
+### Dark appearance
+
+"The same language after sunset." Settings > Appearance offers Light, Dark,
+and System (the default, following `prefers-color-scheme` live). The choice
+is stored per browser (`mangrove-appearance`) and always resolves to
+`data-color-scheme="light|dark"` on `<html>`, set by `app.html` before first
+paint so a reload never flashes the wrong scheme. It is independent of the
+instrument metal (`data-theme`).
+
+| Role | Dark | Light |
+|---|---|---|
+| Page / Surface / Raised | `#0E1512` / `#151F1B` / `#1B2823` | `#F2F1EC` / `#FFFFFF` / -- |
+| Line / Input | `#263530` / `#0F1814` | `#E4E2DA` / `#FBFBF8` |
+| Ink / Muted / Labels | `#E7EEE9` / `#8FA298` / `#B6C6BD` | `#1B2420` / `#6B746E` / `#44504A` |
+| Sidebar / Accent | `#123227` / `#2A7A5F` | `#173D31` / `#1F5C47` |
+| Tide high / mid / low / dry | `#3FB5A6` / `#E0A444` / `#6F8A7D` / `#E0694F` | see above |
+| Terminal | `#070D0B`, with a hairline border | `#0F1B18` |
+
+Cards lift by lightness, not shadow; only dialogs keep a heavy shadow, over a
+60% black scrim. Status colours are ~15% brighter, with pills as opaque
+tints of their status colour. Banners become night scenes: moon and stars
+in place of the sun, while "turning" stays a warm dusk so it still stands
+apart. Type, spacing, radii, layout, copy, and icons are unchanged.
+Contrast was checked by the canvas (ink on page 15.7, muted on surface 6.3,
+white on the accent button 5.2, every pill 6.4+).
+
 ## Typography
 
 Figtree for everything, JetBrains Mono for slugs, ports, env keys, image
@@ -121,7 +147,8 @@ a CDN -- the dashboard ships inside the box it manages.
 - **Tide banner** (`TideBanner.svelte`) -- mangrove-at-the-waterline
   art over a project card, the project header, the login card, and the
   first-run empty state. Art, not data, but it follows the same level as the
-  gauge: high tide, turning, low tide, storm.
+  gauge: high tide, turning, low tide, storm. Day and night palettes of one
+  scene, switched by the appearance.
 - **Root line** -- an expanded project's deployments hang off one vertical
   line, each joined by a curved root (`.project-card-children`), ending in a
   dashed "+ Add a deployment" tile. The deploy-history timeline is the same

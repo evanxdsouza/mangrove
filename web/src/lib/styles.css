@@ -69,6 +69,19 @@
 
   --gray-wash: #efede6;
 
+  /* ---- Misc surfaces that differ between light and dark ------------- */
+  --bg-input: #fbfbf8;          /* form fields */
+  --bg-modal: #ffffff;
+  --gauge-fill: #ffffff;        /* inside of the tide-gauge capsule */
+  --rootline: #c9d6cf;          /* root line + timeline connectors */
+  --skeleton-a: #efede6;
+  --skeleton-b: #f7f6f1;
+  --shadow-control: 0 1px 2px rgba(27, 36, 32, 0.12);  /* active segment */
+  --shadow-hover: 0 4px 14px rgba(27, 36, 32, 0.08);
+  --icon-tile-ink: var(--leaf);
+  --beacon-ring: rgba(201, 138, 43, 0.28);
+  --beacon-ring-fade: rgba(201, 138, 43, 0.08);
+
   /* ---- Instrument metal ---------------------------------------------- */
   /* Settings > Theme swaps this family. In Intertidal it only tints the
      sidebar's small section labels and a few hairline accents; the
@@ -578,7 +591,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
   cursor: pointer;
   transition: border-color 0.15s var(--ease-standard), transform 0.1s var(--ease-standard), box-shadow 0.15s var(--ease-standard);
 }
-.card-clickable:hover { border-color: var(--border-hover); box-shadow: 0 4px 14px rgba(27, 36, 32, 0.08); }
+.card-clickable:hover { border-color: var(--border-hover); box-shadow: var(--shadow-hover); }
 .card-clickable:active { transform: scale(0.995); }
 
 .card-title {
@@ -661,7 +674,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
 }
 .view-toggle-btn svg { width: 16px; height: 16px; }
 .view-toggle-btn:hover { color: var(--text); }
-.view-toggle-btn.active { background: var(--bg-card); color: var(--text); box-shadow: 0 1px 2px rgba(27, 36, 32, 0.12); }
+.view-toggle-btn.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-control); }
 
 /* A project card: tide banner on top, body below. */
 .project-card {
@@ -721,7 +734,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
   width: 34px; height: 34px;
   border-radius: var(--radius-md);
   background: var(--leaf-wash);
-  color: var(--leaf);
+  color: var(--icon-tile-ink);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -834,7 +847,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
 .project-child-add::before { border-left-style: dashed; border-bottom-style: dashed; }
 .project-child-tile:hover { border-color: var(--border-hover); background: var(--bg-elevated); }
 .project-child-add {
-  border: 1.5px dashed #c9d6cf;
+  border: 1.5px dashed var(--rootline);
   background: transparent;
   color: var(--text-dim);
   font-weight: 600;
@@ -848,7 +861,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
   width: 30px; height: 30px;
   border-radius: 9px;
   background: var(--leaf-wash);
-  color: var(--leaf);
+  color: var(--icon-tile-ink);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -973,7 +986,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
   width: 34px; height: 34px; padding: 8px;
   border-radius: var(--radius-md);
   background: var(--leaf-wash);
-  color: var(--leaf);
+  color: var(--icon-tile-ink);
   flex-shrink: 0;
 }
 .template-card-description { margin: 0; font-size: 13px; overflow-wrap: break-word; }
@@ -1047,7 +1060,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--leaf); width: 
   padding: 9px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-field);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   color: var(--text);
   outline: none;
   transition: border-color 0.15s var(--ease-standard), box-shadow 0.15s var(--ease-standard);
@@ -1066,7 +1079,7 @@ textarea.input { resize: vertical; }
   margin-bottom: 18px;
 }
 .search-field svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-dim); pointer-events: none; }
-.search-field .input { padding-left: 34px; background: var(--bg-card); }
+.search-field .input { padding-left: 34px; }
 .field label {
   display: block;
   font-size: 12px;
@@ -1125,10 +1138,10 @@ tr.row-link:hover { background: var(--bg-elevated); }
 .pill-gray { background: var(--gray-wash); color: var(--text-strong); }
 
 /* Only building, health checking, and queued pulse. */
-.pill-dot.beacon-live { box-shadow: 0 0 0 3px rgba(201, 138, 43, 0.28); animation: beacon-pulse 1.8s ease-in-out infinite; }
+.pill-dot.beacon-live { box-shadow: 0 0 0 3px var(--beacon-ring); animation: beacon-pulse 1.8s ease-in-out infinite; }
 @keyframes beacon-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(201, 138, 43, 0.28); }
-  50% { box-shadow: 0 0 0 5px rgba(201, 138, 43, 0.08); }
+  0%, 100% { box-shadow: 0 0 0 3px var(--beacon-ring); }
+  50% { box-shadow: 0 0 0 5px var(--beacon-ring-fade); }
 }
 
 .mono { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
@@ -1216,7 +1229,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 }
 .modal {
   position: relative;
-  background: var(--bg-card);
+  background: var(--bg-modal);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   padding: 24px 26px;
@@ -1328,7 +1341,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
   align-items: center;
   padding-top: 4px;
 }
-.timeline-marker::after { content: ""; flex: 1; width: 2px; background: #c9d6cf; margin-top: 4px; }
+.timeline-marker::after { content: ""; flex: 1; width: 2px; background: var(--rootline); margin-top: 4px; }
 .timeline-item:last-child .timeline-marker::after { display: none; }
 .timeline-index { display: none; }
 .timeline-marker .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
@@ -1500,7 +1513,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
   transition: background-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
 }
 .tab:hover { color: var(--text); }
-.tab.active { background: var(--bg-card); color: var(--text); box-shadow: 0 1px 2px rgba(27, 36, 32, 0.12); }
+.tab.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-control); }
 
 /* A tab's count reads "Deployments · 3": plain text, never tinted. */
 .tab-count {
@@ -1544,7 +1557,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .skeleton-line, .skeleton-circle {
   display: inline-block;
   border-radius: var(--radius-md);
-  background: linear-gradient(90deg, #efede6 25%, #f7f6f1 37%, #efede6 63%);
+  background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 37%, var(--skeleton-a) 63%);
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.6s ease-in-out infinite;
 }
@@ -1615,6 +1628,134 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .flex { display: flex; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .gap-8 { gap: 8px; }
+
+/* ==========================================================================
+   Dark appearance -- "the same language after sunset"
+
+   Settings > Appearance picks light, dark, or system (lib/stores/
+   theme.svelte.ts). It always resolves to data-color-scheme="light|dark" on
+   <html>, set before first paint in app.html, so this one block is the
+   whole dark theme: cards lift by lightness instead of shadow, status
+   colours brighten ~15% to hold up on dark, banners become night scenes.
+   Separate from data-theme, which picks the instrument metal.
+   ========================================================================== */
+:root[data-color-scheme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0e1512;
+  --bg-elevated: #1b2823;     /* raised: hovered rows, secondary buttons, popovers */
+  --bg-card: #151f1b;
+  --bg-inset: #0a110e;
+  --bg-recorder: #070d0b;
+  --bg-input: #0f1814;
+  --bg-modal: #18241f;
+  --gauge-fill: #0f1814;
+
+  --border: #263530;
+  --border-soft: #1e2b26;
+  --border-hover: #34483f;
+  --border-strong: #3a5248;
+  --border-field: #2a3b34;
+
+  --text: #e7eee9;
+  --text-strong: #b6c6bd;
+  --text-dim: #8fa298;
+  --text-faint: #788b81;
+
+  --side: #123227;
+
+  --leaf: #2a7a5f;
+  --leaf-bright: #33906f;
+  --leaf-dim: #3a5248;
+  --leaf-wash: #1c3731;
+  --leaf-wash-strong: #22443b;
+  --leaf-text-on: #ffffff;
+  --icon-tile-ink: #6fd6c8;
+
+  --tide-high: #3fb5a6;
+  --tide-mid: #e0a444;
+  --tide-low: #6f8a7d;
+  --tide-rim: #3a5248;
+  --rootline: #34483f;
+
+  --verdigris: #3fb5a6;
+  --verdigris-bright: #6fd6c8;
+  --verdigris-wash: #1c3731;
+
+  --red: #e0694f;
+  --red-bright: #f29a86;
+  --red-ink: #f29a86;
+  --red-wash: #352b23;
+  --red-line: #5c3b33;
+
+  --ochre: #e0a444;
+  --ochre-bright: #f0c06e;
+  --ochre-wash: #353422;
+
+  --gray-wash: #1f2d27;
+  --skeleton-a: #1b2823;
+  --skeleton-b: #223229;
+
+  --brass-dim: #3a5248;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 18px 40px rgba(0, 0, 0, 0.6);
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --beacon-ring: rgba(224, 164, 68, 0.3);
+  --beacon-ring-fade: rgba(224, 164, 68, 0.08);
+
+  --material-backdrop: rgba(0, 0, 0, 0.6);
+}
+:root[data-color-scheme="dark"] input[type="checkbox"],
+:root[data-color-scheme="dark"] input[type="radio"] { accent-color: var(--tide-high); }
+:root[data-color-scheme="dark"] :focus-visible { outline-color: var(--tide-high); }
+:root[data-color-scheme="dark"] .input:focus,
+:root[data-color-scheme="dark"] textarea.input:focus,
+:root[data-color-scheme="dark"] select.input:focus { border-color: var(--tide-high); box-shadow: 0 0 0 3px rgba(63, 181, 166, 0.22); }
+:root[data-color-scheme="dark"] .input::placeholder { color: #5f7268; }
+:root[data-color-scheme="dark"] .btn { background: var(--bg-elevated); }
+:root[data-color-scheme="dark"] .btn:hover { background: #22322b; }
+:root[data-color-scheme="dark"] .btn-primary { background: var(--leaf); }
+:root[data-color-scheme="dark"] .btn-primary:hover { background: var(--leaf-bright); }
+:root[data-color-scheme="dark"] .btn-ghost-danger { background: transparent; }
+:root[data-color-scheme="dark"] .tabs,
+:root[data-color-scheme="dark"] .view-toggle { border: 1px solid var(--border); }
+:root[data-color-scheme="dark"] .tab.active,
+:root[data-color-scheme="dark"] .view-toggle-btn.active { background: var(--bg-elevated); }
+:root[data-color-scheme="dark"] .filter-chip { background: var(--bg-card); }
+:root[data-color-scheme="dark"] .filter-chip.active { background: var(--side); border-color: #1e4a39; }
+:root[data-color-scheme="dark"] .modal { border: 1px solid #2b3d36; }
+:root[data-color-scheme="dark"] .station-switcher-panel,
+:root[data-color-scheme="dark"] .sidebar-search-panel { background: var(--bg-elevated); }
+:root[data-color-scheme="dark"] .log-viewer-frame { border: 1px solid var(--border); }
+:root[data-color-scheme="dark"] .station-switcher-item:hover,
+:root[data-color-scheme="dark"] .station-switcher-manage:hover { background: #22322b; }
+:root[data-color-scheme="dark"] .toast { background: #1e4a39; border: 1px solid #2b6a52; }
+:root[data-color-scheme="dark"] .tide-bar { background: var(--bg-input); border: 1px solid var(--border-soft); }
+
+/* ---- Appearance picker (Settings > Appearance) ---- */
+.appearance-toggle { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; background: var(--bg-inset); border-radius: 12px; }
+:root[data-color-scheme="dark"] .appearance-toggle { border: 1px solid var(--border); }
+.appearance-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.appearance-option svg { width: 15px; height: 15px; }
+.appearance-option:hover { color: var(--text); }
+.appearance-option.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-control); }
+:root[data-color-scheme="dark"] .appearance-option.active { background: var(--bg-elevated); }
 
 /* ==========================================================================
    Phone: the sidebar becomes a top bar plus a drawer over a scrim

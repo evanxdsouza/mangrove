@@ -33,6 +33,9 @@ export const ICONS = {
   "check-circle": `<circle cx="12" cy="12" r="9" /> <path d="m8 12.3 2.8 2.8 5.2-5.6" />`,
   "x-circle": `<circle cx="12" cy="12" r="9" /> <path d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6" />`,
   "alert": `<path d="M12 4 3 20h18z" /> <path d="M12 10v4M12 17h.01" />`,
+  "sun": `<circle cx="12" cy="12" r="4" /> <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />`,
+  "moon": `<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />`,
+  "screen": `<rect x="3" y="4" width="18" height="12" rx="2" /> <path d="M8 20h8M12 16v4" />`,
 } as const;
 
 export type IconName = keyof typeof ICONS;
