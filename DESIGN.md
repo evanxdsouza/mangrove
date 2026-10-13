@@ -61,6 +61,13 @@ Env, run detail, workspaces, admin, health/settings, storage, and every
 dialog). `web/src/lib/styles.css` implements it as CSS custom properties; class
 names predate the redesign and were kept so page code didn't churn.
 
+One place outside `web/` carries this language too: the password-gate,
+account-handoff, and "waking up" pages in `internal/api/gate_templates.go`
+(served on a deployment's own domain, so they can't use the SPA bundle).
+They hand-copy the sign-in card's tokens and port `TideBanner`'s scenes to
+`internal/api/gate_banner.go`, light and dark via `prefers-color-scheme`. A
+change to the tokens or the banner needs repeating there.
+
 ## Colors
 
 | Role | Token | Value |

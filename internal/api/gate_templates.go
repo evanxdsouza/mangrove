@@ -3,12 +3,13 @@ package api
 import "html/template"
 
 // gatePageData/gateAuthPageData feed the two standalone, server-rendered
-// pages in gate.go. These are deliberately NOT part of the React SPA build
-// (web/): they need to render correctly on an arbitrary deployment's own
-// domain, independent of and before any app code runs, so they're plain
-// html/template with an inline, hand-matched subset of the dashboard's
-// "Field Station" palette (see web/src/styles.css) rather than the
-// self-hosted fonts/bundle the SPA uses.
+// pages in gate.go. These are deliberately NOT part of the SvelteKit SPA
+// build (web/): they need to render correctly on an arbitrary deployment's
+// own domain, independent of and before any app code runs, so they're plain
+// html/template with an inline, hand-matched copy of the dashboard's
+// "Intertidal" tokens (see web/src/lib/styles.css and DESIGN.md) rather
+// than the SPA's bundle. Fonts fall back to the system stack when Figtree /
+// JetBrains Mono aren't installed -- nothing is fetched from elsewhere.
 type gatePageData struct {
 	Hostname   string
 	ReturnTo   string
@@ -30,27 +31,54 @@ type sleepPageData struct {
 	Name     string
 }
 
-// gateStyles is shared between both pages: same dark card, same brass
-// accent, same fallback font stacks (no external font loading -- this page
-// is served standalone, outside the SPA's self-hosted @fontsource bundle).
+// gateStyles is shared by all three pages: the dashboard's sign-in card
+// (tide banner on top, mangrove mark, leaf-green primary button), light by
+// default and its dark appearance under prefers-color-scheme -- there's no
+// per-visitor appearance setting to read on someone else's domain.
 const gateStyles = `<style>
 :root {
-  --bg: #14100a;
-  --bg-card: #201911;
-  --border: #362a1a;
-  --border-hover: #4d3c25;
-  --text: #ece3d2;
-  --text-dim: #a99b83;
-  --text-faint: #6f6250;
-  --brass: #caa057;
-  --brass-bright: #e2bd76;
-  --brass-dim: #7a6236;
-  --brass-wash: rgba(202, 160, 87, 0.14);
-  --red: #cc5c53;
-  --red-wash: rgba(204, 92, 83, 0.14);
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  color-scheme: dark;
+  --bg: #f2f1ec;
+  --bg-card: #ffffff;
+  --bg-input: #fbfbf8;
+  --border: #e4e2da;
+  --border-field: #e1dfd6;
+  --border-strong: #c9c6ba;
+  --text: #1b2420;
+  --text-strong: #44504a;
+  --text-dim: #6b746e;
+  --text-faint: #7c847e;
+  --leaf: #1f5c47;
+  --leaf-bright: #174a39;
+  --leaf-wash: #eaf3ee;
+  --red-bright: #a23b2a;
+  --red-ink: #8e2f1f;
+  --red-wash: #f8e1db;
+  --red-line: #ebc9c0;
+  --sans: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1512;
+    --bg-card: #151f1b;
+    --bg-input: #0f1814;
+    --border: #263530;
+    --border-field: #2a3b34;
+    --border-strong: #3a5248;
+    --text: #e7eee9;
+    --text-strong: #b6c6bd;
+    --text-dim: #8fa298;
+    --text-faint: #788b81;
+    --leaf: #2a7a5f;
+    --leaf-bright: #33906f;
+    --leaf-wash: #1c3731;
+    --red-bright: #f29a86;
+    --red-ink: #f29a86;
+    --red-wash: #352b23;
+    --red-line: #5c3b33;
+    color-scheme: dark;
+  }
 }
 * { box-sizing: border-box; }
 body {
@@ -59,222 +87,195 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 24px 16px;
   background: var(--bg);
   color: var(--text);
-  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
-.mono {
-  font-family: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-}
+.mono { font-family: var(--mono); font-size: 0.93em; }
 .card {
-  width: 100%;
-  max-width: 420px;
+  width: 420px;
+  max-width: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.55);
-  padding: 2rem;
-  text-align: center;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(27, 36, 32, 0.04);
+  overflow: hidden;
 }
-.icon-badge {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 1.25rem;
-  border-radius: 999px;
-  background: var(--brass-wash);
-  border: 1px solid var(--border-hover);
+.banner { height: 120px; }
+.tide-banner { display: block; width: 100%; height: 100%; }
+.tide-banner.night { display: none; }
+@media (prefers-color-scheme: dark) {
+  .tide-banner.day { display: none; }
+  .tide-banner.night { display: block; }
+}
+.body { padding: 24px 26px 26px; }
+.mark { width: 34px; height: 34px; color: var(--leaf); margin-bottom: 12px; display: block; }
+h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 6px; }
+p.subtitle { color: var(--text-dim); margin: 0 0 20px; font-size: 14px; }
+p.subtitle .host { color: var(--text); }
+.field { margin-bottom: 14px; }
+label { display: block; font-size: 12px; font-weight: 600; color: var(--text-strong); margin-bottom: 6px; }
+input[type="email"], input[type="password"] {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-field);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus { border-color: var(--leaf); box-shadow: 0 0 0 3px var(--leaf-wash); }
+.btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--brass-bright);
-}
-h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.4rem;
-  font-weight: 600;
-  color: var(--text);
-}
-p.subtext {
-  margin: 0 0 1.5rem;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-p.subtext .host { color: var(--text); }
-.btn {
-  display: block;
   width: 100%;
-  padding: 0.7rem 1rem;
-  border-radius: var(--radius-md);
-  border: none;
-  font-size: 0.9rem;
-  font-weight: 600;
-  font-family: inherit;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-field);
+  background: var(--bg-card);
+  color: var(--text);
+  font: 600 13px var(--sans);
   cursor: pointer;
   text-decoration: none;
-  box-sizing: border-box;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
 }
-.btn-primary {
-  background: var(--brass);
-  color: #14100a;
-}
-.btn-primary:hover { background: var(--brass-bright); }
-.btn-secondary {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border-hover);
-}
-.btn-secondary:hover { border-color: var(--brass); }
+.btn:hover { border-color: var(--border-strong); }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--leaf); border-color: var(--leaf); color: #ffffff; }
+.btn-primary:hover { background: var(--leaf-bright); border-color: var(--leaf-bright); }
 .divider {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin: 1.25rem 0;
+  gap: 12px;
+  margin: 18px 0;
   color: var(--text-faint);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
 }
-.divider::before, .divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-form { text-align: left; }
-label {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  margin-bottom: 0.4rem;
-}
-input[type="email"], input[type="password"] {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  margin-bottom: 1rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font-family: inherit;
-}
-input[type="password"] { font-family: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
-input:focus { outline: none; border-color: var(--brass); }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
   background: var(--red-wash);
-  border: 1px solid var(--red);
-  color: var(--red);
-  border-radius: var(--radius-md);
-  padding: 0.6rem 0.75rem;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-  text-align: left;
+  border: 1px solid var(--red-line);
+  color: var(--red-ink);
+  padding: 10px 14px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
 }
+.error-banner svg { width: 15px; height: 15px; margin-top: 2px; flex-shrink: 0; color: var(--red-bright); }
+.note { margin: 16px 0 0; font-size: 12px; color: var(--text-dim); }
 </style>`
 
-const lockIconSVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>`
+// mangroveMarkSVG is the dashboard's brand mark (web/src/lib/icons.ts's
+// "mangrove"), drawn the way Icon.svelte draws every icon.
+const mangroveMarkSVG = `<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21c0-7 3.5-10 8-10s8 3 8 10"/><path d="M8.5 21c0-4.5 1.4-7 3.5-7s3.5 2.5 3.5 7"/><path d="M12 11V3"/></svg>`
 
-// sproutIconSVG is a small root-and-sprout motif echoing PlantGlyph in the
-// SPA (web/src/components/PlantGlyph.tsx) -- a resource waking back up
-// reads as a plant stirring, not a generic loading spinner.
-const sproutIconSVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"></path><path d="M12 11c0-3.5 2-6 6-6 0 4-2 6-6 6Z"></path><path d="M12 14c0-3-2-5-5.5-5 0 3.5 2 5 5.5 5Z"></path></svg>`
+const warnIconSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 20h18z"/><path d="M12 10v4M12 17h.01"/></svg>`
 
 // sleepTpl is the "waking up" page a sleep-enabled deployment's visitor
-// sees while its containers restart -- see Server.renderWakingPage. Reuses
-// gateStyles' dark card/brass palette plus a local leaf accent (a
-// waking resource reads as "alive," not as another brass-toned auth
-// screen) and a meta-refresh instead of JS, matching gate.go's own
-// no-JS-dependency convention.
-var sleepTpl = template.Must(template.New("sleep").Parse(gateStyles + `<!doctype html>
-<html>
+// sees while its containers restart -- see Server.renderWakingPage. The
+// banner is the "turning" (in-progress) scene, and a meta-refresh instead of
+// JS keeps gate.go's no-JS-dependency convention.
+var sleepTpl = template.Must(template.New("sleep").Parse(`<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="3">
 <title>Waking up</title>
-<style>
-:root { --leaf: #4fae42; --leaf-bright: #6fcf5c; --leaf-wash: rgba(79, 174, 66, 0.14); }
-.icon-badge.waking {
-  background: var(--leaf-wash);
-  border-color: var(--leaf);
-  color: var(--leaf-bright);
-  animation: sprout-sway 2.4s ease-in-out infinite;
-}
-@keyframes sprout-sway {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(-4deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .icon-badge.waking { animation: none; }
-}
-</style>
+` + gateStyles + `
 </head>
 <body>
-<div class="card">
-  <div class="icon-badge waking">` + sproutIconSVG + `</div>
-  <h1>Waking up{{if .Name}} {{.Name}}{{end}}</h1>
-  <p class="subtext">This deployment went to sleep after a period with no traffic and is starting back up now. This page will refresh automatically -- it usually only takes a few seconds.</p>
-</div>
+<main class="card">
+  ` + gateBanner(bannerMidDay, bannerMidNight) + `
+  <div class="body">
+    ` + mangroveMarkSVG + `
+    <h1>Waking up{{if .Name}} {{.Name}}{{end}}</h1>
+    <p class="subtitle">This app went to sleep after a quiet spell and is starting back up. This page refreshes on its own; it usually takes a few seconds.</p>
+  </div>
+</main>
 </body>
 </html>
 `))
 
-var gateTpl = template.Must(template.New("gate").Parse(gateStyles + `<!doctype html>
-<html>
+var gateTpl = template.Must(template.New("gate").Parse(`<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Protected</title>
+` + gateStyles + `
 </head>
 <body>
-<div class="card">
-  <div class="icon-badge">` + lockIconSVG + `</div>
-  <h1>This deployment is protected</h1>
-  <p class="subtext">Sign in with a Mangrove account, or enter the password, to view <span class="host mono">{{.Hostname}}</span>.</p>
-  {{if .ErrMsg}}<div class="error-banner">{{.ErrMsg}}</div>{{end}}
-  {{if .AccountURL}}
-  <a class="btn btn-primary" href="{{.AccountURL}}">Continue with Mangrove account</a>
-  <div class="divider">or</div>
-  {{end}}
-  <form method="POST" action="/__mangrove_gate__/password">
-    <input type="hidden" name="returnTo" value="{{.ReturnTo}}">
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" required autofocus>
-    <button type="submit" class="btn {{if .AccountURL}}btn-secondary{{else}}btn-primary{{end}}">Unlock</button>
-  </form>
-</div>
+<main class="card">
+  ` + gateBanner(bannerHighDay, bannerHighNight) + `
+  <div class="body">
+    ` + mangroveMarkSVG + `
+    <h1>This deployment is protected</h1>
+    <p class="subtitle">Sign in with a Mangrove account, or enter the password, to view <span class="host mono">{{.Hostname}}</span>.</p>
+    {{if .ErrMsg}}<div class="error-banner" role="alert">` + warnIconSVG + `<span>{{.ErrMsg}}</span></div>{{end}}
+    {{if .AccountURL}}
+    <a class="btn btn-primary" href="{{.AccountURL}}">Continue with Mangrove account</a>
+    <div class="divider">or</div>
+    {{end}}
+    <form method="POST" action="/__mangrove_gate__/password">
+      <input type="hidden" name="returnTo" value="{{.ReturnTo}}">
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required autofocus>
+      </div>
+      <button type="submit" class="btn{{if not .AccountURL}} btn-primary{{end}}">Unlock</button>
+    </form>
+  </div>
+</main>
 </body>
 </html>
 `))
 
-var gateAuthTpl = template.Must(template.New("gateAuth").Parse(gateStyles + `<!doctype html>
-<html>
+var gateAuthTpl = template.Must(template.New("gateAuth").Parse(`<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in</title>
+` + gateStyles + `
 </head>
 <body>
-<div class="card">
-  <div class="icon-badge">` + lockIconSVG + `</div>
-  {{if .IsError}}
-  <h1>Link expired</h1>
-  <p class="subtext">{{.ErrMsg}}</p>
-  {{else}}
-  <h1>Sign in to continue</h1>
-  <p class="subtext">Signing in with your Mangrove account grants access to the protected deployment you came from.</p>
-  {{if .ErrMsg}}<div class="error-banner">{{.ErrMsg}}</div>{{end}}
-  <form method="POST" action="/gate-auth">
-    <input type="hidden" name="token" value="{{.Token}}">
-    <label for="email">Email</label>
-    <input type="email" id="email" name="email" required autofocus>
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" required>
-    <button type="submit" class="btn btn-primary">Sign in</button>
-  </form>
-  {{end}}
-</div>
+<main class="card">
+  ` + gateBanner(bannerHighDay, bannerHighNight) + `
+  <div class="body">
+    ` + mangroveMarkSVG + `
+    {{if .IsError}}
+    <h1>Link expired</h1>
+    <p class="subtitle">{{.ErrMsg}}</p>
+    {{else}}
+    <h1>Sign in to continue</h1>
+    <p class="subtitle">Sign in with your Mangrove account to open the protected deployment you came from.</p>
+    {{if .ErrMsg}}<div class="error-banner" role="alert">` + warnIconSVG + `<span>{{.ErrMsg}}</span></div>{{end}}
+    <form method="POST" action="/gate-auth">
+      <input type="hidden" name="token" value="{{.Token}}">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+    </form>
+    {{end}}
+  </div>
+</main>
 </body>
 </html>
 `))
