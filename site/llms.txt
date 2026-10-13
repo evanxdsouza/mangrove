@@ -1,0 +1,7 @@
+# Mangrove
+
+> Mangrove is a small, self-hosted PaaS: point it at a Git repo, a Dockerfile, a docker-compose file or a pre-built image, and it builds, runs, health-checks and reverse-proxies it (blue/green, automatic rollback) on a Debian or Ubuntu box you own.
+
+- [Install instructions for agents](/install.md): step-by-step, with the safety rules an agent should follow
+- [Source](https://github.com/evanxdsouza/mangrove)
+- [Docs](https://github.com/evanxdsouza/mangrove/tree/main/docs)

@@ -40,6 +40,7 @@
   --pill:#efede6;--pill-ink:#44504a;
   --pill-high:#ddf1ee;--pill-high-ink:#1d6b61;
   --pill-mid:#ffe5bc;--pill-mid-ink:#7a4e0e;
+  --dry-bg:#f8e1db;--dry-ink:#a23b2a;
   --root:#c9d6cf;--gauge-rim:#9db4aa;
   --scrim:rgba(23,61,49,.45);
   --card-shadow:0 1px 2px rgba(27,36,32,.04);
@@ -58,7 +59,7 @@ html[data-color-scheme="dark"]{
     --high:#3fb5a6;--mid:#e0a444;--low:#6f8a7d;--dry:#e0694f;
     --pill:#22302b;--pill-ink:#b6c6bd;
     --pill-high:#1b3d38;--pill-high-ink:#8fe0d4;
-    --pill-mid:#3d2f17;--pill-mid-ink:#f2c98b;
+    --pill-mid:#3d2f17;--pill-mid-ink:#f2c98b;--dry-bg:#3f211b;--dry-ink:#f4a593;
     --root:#2f433c;--gauge-rim:#4a6158;
     --scrim:rgba(0,0,0,.6);
     --card-shadow:none;--lift-shadow:none;
@@ -76,7 +77,7 @@ html:not([data-color-scheme]){
     --high:#3fb5a6;--mid:#e0a444;--low:#6f8a7d;--dry:#e0694f;
     --pill:#22302b;--pill-ink:#b6c6bd;
     --pill-high:#1b3d38;--pill-high-ink:#8fe0d4;
-    --pill-mid:#3d2f17;--pill-mid-ink:#f2c98b;
+    --pill-mid:#3d2f17;--pill-mid-ink:#f2c98b;--dry-bg:#3f211b;--dry-ink:#f4a593;
     --root:#2f433c;--gauge-rim:#4a6158;
     --scrim:rgba(0,0,0,.6);
     --card-shadow:none;--lift-shadow:none;
@@ -265,7 +266,17 @@ html[data-color-scheme="dark"] .look button[aria-pressed="true"]{background:#2a7
 h1{font-size:clamp(34px,4.6vw,52px);line-height:1.04;letter-spacing:-.03em;font-weight:700;text-wrap:balance}
 .lede{margin:14px 0 26px;font-size:17px;color:var(--label);max-width:56ch}
 .fld{margin-bottom:14px}
-.claim .btn.p{width:100%;margin-top:8px}
+.claim .btn.wide{width:100%;margin-top:8px}
+.how{margin:0 0 18px}
+.in.prompt{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.hint a{color:var(--label)}
+.agent-run{margin:4px 0 6px}
+.agent-run .term-body{min-height:174px}
+.agent-run .q{color:var(--mid)}
+.agent-run .ok{color:#7fd1c4}
+.agent-run b{font-weight:500;color:#e7eee9}
+.replay-mini{border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--term-ink);border-radius:8px;padding:3px 9px;font:600 11px/1.4 Figtree,sans-serif;letter-spacing:0}
+.replay-mini:hover{background:rgba(255,255,255,.08)}
 .claim-links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 22px;margin-top:16px;font-size:14px;font-weight:600}
 .claim-links a{text-decoration:none;color:var(--label);display:inline-flex;align-items:center;gap:6px;min-height:32px}
 .claim-links a:hover{color:var(--ink)}
@@ -366,20 +377,6 @@ h2{font-size:clamp(28px,3.4vw,40px);line-height:1.08;letter-spacing:-.025em;font
 .caption{margin-top:14px;font-size:12px;color:var(--muted)}
 
 /* 5 · The settings you'd otherwise script: two boards */
-.boards{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px;margin-top:40px;align-items:start}
-@media (max-width:1000px){.boards{grid-template-columns:1fr}}
-.sb{overflow:hidden}
-.sb-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:18px 24px;border-bottom:1px solid var(--line-soft)}
-.sb-head h3{font-size:20px;font-weight:700;letter-spacing:-.01em}
-.sb-head .sub{font-size:12.5px;color:var(--muted)}
-.sb-grid{display:grid;grid-template-columns:1fr 1fr}
-.sb-grid .sb-sec:nth-child(odd){border-right:1px solid var(--line-soft)}
-@media (max-width:660px){.sb-grid{grid-template-columns:1fr}.sb-grid .sb-sec:nth-child(odd){border-right:0}}
-.sb-sec{padding:20px 24px 22px;border-bottom:1px solid var(--line-soft)}
-.sb>.sb-sec:last-child,.sb-grid .sb-sec:nth-last-child(-n+2){border-bottom:0}
-@media (max-width:660px){.sb-grid .sb-sec:nth-last-child(2){border-bottom:1px solid var(--line-soft)}}
-.sb-sec h4{margin:0}
-.sb-sec p{font-size:14px;color:var(--label);margin:6px 0 14px;line-height:1.5}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .dom{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
 .dom:last-child{border-bottom:0;padding-bottom:0}
@@ -416,9 +413,128 @@ footer nav{display:flex;gap:20px;margin-left:auto}
 footer a{text-decoration:none}
 footer a:hover{color:var(--ink)}
 
+/* 5 · Explorer: the dashboard, working */
+.ex{display:grid;grid-template-columns:248px minmax(0,1fr);margin-top:40px;min-height:660px;position:relative;overflow:hidden}
+.ex-side{margin:10px;background:var(--side);border-radius:16px;padding:14px 8px 10px;display:flex;flex-direction:column;gap:12px;color:var(--side-ink)}
+.ex-brand{display:flex;align-items:center;gap:10px;padding:2px 10px 0;font-weight:700;color:#f2f7f3}
+.ex-brand .i{width:22px;height:22px;color:var(--pale)}
+.ex-demo{margin-left:auto;font-size:11px;font-weight:600;color:var(--side-dim);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:1px 8px}
+.ex-nav{display:flex;flex-direction:column;gap:1px;flex:1}
+.ex-nav .navh{font-size:12px;color:var(--side-dim);padding:10px 12px 4px}
+.ex-nav button{display:flex;align-items:center;gap:10px;border:0;background:transparent;color:var(--side-nav);font-size:13.5px;text-align:left;padding:8px 12px;border-radius:10px;min-height:36px}
+.ex-nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+.ex-nav button[aria-selected="true"]{background:rgba(255,255,255,.12);color:#fff;font-weight:600}
+.ex-side :focus-visible{outline-color:var(--pale)}
+.ex-mode{display:grid;grid-template-columns:1fr 1fr;background:rgba(0,0,0,.22);border-radius:10px;padding:3px;margin-top:auto}
+.ex-mode button{border:0;border-radius:8px;padding:8px 0;font-size:13px;font-weight:600;background:transparent;color:#a9c4b6}
+.ex-mode button[aria-pressed="true"]{background:#f2f7f3;color:#173d31}
+.ex.simple .ex-nav{display:none}
+.ex-simple-nav{display:none;flex:1}
+.ex.simple .ex-simple-nav{display:block}
+.ex-simple-nav span{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.12);color:#fff;font-weight:600;font-size:13.5px}
+.ex-main{padding:28px 32px 96px;position:relative;min-width:0}
+.xp h3{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.xp-what{color:var(--label);font-size:14.5px;margin:6px 0 20px;max-width:62ch}
+.xp-acts{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:16px 0}
+.xp .kid::before{display:none}
+.kid.big{padding:14px 16px}
+.kid.big b{font-size:14.5px}
+.pair{display:grid;gap:10px}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn.s{min-height:32px;padding:5px 11px;font-size:12.5px;border-radius:8px}
+.feed{list-style:none;margin:6px 0 0;padding:0}
+.feed li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line-soft);font-size:13.5px}
+.feed code{font-size:12.5px;color:var(--muted)}
+.when{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--root);flex:none}
+.dot.ok{background:var(--high)}.dot.mid{background:var(--mid)}.dot.bad{background:var(--dry)}.dot.off{background:var(--low)}
+.pill.r{background:var(--dry-bg);color:var(--dry-ink)}
+.pr{margin-top:6px}
+.gh{border:1px solid var(--line);border-radius:14px;margin-top:12px;overflow:hidden;background:var(--surface)}
+.gh-head{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--field);border-bottom:1px solid var(--line-soft);font-size:13px}
+.gh-av{width:22px;height:22px;border-radius:6px;background:var(--side);display:grid;place-items:center;color:var(--pale)}
+.gh-av .i{width:14px;height:14px}
+.gh-body{padding:12px;font-size:13.5px;margin:0;line-height:1.5}
+.hist{list-style:none;margin:6px 0 0;padding:0}
+.hist li{display:flex;gap:14px}
+.hist .rail{display:flex;flex-direction:column;align-items:center;padding-top:6px}
+.hist .stem{flex:1;width:2px;background:var(--root);display:block;margin:4px 0}
+.hist li:last-child .stem{display:none}
+.hist .body{flex:1;display:flex;align-items:flex-start;gap:12px;padding-bottom:14px;min-width:0}
+.hist .body>div{flex:1;min-width:0}
+.hist .meta{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+.hist .pills{display:flex;gap:6px;flex-wrap:wrap}
+.tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:8px}
+.tpl-i{border:1px solid var(--line-soft);background:var(--field);border-radius:14px;padding:11px 12px;display:flex;flex-direction:column;gap:4px;font-size:12.5px;line-height:1.35}
+.tpl-i b{font-size:14px}
+.tpl-i span{color:var(--muted);flex:1}
+.tpl-i .btn{align-self:flex-start;margin-top:6px}
+.installed{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.dom-row{display:flex;gap:8px}
+.dom-row .in{flex:1;min-width:0}
+.err{background:var(--dry-bg);color:var(--dry-ink);border-radius:12px;padding:9px 12px;font-size:13px;margin-top:8px}
+.doms{margin-top:14px}
+.logbox{height:230px;overflow:auto;scrollbar-width:thin}
+.logbox .cm{color:var(--pale)}
+.cmds code{font-size:12.5px}
+.browser{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:6px;background:var(--surface)}
+.b-bar{display:flex;gap:4px;padding:7px 8px;background:var(--inset);font:12.5px/1.4 "JetBrains Mono",monospace;color:var(--muted)}
+.b-bar button{border:0;background:transparent;border-radius:8px;padding:4px 10px;font:inherit;color:var(--muted)}
+.b-bar button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
+.b-bar span{padding:4px 6px}
+.b-view{min-height:200px;display:grid;place-items:center;padding:20px;background:var(--page)}
+.browser.small .b-view{min-height:140px}
+.gate{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;width:100%;max-width:300px;box-shadow:var(--card-shadow)}
+.gate b{display:block;font-size:15px}
+.gate span{display:block;font-size:12.5px;color:var(--muted);margin:2px 0 12px}
+.gate .in{margin-bottom:10px}
+.gate .btn{width:100%;min-height:38px}
+.app-page{text-align:center}
+.app-page b{display:block;font-size:18px}
+.app-page span{font-size:13px;color:var(--muted)}
+.json{font:13px/1.5 "JetBrains Mono",monospace;color:var(--label)}
+.waking{display:flex;flex-direction:column;align-items:center;gap:10px;font-size:14px;color:var(--label)}
+.checks{display:inline-flex;gap:3px;vertical-align:middle;margin-left:6px}
+.checks i{width:8px;height:8px;border-radius:50%;background:var(--high);display:block}
+.checks i.bad{background:var(--dry)}
+.perms{list-style:none;padding:0;margin:16px 0 10px}
+.perms li{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line-soft);font-size:14px;transition:color .2s}
+.perms li::before{content:"";width:18px;height:18px;flex:none;border-radius:50%;background:var(--pill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 12h10' stroke='%238fa89b' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") center/12px no-repeat}
+.perms li.yes::before{background:var(--high) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 12 4 4 8-8' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat}
+.perms li.no{color:var(--muted)}
+.drive-ic{width:30px;height:30px;border-radius:9px;background:var(--inset);display:grid;place-items:center;color:var(--label);flex:none}
+.share-out{font-size:14px;color:var(--label)}
+.meters{max-width:520px}
+.meters .meter+.meter{margin-top:16px}
+.bar>i{transition:width .8s cubic-bezier(.16,1,.3,1),background-color .4s}
+.bar>i.x{background:var(--dry)}
+.strip{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:22px;max-width:520px}
+.strip i{flex:1;border-radius:3px 3px 0 0;background:var(--high);display:block;transition:height .6s}
+.strip i.w{background:var(--mid)}.strip i.x{background:var(--dry)}
+.apps .app .btn{flex:none}
+.ex-toast{bottom:22px}
+@media (max-width:860px){
+  .ex{grid-template-columns:minmax(0,1fr);min-height:0}
+  .ex-side,.ex-main{min-width:0}
+  .ex-side{margin:8px 8px 0;gap:8px}
+  .ex-nav{flex-direction:row;overflow-x:auto;scrollbar-width:none;gap:4px;padding-bottom:2px}
+  .ex-nav::-webkit-scrollbar{display:none}
+  .ex-nav .navh{display:none}
+  .ex-nav button{flex:none;white-space:nowrap}
+  .ex-mode{margin-top:0}
+  .ex-main{padding:22px 18px 96px}
+  .dom-row{flex-direction:column}
+}
+
+.gauge.dry .rim{stroke:var(--dry)}
+.gauge.dry .water{transform:translateY(40px)!important}
+.spin{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--high);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .pill.a i{animation:beacon 1.6s ease-in-out infinite!important}
+  .spin{animation:spin .9s linear infinite!important}
 }
 </style>
 </head>
@@ -492,6 +608,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M6 8.2v7.6M18 15.8V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.6 5.7 3.6 9s-1.1 6.3-3.6 9c-2.5-2.7-3.6-5.7-3.6-9S9.5 5.7 12 3z"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 17h7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9.5" r="2.4"/><path d="M16 14.2c2.4-.3 4 1.2 4.5 3.8"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.4"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><path d="M8 8h.01M8 16h.01"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 20h16"/><rect x="5" y="11" width="3" height="6" rx="1"/><rect x="10.5" y="7" width="3" height="10" rx="1"/><rect x="16" y="13" width="3" height="4" rx="1"/></symbol>
   <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></symbol>
 </svg>
 
@@ -499,7 +626,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <div class="wrap">
     <nav aria-label="Primary">
       <a class="brand" href="#top"><svg class="i" aria-hidden="true"><use href="#i-mark"/></svg>Mangrove</a>
-      <a class="nav opt" href="#plant">How it works</a>
+      <a class="nav opt" href="#try">Try it</a>
       <a class="nav opt" href="https://github.com/evanxdsouza/mangrove/tree/main/docs">Docs</a>
       <div class="look" role="group" aria-label="Appearance">
         <button type="button" data-look="light" aria-pressed="false" aria-label="Light" title="Light"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></button>
@@ -538,16 +665,39 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div class="claim-body">
         <h1 id="h-claim">Your own PaaS, on a box you&nbsp;own.</h1>
         <p class="lede">Mangrove is a small, self-hosted platform. Point it at a Git repo, a Dockerfile, a compose file or an image, and it builds it, runs it, health-checks it and serves it over HTTPS, with blue/green deploys and automatic rollback.</p>
-        <div class="fld">
-          <span class="lbl" id="l-clone">On a Debian or Ubuntu server, clone it</span>
-          <code class="in code" tabindex="0" aria-labelledby="l-clone">git clone https://github.com/evanxdsouza/mangrove.git</code>
+        <div class="seg how" role="tablist" aria-label="How to install">
+          <button type="button" role="tab" id="t-hand" aria-controls="p-hand" aria-selected="true">By hand</button>
+          <button type="button" role="tab" id="t-agent" aria-controls="p-agent" aria-selected="false" tabindex="-1">With an agent</button>
         </div>
-        <div class="fld">
-          <span class="lbl" id="l-run">Then run the installer</span>
-          <code class="in code" tabindex="0" aria-labelledby="l-run">cd mangrove &amp;&amp; sudo ./setup.sh</code>
-          <div class="hint">It installs Docker and Caddy if they're missing, builds one Go binary, and claims the instance with a single-use setup token so you become its owner. 2&nbsp;GB of RAM is enough. Re-running it is safe.</div>
+        <div role="tabpanel" id="p-hand" aria-labelledby="t-hand">
+          <div class="fld">
+            <span class="lbl" id="l-clone">On a Debian or Ubuntu server, clone it</span>
+            <code class="in code" tabindex="0" aria-labelledby="l-clone">git clone https://github.com/evanxdsouza/mangrove.git</code>
+          </div>
+          <div class="fld">
+            <span class="lbl" id="l-run">Then run the installer</span>
+            <code class="in code" tabindex="0" aria-labelledby="l-run">cd mangrove &amp;&amp; sudo ./setup.sh</code>
+            <div class="hint">It installs Docker and Caddy if they're missing, builds one Go binary, and creates your owner account. 2&nbsp;GB of RAM is enough. Re-running it is safe.</div>
+          </div>
+          <button class="btn p wide" type="button" data-copy><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy install commands</span></button>
         </div>
-        <button class="btn p" type="button" data-copy><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy install commands</span></button>
+        <div role="tabpanel" id="p-agent" aria-labelledby="t-agent" hidden>
+          <div class="fld">
+            <span class="lbl" id="l-prompt">Paste this into Claude Code, or any coding agent running on the server</span>
+            <code class="in code prompt" tabindex="0" aria-labelledby="l-prompt" data-prompt>Install Mangrove on this server by following https://mangrove-site-evanxdsouz-efde27.apps.automiq.me/install.md. Ask me before anything that uses sudo, and never ask for my admin password.</code>
+            <div class="hint">The agent checks the machine, runs the installer and confirms it's healthy. You set the owner password yourself, in your own terminal, so it never passes through the agent. Read <a href="install.md">the instructions it follows</a>.</div>
+          </div>
+          <div class="term agent-run" aria-label="Example of an agent install, abridged">
+            <div class="term-head"><span>AGENT · EXAMPLE RUN</span><button type="button" class="replay-mini" data-agent-replay>Replay</button></div>
+<pre class="term-body" data-agent-log><span class="ln"><span class="c">●</span> Read install.md</span>
+<span class="ln"><span class="c">●</span> Ubuntu 24.04 · 2 GB RAM · 31 GB free · port 7777 free</span>
+<span class="ln"><span class="q">?</span> Run <b>sudo ./setup.sh</b>? It installs Docker, Caddy, Go and Node. <span class="ok">yes</span></span>
+<span class="ln"><span class="c">●</span> setup.sh: built mangrove, started mangrove.service</span>
+<span class="ln"><span class="c">●</span> curl localhost:7777/healthz → <span class="ok">ok</span></span>
+<span class="ln"><span class="c">●</span> Done. Run <b>sudo ./setup.sh</b> in your own terminal to set your owner password.</span></pre>
+          </div>
+          <button class="btn p wide" type="button" data-copy-prompt><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy prompt</span></button>
+        </div>
         <div class="claim-links">
           <a href="https://github.com/evanxdsouza/mangrove"><svg class="i" aria-hidden="true"><use href="#i-git"/></svg>Read the source</a>
           <a href="https://github.com/evanxdsouza/mangrove/tree/main/docs"><svg class="i" aria-hidden="true"><use href="#i-book"/></svg>Read the docs</a>
@@ -720,92 +870,239 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <p class="caption">Example projects, as they appear on the dashboard's Projects page.</p>
   </section>
 
-  <!-- 5 · Settings -->
-  <section class="sec wrap" aria-labelledby="h-parts">
+  <!-- 5 · Explorer: a working model of the dashboard -->
+  <section class="sec wrap" id="try" aria-labelledby="h-try">
     <div class="sec-intro">
-      <h2 id="h-parts">The parts you'd otherwise script yourself.</h2>
-      <p>On a deployment's page or in the admin area, each of these is a switch or a field, not a config file to keep in your head.</p>
+      <h2 id="h-try">Try every part of it.</h2>
+      <p>A working model of the dashboard. Pick a feature and use it: push a commit, roll back, break a health check, put an app to sleep. It runs in your browser, so nothing here touches a real server.</p>
     </div>
-    <div class="boards">
-      <div class="card sb">
-        <div class="sb-head"><h3>production</h3><span class="sub mono">shop-api · deployment settings</span></div>
-        <div class="sb-grid">
-          <div class="sb-sec">
-            <h4 class="ct">Domains</h4>
-            <p>Point a domain at a deployment and Caddy gets and renews its certificate. Behind a home router with no static IP, the built-in DDNS updater keeps the record pointed at you.</p>
-            <div class="dom"><code>shop.example.com</code><span class="pill g"><i></i>Certificate issued</span></div>
-            <div class="dom"><code>home.example.net</code><span class="pill"><i></i>DDNS</span></div>
-          </div>
-          <div class="sb-sec">
-            <h4 class="ct">Access control</h4>
-            <p>Put a deployment behind a password or a Mangrove sign-in, and leave chosen paths open.</p>
-            <label class="chk"><input type="checkbox" checked>Password-protected</label>
-            <div class="fld" style="margin:14px 0 0"><span class="lbl">Leave open</span><span class="in code">/api/webhooks</span></div>
-          </div>
-          <div class="sb-sec">
-            <h4 class="ct">Self-healing</h4>
-            <p>Restarts a service after three failed health checks in a row, and retries a failed deploy twice, a minute and then five minutes later.</p>
-            <label class="chk"><input type="checkbox" checked>Restart and retry automatically</label>
-          </div>
-          <div class="sb-sec">
-            <h4 class="ct">Idle sleep</h4>
-            <p>Quiet apps stop after a while and wake on the next visit, behind a short "waking up" page, so a small box holds more of them.</p>
-            <label class="chk"><input type="checkbox" checked>Sleep when idle for 30 minutes</label>
-          </div>
-        </div>
-      </div>
-      <div class="card sb">
-        <div class="sb-head"><h3>Admin</h3><span class="sub">the box itself</span></div>
-        <div class="sb-sec">
-          <h4 class="ct">Server health</h4>
-          <p>Built and run day to day on a 2&nbsp;vCPU, 2&nbsp;GB box, alongside the apps it hosts.</p>
-          <div class="meter"><div class="row"><b>Memory</b><span class="dim">412 MB / 1.9 GB · 21%</span></div><div class="bar"><i style="width:21%"></i></div></div>
-          <div class="meter"><div class="row"><b>Disk</b><span class="dim">11.2 / 15.6 GB · 72%</span></div><div class="bar"><i class="w" style="width:72%"></i></div></div>
-        </div>
-        <div class="sb-sec">
-          <h4 class="ct">Members</h4>
-          <p>Workspaces group projects by team or client. Each person gets admin, editor or viewer in each one, and everything they do lands in the audit log.</p>
-          <div class="who"><code>ana@example.com</code><span class="role">Admin</span></div>
-          <div class="who"><code>sam@example.com</code><span class="role">Editor</span></div>
-          <div class="who"><code>client@example.com</code><span class="role">Viewer</span></div>
-        </div>
-        <div class="sb-sec">
-          <h4 class="ct">Backups and storage</h4>
-          <p>One command captures the database and its encryption key together. On a home server, a plugged-in drive can be shared over SMB through a separate helper, so the control plane never needs mount rights.</p>
-          <div class="term"><pre class="term-body"><span class="c">$</span> mangrovectl backup --out mangrove.tar.gz</pre></div>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- 6 · Two altitudes -->
-  <section class="sec wrap" aria-labelledby="h-alt">
-    <div class="alt">
-      <div class="sec-intro">
-        <h2 id="h-alt">Simple enough to hand to someone else.</h2>
-        <p>Simple mode swaps projects and build strategies for a plain list of apps, with words like "Starting up" instead of status codes. Same box, same apps, one switch.</p>
-      </div>
-      <div class="card alt-view">
-        <div class="seg" role="group" aria-label="Dashboard mode">
-          <button type="button" aria-pressed="false" data-mode="tech">Technical</button>
-          <button type="button" aria-pressed="true" data-mode="simple">Simple</button>
+    <div class="ex card" data-ex>
+      <aside class="ex-side">
+        <div class="ex-brand"><svg class="i" aria-hidden="true"><use href="#i-mark"/></svg>Mangrove<span class="ex-demo">demo</span></div>
+        <div class="ex-nav" role="tablist" aria-orientation="vertical" aria-label="Features" data-ex-nav>
+          <span class="navh">Ship</span>
+          <button type="button" role="tab" id="x-deploy" aria-controls="xp-deploy" aria-selected="true"><svg class="i" aria-hidden="true"><use href="#i-git"/></svg>Push to deploy</button>
+          <button type="button" role="tab" id="x-staging" aria-controls="xp-staging" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-layers"/></svg>Staging</button>
+          <button type="button" role="tab" id="x-previews" aria-controls="xp-previews" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-pr"/></svg>PR previews</button>
+          <button type="button" role="tab" id="x-history" aria-controls="xp-history" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-replay"/></svg>History and rollback</button>
+          <button type="button" role="tab" id="x-templates" aria-controls="xp-templates" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-grid"/></svg>Templates</button>
+          <span class="navh">Run</span>
+          <button type="button" role="tab" id="x-domains" aria-controls="xp-domains" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg>Domains</button>
+          <button type="button" role="tab" id="x-logs" aria-controls="xp-logs" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-term"/></svg>Logs and commands</button>
+          <button type="button" role="tab" id="x-access" aria-controls="xp-access" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>Access control</button>
+          <button type="button" role="tab" id="x-sleep" aria-controls="xp-sleep" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg>Idle sleep</button>
+          <button type="button" role="tab" id="x-heal" aria-controls="xp-heal" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-pulse"/></svg>Self-healing</button>
+          <span class="navh">Host</span>
+          <button type="button" role="tab" id="x-members" aria-controls="xp-members" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-users"/></svg>Workspaces and roles</button>
+          <button type="button" role="tab" id="x-backups" aria-controls="xp-backups" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-archive"/></svg>Backups</button>
+          <button type="button" role="tab" id="x-storage" aria-controls="xp-storage" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-drive"/></svg>Storage</button>
+          <button type="button" role="tab" id="x-health" aria-controls="xp-health" aria-selected="false" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-gauge"/></svg>Server health</button>
         </div>
-        <div class="view" data-view="simple">
-          <h3 class="ct" style="margin-bottom:4px">Your apps</h3>
-          <div class="app"><svg class="gauge" viewBox="0 0 14 30" data-level="high" aria-hidden="true"><rect class="rim" x="1" y="1" width="12" height="28" rx="6"/><g clip-path="url(#gclip)"><g class="water"><path class="wave" d="M-7 8q3.5-3 7 0t7 0t7 0t7 0V40H-7z"/></g></g></svg><div><b>Blog</b><span class="d">Write and publish posts on your own site.</span></div><span class="st" style="color:var(--pill-high-ink)">Running</span></div>
-          <div class="app"><svg class="gauge" viewBox="0 0 14 30" data-level="mid" aria-hidden="true"><rect class="rim" x="1" y="1" width="12" height="28" rx="6"/><g clip-path="url(#gclip)"><g class="water"><path class="wave" d="M-7 8q3.5-3 7 0t7 0t7 0t7 0V40H-7z"/></g></g></svg><div><b>Password manager</b><span class="d">Store and share passwords securely.</span></div><span class="st" style="color:var(--pill-mid-ink)">Starting up</span></div>
-          <div class="app"><svg class="gauge" viewBox="0 0 14 30" data-level="low" aria-hidden="true"><rect class="rim" x="1" y="1" width="12" height="28" rx="6"/><g clip-path="url(#gclip)"><g class="water"><path class="wave" d="M-7 8q3.5-3 7 0t7 0t7 0t7 0V40H-7z"/></g></g></svg><div><b>Website monitor</b><span class="d">Get notified if one of your sites goes down.</span></div><span class="st dim">Turned off</span></div>
+        <div class="ex-simple-nav" aria-hidden="true"><span><svg class="i"><use href="#i-grid"/></svg>Your apps</span></div>
+        <div class="ex-mode" role="group" aria-label="Dashboard mode">
+          <button type="button" aria-pressed="true" data-exmode="tech">Technical</button>
+          <button type="button" aria-pressed="false" data-exmode="simple">Simple</button>
         </div>
-        <div class="view" data-view="tech" hidden>
-          <h3 class="ct" style="margin-bottom:4px">ghost · production</h3>
-          <div class="kv"><span>Build strategy</span><span>Image</span></div>
-          <div class="kv"><span>Image</span><span class="mono">ghost:5-alpine</span></div>
-          <div class="kv"><span>Internal port</span><span class="mono">2368</span></div>
-          <div class="kv"><span>Domain</span><span class="mono">blog.example.com</span></div>
-          <div class="kv"><span>Health</span><span class="pill g"><i></i>Healthy</span></div>
+      </aside>
+
+      <div class="ex-main">
+        <!-- Push to deploy -->
+        <div class="xp" role="tabpanel" id="xp-deploy" aria-labelledby="x-deploy">
+          <h3>Push to deploy</h3>
+          <p class="xp-what">Link a GitHub repo and every push to its branch redeploys it. Push a commit and watch it go out.</p>
+          <div class="kid big" data-tile="deploy"><span data-g="high"></span><div><b>production</b><span class="meta" data-sha>shop-api · main · a41f9c2</span></div><span class="pill g" data-pill><i></i><span>Running</span></span></div>
+          <div class="xp-acts">
+            <button class="btn p" type="button" data-act="push"><svg class="i" aria-hidden="true"><use href="#i-git"/></svg>Push a commit</button>
+            <label class="chk"><input type="checkbox" checked data-autodeploy>Redeploy on every push</label>
+          </div>
+          <ol class="feed" data-feed="deploy">
+            <li><span class="dot ok"></span><code>a41f9c2</code> Add order export<span class="when">deployed</span></li>
+          </ol>
         </div>
+
+        <!-- Staging -->
+        <div class="xp" role="tabpanel" id="xp-staging" aria-labelledby="x-staging" hidden>
+          <h3>Staging</h3>
+          <p class="xp-what">A staging environment tracks its own branch. When it looks right, promote the exact commit it's running into production.</p>
+          <div class="pair">
+            <div class="kid big" data-tile="prod"><span data-g="high"></span><div><b>production</b><span class="meta" data-sha>main · a41f9c2</span></div><span class="pill g" data-pill><i></i><span>Running</span></span></div>
+            <div class="kid big" data-tile="stage"><span data-g="high"></span><div><b>staging</b><span class="meta" data-sha>next · 7c1e0aa</span></div><span class="pill g" data-pill><i></i><span>Running</span></span></div>
+          </div>
+          <div class="xp-acts">
+            <button class="btn" type="button" data-act="push-next">Push to next</button>
+            <button class="btn p" type="button" data-act="promote">Promote staging to production</button>
+          </div>
+        </div>
+
+        <!-- PR previews -->
+        <div class="xp" role="tabpanel" id="xp-previews" aria-labelledby="x-previews" hidden>
+          <h3>Pull request previews</h3>
+          <p class="xp-what">Each pull request can get its own preview deployment, with one bot comment on the PR that updates itself and goes away when the PR closes.</p>
+          <div class="xp-acts">
+            <button class="btn p" type="button" data-act="pr-open">Open pull request #43</button>
+            <button class="btn" type="button" data-act="pr-push" disabled>Push to the PR</button>
+            <button class="btn" type="button" data-act="pr-close" disabled>Close it</button>
+          </div>
+          <div class="pr" data-pr hidden>
+            <div class="kid big" data-tile="pr"><span data-g="mid"></span><div><b>PR #43 preview</b><span class="meta" data-sha>add-gift-cards · 3f2a9c1</span></div><span class="pill a" data-pill><i></i><span>Building</span></span></div>
+            <div class="gh">
+              <div class="gh-head"><span class="gh-av" aria-hidden="true"><svg class="i"><use href="#i-mark"/></svg></span><b>mangrove</b><span class="dim">bot commented</span></div>
+              <p class="gh-body" data-comment><b>Mangrove preview</b> -- building...<br>This comment updates automatically once the deploy finishes.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div class="xp" role="tabpanel" id="xp-history" aria-labelledby="x-history" hidden>
+          <h3>History and rollback</h3>
+          <p class="xp-what">A new version only takes traffic after it passes its health check. Ship a broken build to see the old one keep serving, or roll back to any earlier deploy.</p>
+          <div class="xp-acts"><button class="btn" type="button" data-act="broken">Ship a broken build</button></div>
+          <ol class="hist" data-hist></ol>
+        </div>
+
+        <!-- Templates -->
+        <div class="xp" role="tabpanel" id="xp-templates" aria-labelledby="x-templates" hidden>
+          <h3>Templates</h3>
+          <p class="xp-what">Common self-hosted apps, ready to install without writing a Dockerfile.</p>
+          <div class="tpls" data-tpls></div>
+          <div class="installed" data-installed></div>
+        </div>
+
+        <!-- Domains -->
+        <div class="xp" role="tabpanel" id="xp-domains" aria-labelledby="x-domains" hidden>
+          <h3>Domains</h3>
+          <p class="xp-what">Point a domain at a deployment and Caddy gets and renews its certificate. Behind a home router, the built-in DDNS updater keeps the record pointed at you.</p>
+          <form class="dom-add" data-domform>
+            <label class="lbl" for="dom-in">Domain</label>
+            <div class="dom-row"><input class="in code" id="dom-in" value="shop.example.com" autocomplete="off" spellcheck="false"><button class="btn p" type="submit">Add domain</button></div>
+            <div class="err" data-domerr hidden>That doesn't look like a domain. Try something like shop.example.com.</div>
+          </form>
+          <div class="doms" data-doms>
+            <div class="dom"><code>home.example.net</code><span class="pill"><i></i>DDNS · updated 2 min ago</span></div>
+          </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="xp" role="tabpanel" id="xp-logs" aria-labelledby="x-logs" hidden>
+          <h3>Logs and commands</h3>
+          <p class="xp-what">Stream a service's output live, and run a one-off command inside its container. The terminal UI adds a full interactive shell.</p>
+          <div class="term">
+            <div class="term-head"><span>STDOUT · shop-api</span><span class="rec"><i></i><button type="button" class="replay-mini" data-act="pause">Pause</button></span></div>
+            <pre class="term-body logbox" data-logs aria-live="off"></pre>
+          </div>
+          <div class="xp-acts cmds">
+            <span class="lbl" style="margin:0">Run a command</span>
+            <button class="btn" type="button" data-cmd="node --version"><code>node --version</code></button>
+            <button class="btn" type="button" data-cmd="ls /app"><code>ls /app</code></button>
+            <button class="btn" type="button" data-cmd="printenv NODE_ENV"><code>printenv NODE_ENV</code></button>
+          </div>
+        </div>
+
+        <!-- Access -->
+        <div class="xp" role="tabpanel" id="xp-access" aria-labelledby="x-access" hidden>
+          <h3>Access control</h3>
+          <p class="xp-what">Put a deployment behind a password or a Mangrove sign-in, and leave chosen paths open, like a webhook.</p>
+          <div class="xp-acts">
+            <label class="chk"><input type="checkbox" checked data-protect>Password-protected</label>
+            <span class="dim" style="font-size:13px">Leave open: <code>/api/webhooks</code></span>
+          </div>
+          <div class="browser">
+            <div class="b-bar"><button type="button" data-path="/" aria-pressed="true">shop.example.com/</button><button type="button" data-path="/api/webhooks" aria-pressed="false">/api/webhooks</button></div>
+            <div class="b-view" data-view-access></div>
+          </div>
+        </div>
+
+        <!-- Sleep -->
+        <div class="xp" role="tabpanel" id="xp-sleep" aria-labelledby="x-sleep" hidden>
+          <h3>Idle sleep</h3>
+          <p class="xp-what">Quiet apps stop after a while and wake on the next visit, so a small box holds more of them.</p>
+          <div class="kid big" data-tile="sleep"><span data-g="high"></span><div><b>reports</b><span class="meta" data-sha>sleeps after 30 minutes idle</span></div><span class="pill g" data-pill><i></i><span>Running</span></span></div>
+          <div class="xp-acts">
+            <button class="btn" type="button" data-act="idle">Skip ahead 30 quiet minutes</button>
+            <button class="btn p" type="button" data-act="visit">Visit the app</button>
+          </div>
+          <div class="browser small"><div class="b-bar"><span>reports.example.com</span></div><div class="b-view" data-view-sleep><div class="app-page"><b>Reports</b><span>Last updated just now</span></div></div></div>
+        </div>
+
+        <!-- Self-healing -->
+        <div class="xp" role="tabpanel" id="xp-heal" aria-labelledby="x-heal" hidden>
+          <h3>Self-healing</h3>
+          <p class="xp-what">With self-healing on, a service that fails three health checks in a row is restarted, and a failed deploy is retried a minute and then five minutes later.</p>
+          <div class="kid big" data-tile="heal"><span data-g="high"></span><div><b>api</b><span class="meta">health checks <span class="checks" data-checks><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i></span></span></div><span class="pill g" data-pill><i></i><span>Healthy</span></span></div>
+          <div class="xp-acts">
+            <button class="btn p" type="button" data-act="break">Break the health check</button>
+            <label class="chk"><input type="checkbox" checked data-selfheal>Self-healing</label>
+          </div>
+        </div>
+
+        <!-- Members -->
+        <div class="xp" role="tabpanel" id="xp-members" aria-labelledby="x-members" hidden>
+          <h3>Workspaces and roles</h3>
+          <p class="xp-what">Workspaces group projects by team or client. Each person gets a role in each workspace, and everything they do is in the audit log. Pick a role for sam@example.com in <b>acme</b>:</p>
+          <div class="seg" role="group" aria-label="Role">
+            <button type="button" aria-pressed="false" data-role="viewer">Viewer</button>
+            <button type="button" aria-pressed="true" data-role="editor">Editor</button>
+            <button type="button" aria-pressed="false" data-role="admin">Admin</button>
+          </div>
+          <ul class="perms" data-perms>
+            <li data-min="viewer">See projects, logs, history and domains</li>
+            <li data-min="editor">Create projects and install templates</li>
+            <li data-min="editor">Deploy, roll back, restart and scale</li>
+            <li data-min="editor">Run a command inside a container</li>
+            <li data-min="admin">Set secret variables</li>
+            <li data-min="admin">Change access control and domains</li>
+            <li data-min="admin">Delete projects and deployments</li>
+            <li data-min="admin">Manage the workspace's members</li>
+          </ul>
+          <p class="hint">Someone outside a workspace doesn't see it at all. Owners can do everything, everywhere.</p>
+        </div>
+
+        <!-- Backups -->
+        <div class="xp" role="tabpanel" id="xp-backups" aria-labelledby="x-backups" hidden>
+          <h3>Backups</h3>
+          <p class="xp-what">Everything Mangrove knows lives in one SQLite file, with secrets encrypted under one key. A backup takes both together, from the box or from your laptop.</p>
+          <div class="xp-acts"><button class="btn p" type="button" data-act="backup"><svg class="i" aria-hidden="true"><use href="#i-archive"/></svg>Take a backup</button></div>
+          <div class="term"><pre class="term-body" data-backup><span class="c">$</span> </pre></div>
+        </div>
+
+        <!-- Storage -->
+        <div class="xp" role="tabpanel" id="xp-storage" aria-labelledby="x-storage" hidden>
+          <h3>Storage</h3>
+          <p class="xp-what">On a home server, turn a plugged-in drive into a NAS. A small separate helper does the mounting, so the control plane never needs mount rights.</p>
+          <div class="kid big" data-tile="drive"><span class="drive-ic" aria-hidden="true"><svg class="i"><use href="#i-drive"/></svg></span><div><b>USB drive</b><span class="meta" data-sha>931 GB · exFAT · not mounted</span></div><span class="pill" data-pill><i></i><span>Plugged in</span></span></div>
+          <div class="xp-acts">
+            <button class="btn p" type="button" data-act="mount">Mount it</button>
+            <button class="btn" type="button" data-act="share" disabled>Share over SMB</button>
+          </div>
+          <p class="share-out" data-shareout hidden>Shared on your network as <code>\\your-box\media</code>. Open it from any computer on the LAN.</p>
+        </div>
+
+        <!-- Health -->
+        <div class="xp" role="tabpanel" id="xp-health" aria-labelledby="x-health" hidden>
+          <h3>Server health</h3>
+          <p class="xp-what">How the box itself is doing. Built and run day to day on a 2&nbsp;vCPU, 2&nbsp;GB machine, alongside the apps it hosts.</p>
+          <div class="meters" data-meters>
+            <div class="meter"><div class="row"><b>CPU</b><span class="dim" data-mv></span></div><div class="bar"><i></i></div></div>
+            <div class="meter"><div class="row"><b>Memory</b><span class="dim" data-mv></span></div><div class="bar"><i></i></div></div>
+            <div class="meter"><div class="row"><b>Disk</b><span class="dim" data-mv></span></div><div class="bar"><i></i></div></div>
+          </div>
+          <div class="strip" data-strip aria-hidden="true"></div>
+          <p class="hint">Teal up to 70%, amber above, red above 90%. The numbers here are simulated.</p>
+        </div>
+
+        <!-- Simple mode -->
+        <div class="xp" id="xp-simple" hidden>
+          <h3>Your apps</h3>
+          <p class="xp-what">Simple mode swaps projects and build strategies for a plain list, in plain words. Same box, same apps.</p>
+          <div class="apps" data-apps></div>
+          <div class="xp-acts"><button class="btn p" type="button" data-act="add-app"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add an app</button></div>
+        </div>
+
+        <div class="toast ex-toast off" data-extoast role="status"><svg class="i" aria-hidden="true"><use href="#i-mark"/></svg><span></span></div>
       </div>
     </div>
+    <p class="caption">A simulation of the dashboard with example data. Nothing is deployed.</p>
   </section>
 
   <!-- 7 · Close -->
@@ -910,33 +1207,51 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     });
   });
 
-  // New deployment dialog tabs
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
-  function pick(tab, focus) {
-    tabs.forEach(function (t) {
-      var on = t === tab;
-      t.setAttribute("aria-selected", on ? "true" : "false");
-      t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
-    });
-    if (focus) tab.focus();
-  }
-  tabs.forEach(function (t, i) {
-    t.addEventListener("click", function () { pick(t); });
-    t.addEventListener("keydown", function (e) {
-      var d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (d) { e.preventDefault(); pick(tabs[(i + d + tabs.length) % tabs.length], true); }
+  // Tabs: every tablist on the page (install method, the dialog, the explorer).
+  document.querySelectorAll('[role="tablist"]').forEach(function (list) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    var vertical = list.getAttribute("aria-orientation") === "vertical";
+    function pick(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      });
+      if (focus) tab.focus();
+      list.dispatchEvent(new CustomEvent("tabchange", { detail: tab.id }));
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { pick(t); });
+      t.addEventListener("keydown", function (e) {
+        var fwd = vertical ? "ArrowDown" : "ArrowRight", back = vertical ? "ArrowUp" : "ArrowLeft";
+        var d = e.key === fwd || e.key === "ArrowRight" ? 1 : e.key === back || e.key === "ArrowLeft" ? -1 : 0;
+        if (d) { e.preventDefault(); pick(tabs[(i + d + tabs.length) % tabs.length], true); }
+      });
     });
   });
 
-  // Technical / Simple
-  var modes = document.querySelectorAll("[data-mode]");
-  modes.forEach(function (b) {
-    b.addEventListener("click", function () {
-      modes.forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
-      document.querySelectorAll("[data-view]").forEach(function (v) { v.hidden = v.dataset.view !== b.dataset.mode; });
-    });
+  // Install with an agent: the prompt points at this site's install.md.
+  var promptEl = document.querySelector("[data-prompt]");
+  if (location.protocol.indexOf("http") === 0) {
+    promptEl.textContent = promptEl.textContent.replace(/https:\/\/[^ ]+\/install\.md/, location.origin + "/install.md");
+  }
+  document.querySelector("[data-copy-prompt]").addEventListener("click", function (e) {
+    var label = e.currentTarget.querySelector("span");
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(promptEl.textContent).then(function () {
+      label.textContent = "Copied to clipboard";
+      setTimeout(function () { label.textContent = "Copy prompt"; }, 1800);
+    }, function () { label.textContent = "Couldn't copy. Select the prompt above."; });
   });
+  var agentLines = document.querySelectorAll("[data-agent-log] .ln"), agentT = [];
+  function playAgent() {
+    agentT.forEach(clearTimeout); agentT = [];
+    if (reduce) { agentLines.forEach(function (l) { l.hidden = false; }); return; }
+    agentLines.forEach(function (l, i) { l.hidden = true; agentT.push(setTimeout(function () { l.hidden = false; }, 300 + i * 650)); });
+  }
+  document.querySelector("[data-agent-replay]").addEventListener("click", playAgent);
+  document.getElementById("t-agent").addEventListener("click", playAgent);
 
   // The first deploy: plays once when it scrolls into view, again on request.
   var board = document.querySelector("[data-board]");
@@ -985,6 +1300,304 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }, { threshold: 0.45 });
     io.observe(board);
   }
+
+  // ---- Feature explorer: a working model of the dashboard (all simulated) ----
+  var ex = document.querySelector("[data-ex]");
+  if (ex) (function () {
+    var GAUGE = '<rect class="rim" x="1" y="1" width="12" height="28" rx="6"/><g clip-path="url(#gclip)"><g class="water"><path class="wave" d="M-7 8q3.5-3 7 0t7 0t7 0t7 0V40H-7z"/></g></g>';
+    function gauge(level) { return '<svg class="gauge" viewBox="0 0 14 30" data-level="' + level + '" aria-hidden="true">' + GAUGE + "</svg>"; }
+    ex.querySelectorAll("[data-g]").forEach(function (el) { el.outerHTML = gauge(el.dataset.g); });
+    var LV = { g: "high", a: "mid", "": "low", r: "low" };
+    function setTile(tile, cls, text, sha) {
+      var g = tile.querySelector(".gauge"), p = tile.querySelector("[data-pill]");
+      if (g) g.setAttribute("data-level", cls === "r" ? "low" : LV[cls]);
+      if (g && cls === "r") g.classList.add("dry"); else if (g) g.classList.remove("dry");
+      p.className = "pill" + (cls ? " " + cls : ""); p.lastChild.textContent = text;
+      if (sha != null) tile.querySelector("[data-sha]").textContent = sha;
+    }
+    function hex() { return Math.random().toString(16).slice(2, 9); }
+    function later(ms, fn) { return setTimeout(fn, reduce ? Math.min(ms, 60) : ms); }
+    function esc(t) { return String(t).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+    var toastEl = ex.querySelector("[data-extoast]"), toastT;
+    function toast(msg) {
+      toastEl.lastChild.textContent = msg; toastEl.classList.remove("off");
+      clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.add("off"); }, 3200);
+    }
+    ex.querySelector("[data-ex-nav]").addEventListener("tabchange", function () { clearTimeout(toastT); toastEl.classList.add("off"); });
+    // Run a tile through queued -> building -> health checking -> running.
+    function deployTile(tile, sha, done) {
+      setTile(tile, "a", "Building");
+      later(1300, function () { setTile(tile, "a", "Health checking"); });
+      later(2300, function () { setTile(tile, "g", "Running", sha); if (done) done(); });
+    }
+    function on(act, fn) { ex.querySelectorAll('[data-act="' + act + '"]').forEach(function (b) { b.addEventListener("click", fn); }); }
+
+    // Push to deploy
+    var MSGS = ["Fix rounding in totals", "Add gift card support", "Speed up product search", "Update dependencies", "Tidy checkout copy"];
+    var dTile = ex.querySelector('[data-tile="deploy"]'), feed = ex.querySelector('[data-feed="deploy"]');
+    on("push", function () {
+      var sha = hex(), msg = MSGS[Math.floor(Math.random() * MSGS.length)];
+      var li = document.createElement("li");
+      li.innerHTML = '<span class="dot mid"></span><code>' + sha + "</code> " + esc(msg) + '<span class="when">building</span>';
+      feed.insertBefore(li, feed.firstChild);
+      if (feed.children.length > 5) feed.removeChild(feed.lastChild);
+      if (!ex.querySelector("[data-autodeploy]").checked) {
+        li.querySelector(".dot").className = "dot off"; li.querySelector(".when").textContent = "not deployed";
+        toast("Pushed. Auto-deploy is off, so production didn't change.");
+        return;
+      }
+      deployTile(dTile, "shop-api · main · " + sha, function () {
+        li.querySelector(".dot").className = "dot ok"; li.querySelector(".when").textContent = "deployed";
+        toast(sha + " is live in production.");
+      });
+    });
+
+    // Staging and promote
+    var prod = ex.querySelector('[data-tile="prod"]'), stage = ex.querySelector('[data-tile="stage"]'), stageSha = "7c1e0aa";
+    on("push-next", function () { stageSha = hex(); deployTile(stage, "next · " + stageSha); });
+    on("promote", function () {
+      var sha = stageSha;
+      deployTile(prod, "main · " + sha, function () { toast("Promoted " + sha + " to production: the exact commit staging runs."); });
+    });
+
+    // PR previews
+    var pr = ex.querySelector("[data-pr]"), prTile = ex.querySelector('[data-tile="pr"]'), comment = ex.querySelector("[data-comment]");
+    var bOpen = ex.querySelector('[data-act="pr-open"]'), bPush = ex.querySelector('[data-act="pr-push"]'), bClose = ex.querySelector('[data-act="pr-close"]');
+    var URL_ = "https://shop-api-pr-43.example.com";
+    function prBuild(sha) {
+      setTile(prTile, "a", "Building", "add-gift-cards · " + sha);
+      comment.innerHTML = "<b>Mangrove preview</b> -- building...<br>This comment updates automatically once the deploy finishes.";
+      later(2200, function () {
+        if (pr.hidden) return;
+        setTile(prTile, "g", "Running");
+        comment.innerHTML = "<b>Mangrove preview</b> -- deployed: <code>" + URL_ + "</code>";
+      });
+    }
+    on("pr-open", function () { pr.hidden = false; bOpen.disabled = true; bPush.disabled = false; bClose.disabled = false; prBuild(hex()); });
+    on("pr-push", function () { prBuild(hex()); });
+    on("pr-close", function () {
+      comment.innerHTML = "<b>Mangrove preview</b> -- torn down (pull request closed).";
+      prTile.hidden = true; bPush.disabled = true; bClose.disabled = true;
+      later(2600, function () { pr.hidden = true; prTile.hidden = false; bOpen.disabled = false; });
+    });
+
+    // History and rollback
+    var hist = ex.querySelector("[data-hist]");
+    var runs = [
+      { sha: "a41f9c2", ok: true, how: "push", t: "12:02" },
+      { sha: "e93b710", ok: true, how: "push", t: "yesterday" },
+      { sha: "5d0c4e1", ok: false, how: "push", t: "Monday", why: "health check never passed" },
+      { sha: "08ad3f9", ok: true, how: "push", t: "last week" }
+    ];
+    var current = "a41f9c2";
+    function drawHist() {
+      hist.innerHTML = runs.map(function (r, i) {
+        var cur = r.ok && r.sha === current;
+        var pills = '<span class="pill ' + (r.ok ? "g" : "r") + '"><i></i>' + (r.ok ? "success" : "failed") + "</span>" + (cur ? '<span class="pill"><i></i>current</span>' : "");
+        var meta = "<code>" + r.sha + "</code> · " + r.how + " · " + r.t + (r.why ? " · " + r.why : "");
+        var btn = r.ok && !cur ? '<button class="btn s" type="button" data-roll="' + i + '">Roll back</button>' : "";
+        return '<li><span class="rail"><i class="dot ' + (r.ok ? "ok" : "bad") + '"></i><i class="stem"></i></span><div class="body"><div><div class="pills">' + pills + '</div><span class="meta">' + meta + "</span></div>" + btn + "</div></li>";
+      }).join("");
+    }
+    drawHist();
+    hist.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-roll]"); if (!b) return;
+      var r = runs[+b.dataset.roll];
+      runs.unshift({ sha: r.sha, ok: true, how: "rollback", t: "just now" }); current = r.sha;
+      if (runs.length > 6) runs.pop();
+      drawHist(); toast("Rolled back to " + r.sha + ". Traffic switched once it passed its health check.");
+    });
+    on("broken", function () {
+      runs.unshift({ sha: hex(), ok: false, how: "push", t: "just now", why: "health check never passed" });
+      if (runs.length > 6) runs.pop();
+      drawHist(); toast("The new container never got healthy. " + current + " kept serving the whole time.");
+    });
+
+    // Templates
+    var TPL = [["Ghost", "Write and publish posts on your own site."], ["WordPress", "Build a flexible website or blog."], ["Vaultwarden", "Store and share passwords securely."], ["Uptime Kuma", "Get notified if a site goes down."], ["n8n", "Connect your apps and automate busywork."], ["Umami", "Visitor stats without tracking people."], ["NocoDB", "Turn a spreadsheet into a database."], ["PocketBase", "A backend with a database and sign-up."], ["Gitea", "Host your code, like a private GitHub."], ["Supabase", "Database, login and a dashboard for your app."], ["Postgres", "A standalone database."], ["Redis", "A standalone cache."]];
+    var tpls = ex.querySelector("[data-tpls]"), installed = ex.querySelector("[data-installed]");
+    tpls.innerHTML = TPL.map(function (t, i) { return '<div class="tpl-i"><b>' + t[0] + "</b><span>" + t[1] + '</span><button class="btn s" type="button" data-tpl="' + i + '">Install</button></div>'; }).join("");
+    tpls.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-tpl]"); if (!b) return;
+      var t = TPL[+b.dataset.tpl]; b.disabled = true; b.textContent = "Installed";
+      var tile = document.createElement("div"); tile.className = "kid big";
+      tile.innerHTML = gauge("mid") + "<div><b>" + t[0].toLowerCase().replace(/ /g, "-") + '</b><span class="meta" data-sha>from the ' + t[0] + ' template</span></div><span class="pill a" data-pill><i></i><span>Building</span></span>';
+      installed.insertBefore(tile, installed.firstChild);
+      deployTile(tile, null, function () { toast(t[0] + " is running."); });
+    });
+
+    // Domains
+    var domForm = ex.querySelector("[data-domform]"), doms = ex.querySelector("[data-doms]"), domErr = ex.querySelector("[data-domerr]");
+    domForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = domForm.querySelector("input").value.trim().toLowerCase();
+      if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(v)) { domErr.hidden = false; return; }
+      domErr.hidden = true;
+      var row = document.createElement("div"); row.className = "dom";
+      row.innerHTML = "<code>" + esc(v) + '</code><span class="pill a"><i></i>Getting a certificate</span>';
+      doms.insertBefore(row, doms.firstChild);
+      later(2200, function () { row.lastChild.className = "pill g"; row.lastChild.innerHTML = "<i></i>Certificate issued"; toast("https://" + v + " is live."); });
+    });
+
+    // Logs and commands
+    var logbox = ex.querySelector("[data-logs]"), paused = false, logT = null;
+    var PATHS = ["GET / 200", "GET /products 200", "GET /cart 200", "POST /cart/items 201", "GET /healthz 200", "GET /products/42 200", "POST /checkout 302"];
+    function clock() { var d = new Date(); return d.toTimeString().slice(0, 8); }
+    function logLine(html) {
+      logbox.insertAdjacentHTML("beforeend", html + "\n");
+      while (logbox.childNodes.length > 120) logbox.removeChild(logbox.firstChild);
+      logbox.scrollTop = logbox.scrollHeight;
+    }
+    function tick() {
+      if (!paused) logLine('<span class="t">' + clock() + "</span> " + PATHS[Math.floor(Math.random() * PATHS.length)] + " " + (2 + Math.floor(Math.random() * 40)) + "ms");
+    }
+    for (var k = 0; k < 6; k++) tick();
+    var OUT = { "node --version": "v20.11.1", "ls /app": "dist  node_modules  package.json", "printenv NODE_ENV": "production" };
+    ex.querySelectorAll("[data-cmd]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var c = b.dataset.cmd;
+        logLine('<span class="cm">$ ' + c + "</span>\n" + OUT[c] + '\n<span class="t">exit 0</span>');
+      });
+    });
+    on("pause", function (e) { paused = !paused; e.currentTarget.textContent = paused ? "Resume" : "Pause"; });
+
+    // Access control
+    var viewA = ex.querySelector("[data-view-access]"), protect = ex.querySelector("[data-protect]"), path = "/";
+    function drawAccess() {
+      if (path === "/api/webhooks") viewA.innerHTML = '<span class="json">{ "received": true }</span>';
+      else if (protect.checked) viewA.innerHTML = '<div class="gate"><b>shop.example.com</b><span>This app is password-protected.</span><input class="in" type="password" placeholder="Password" aria-label="Password" tabindex="-1"><span class="btn p" aria-hidden="true">Continue</span></div>';
+      else viewA.innerHTML = '<div class="app-page"><b>Acme Shop</b><span>Free shipping this week</span></div>';
+    }
+    protect.addEventListener("change", drawAccess);
+    ex.querySelectorAll("[data-path]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        path = b.dataset.path;
+        ex.querySelectorAll("[data-path]").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+        drawAccess();
+      });
+    });
+    drawAccess();
+
+    // Idle sleep
+    var sTile = ex.querySelector('[data-tile="sleep"]'), sView = ex.querySelector("[data-view-sleep]"), asleep = false;
+    var APP = '<div class="app-page"><b>Reports</b><span>Last updated just now</span></div>';
+    on("idle", function () {
+      if (asleep) return; asleep = true;
+      setTile(sTile, "", "Sleeping"); sView.innerHTML = '<div class="app-page"><span>The container is stopped. Nothing is using memory.</span></div>';
+      toast("No visits for 30 minutes, so reports went to sleep.");
+    });
+    on("visit", function () {
+      if (!asleep) { sView.innerHTML = APP; toast("It's awake, so the page loads straight away."); return; }
+      sView.innerHTML = '<div class="waking"><span class="spin" aria-hidden="true"></span>Waking up reports…</div>';
+      setTile(sTile, "a", "Waking up");
+      later(2000, function () { asleep = false; setTile(sTile, "g", "Running"); sView.innerHTML = APP; });
+    });
+
+    // Self-healing
+    var hTile = ex.querySelector('[data-tile="heal"]'), checks = ex.querySelectorAll("[data-checks] i"), healing = false;
+    function setChecks(n) { checks.forEach(function (c, i) { c.className = i >= checks.length - n ? "bad" : "ok"; }); }
+    on("break", function () {
+      if (healing) return; healing = true;
+      var n = 0;
+      (function fail() {
+        n++; setChecks(n);
+        if (n < 3) { setTile(hTile, "a", "Failing " + n + " of 3"); later(800, fail); return; }
+        if (ex.querySelector("[data-selfheal]").checked) {
+          setTile(hTile, "a", "Restarting");
+          later(1500, function () { setChecks(0); setTile(hTile, "g", "Healthy"); healing = false; toast("Restarted api after 3 failed health checks."); });
+        } else {
+          setTile(hTile, "r", "Unhealthy");
+          later(2600, function () { setChecks(0); setTile(hTile, "g", "Healthy"); healing = false; toast("Without self-healing it stayed down until someone stepped in."); });
+        }
+      })();
+    });
+
+    // Roles
+    var ORDER = { viewer: 0, editor: 1, admin: 2 };
+    function drawRole(role) {
+      ex.querySelectorAll("[data-role]").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.role === role ? "true" : "false"); });
+      ex.querySelectorAll("[data-perms] li").forEach(function (li) { var yes = ORDER[role] >= ORDER[li.dataset.min]; li.className = yes ? "yes" : "no"; });
+    }
+    ex.querySelectorAll("[data-role]").forEach(function (b) { b.addEventListener("click", function () { drawRole(b.dataset.role); }); });
+    drawRole("editor");
+
+    // Backups
+    var bk = ex.querySelector("[data-backup]");
+    on("backup", function () {
+      var d = new Date().toISOString().slice(0, 10), f = "mangrove-" + d + ".tar.gz";
+      bk.innerHTML = '<span class="c">$</span> mangrovectl backup --out ' + f;
+      later(1100, function () { bk.innerHTML += "\nbackup written to " + f + '\n<span class="c"># the database and its encryption key, together. Keep it off the box.</span>'; });
+    });
+
+    // Storage
+    var drive = ex.querySelector('[data-tile="drive"]'), bMount = ex.querySelector('[data-act="mount"]'), bShare = ex.querySelector('[data-act="share"]');
+    on("mount", function () {
+      bMount.disabled = true; setTile(drive, "a", "Mounting");
+      later(1200, function () { setTile(drive, "g", "Mounted", "931 GB · exFAT · mounted"); bShare.disabled = false; });
+    });
+    on("share", function () { bShare.disabled = true; ex.querySelector("[data-shareout]").hidden = false; setTile(drive, "g", "Shared"); });
+
+    // Server health (simulated numbers)
+    var meters = ex.querySelectorAll("[data-meters] .meter"), strip = ex.querySelector("[data-strip]");
+    var vals = [18, 34, 61], MAX = ["2 vCPU", "1.9 GB", "15.6 GB"], hist2 = [];
+    for (var j = 0; j < 30; j++) { strip.insertAdjacentHTML("beforeend", "<i></i>"); hist2.push(20 + Math.random() * 25); }
+    function band(v) { return v > 90 ? "x" : v > 70 ? "w" : ""; }
+    function drawHealth() {
+      vals = vals.map(function (v, i) { return i === 2 ? Math.min(74, v + Math.random() * 0.3) : Math.max(4, Math.min(96, v + (Math.random() - 0.45) * (i ? 6 : 22))); });
+      meters.forEach(function (m, i) {
+        var v = Math.round(vals[i]); m.querySelector("[data-mv]").textContent = (i === 0 ? v + "% of " : Math.round(v) + "% of ") + MAX[i];
+        var bar = m.querySelector(".bar i"); bar.style.width = v + "%"; bar.className = band(v);
+      });
+      hist2.push(vals[0]); hist2.shift();
+      strip.querySelectorAll("i").forEach(function (b, i) { b.style.height = Math.max(4, hist2[i]) + "%"; b.className = band(hist2[i]); });
+    }
+    drawHealth();
+
+    // Simple mode
+    var apps = [["Blog", "Write and publish posts on your own site.", "g", "Running"], ["Password manager", "Store and share passwords securely.", "g", "Running"], ["Website monitor", "Get notified if a site goes down.", "r", "Having a problem"]];
+    var appsEl = ex.querySelector("[data-apps]");
+    function drawApps() {
+      appsEl.innerHTML = apps.map(function (a, i) {
+        var col = a[2] === "g" ? "var(--pill-high-ink)" : a[2] === "a" ? "var(--pill-mid-ink)" : "var(--dry-ink)";
+        var act = a[2] === "r" ? '<button class="btn s" type="button" data-retry="' + i + '">Try again</button>' : "";
+        return '<div class="app">' + gauge(a[2] === "g" ? "high" : a[2] === "a" ? "mid" : "low") + "<div><b>" + a[0] + '</b><span class="d">' + a[1] + '</span></div><span class="st" style="color:' + col + '">' + a[3] + "</span>" + act + '<button class="btn s" type="button" data-remove="' + i + '">Remove</button></div>';
+      }).join("") || '<p class="hint">Nothing growing here yet — add an app to get started.</p>';
+    }
+    drawApps();
+    appsEl.addEventListener("click", function (e) {
+      var r = e.target.closest("[data-retry]"), x = e.target.closest("[data-remove]");
+      if (r) { var a = apps[+r.dataset.retry]; a[2] = "a"; a[3] = "Starting up"; drawApps(); later(1800, function () { a[2] = "g"; a[3] = "Running"; drawApps(); }); }
+      if (x) { var gone = apps.splice(+x.dataset.remove, 1)[0]; drawApps(); toast(gone[0] + " removed."); }
+    });
+    var PLAIN = [["Visitor stats", "See how many people visit your sites."], ["Automation", "Connect your apps and automate busywork."], ["Git hosting", "Host your code, like a private GitHub."]];
+    on("add-app", function () {
+      var p = PLAIN.shift(); if (!p) { toast("That's every app in this demo."); return; }
+      var a = [p[0], p[1], "a", "Starting up"]; apps.push(a); drawApps();
+      later(2000, function () { a[2] = "g"; a[3] = "Running"; drawApps(); });
+    });
+
+    // Technical / Simple
+    var simplePane = ex.querySelector("#xp-simple");
+    ex.querySelectorAll("[data-exmode]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var simple = b.dataset.exmode === "simple";
+        ex.querySelectorAll("[data-exmode]").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+        ex.classList.toggle("simple", simple);
+        ex.querySelectorAll('[role="tabpanel"]').forEach(function (p) { p.hidden = simple || ex.querySelector('[aria-controls="' + p.id + '"]').getAttribute("aria-selected") !== "true"; });
+        simplePane.hidden = !simple;
+      });
+    });
+
+    // Live parts only tick while the explorer is on screen.
+    var live = false;
+    if ("IntersectionObserver" in window) new IntersectionObserver(function (es) { live = es[0].isIntersecting; }, { threshold: 0.1 }).observe(ex);
+    setInterval(function () {
+      if (!live || document.hidden) return;
+      if (!document.getElementById("xp-logs").hidden) tick();
+      if (!document.getElementById("xp-health").hidden) drawHealth();
+    }, 1400);
+  })();
 })();
 </script>
 </body>
