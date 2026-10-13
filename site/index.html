@@ -8,6 +8,16 @@
 <meta property="og:title" content="Mangrove">
 <meta property="og:description" content="A small, self-hosted PaaS: GitHub auto-deploy, staging and PR previews, custom domains with automatic HTTPS, one-click templates, on a box you own.">
 <meta name="theme-color" content="#173d31">
+<script>
+// Apply the saved appearance before first paint, like the dashboard's app.html.
+(function () {
+  var c = "system";
+  try { c = localStorage.getItem("mangrove-appearance") || "system"; } catch (e) {}
+  var dark = c === "dark" || (c !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.setAttribute("data-color-scheme", dark ? "dark" : "light");
+  document.documentElement.setAttribute("data-appearance", c);
+})();
+</script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/figtree-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -38,8 +48,25 @@
   --focus:#1f5c47;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){
-  :root{
+html[data-color-scheme="dark"]{
+    --page:#0e1512;--surface:#151f1b;--field:#0f1814;--inset:#0f1814;
+    --line:#263530;--line-soft:#1f2c27;--line-ctl:#2c3d37;
+    --ink:#e7eee9;--label:#b6c6bd;--muted:#8fa298;
+    --side:#123227;
+    --leaf:#2a7a5f;
+    --term:#070d0b;--term-line:rgba(255,255,255,.06);
+    --high:#3fb5a6;--mid:#e0a444;--low:#6f8a7d;--dry:#e0694f;
+    --pill:#22302b;--pill-ink:#b6c6bd;
+    --pill-high:#1b3d38;--pill-high-ink:#8fe0d4;
+    --pill-mid:#3d2f17;--pill-mid-ink:#f2c98b;
+    --root:#2f433c;--gauge-rim:#4a6158;
+    --scrim:rgba(0,0,0,.6);
+    --card-shadow:none;--lift-shadow:none;
+    --focus:#3fb5a6;
+    color-scheme:dark;
+  }
+@media (prefers-color-scheme: dark){
+html:not([data-color-scheme]){
     --page:#0e1512;--surface:#151f1b;--field:#0f1814;--inset:#0f1814;
     --line:#263530;--line-soft:#1f2c27;--line-ctl:#2c3d37;
     --ink:#e7eee9;--label:#b6c6bd;--muted:#8fa298;
@@ -81,7 +108,10 @@ code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 .btn:hover{border-color:var(--muted)}
 .btn.p{background:var(--leaf);border-color:var(--leaf);color:var(--on-leaf)}
 .btn.p:hover{background:#184a39;border-color:#184a39}
-@media (prefers-color-scheme:dark){.btn.p:hover{background:#30896b;border-color:#30896b}}
+html[data-color-scheme="dark"] .btn.p:hover{background:#30896b;border-color:#30896b}
+@media (prefers-color-scheme: dark){
+html:not([data-color-scheme]) .btn.p:hover{background:#30896b;border-color:#30896b}
+}
 .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 11px;font-size:12px;font-weight:600;line-height:1.5;background:var(--pill);color:var(--pill-ink);white-space:nowrap}
 .pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
 .pill.g{background:var(--pill-high);color:var(--pill-high-ink)}
@@ -107,7 +137,10 @@ code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 .bar>i{display:block;height:100%;border-radius:999px;background:var(--high)}
 .bar>i.w{background:var(--mid)}
 .term{background:var(--term);color:var(--term-ink);border-radius:14px;font-family:"JetBrains Mono",monospace;font-size:12.5px;overflow:hidden}
-@media (prefers-color-scheme:dark){.term{border:1px solid var(--line)}}
+html[data-color-scheme="dark"] .term{border:1px solid var(--line)}
+@media (prefers-color-scheme: dark){
+html:not([data-color-scheme]) .term{border:1px solid var(--line)}
+}
 .term-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--term-line);color:var(--side-dim);font-size:11px;letter-spacing:.08em}
 .rec{display:inline-flex;align-items:center;gap:6px}
 .rec i{width:6px;height:6px;border-radius:50%;background:var(--high);display:block}
@@ -128,21 +161,81 @@ code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 
 /* Tide banners (TideBanner.svelte), day and night */
 .banner{display:block;width:100%;height:100%}
+[data-depth]{will-change:transform}
 #b-low .s0,#b-hero .s0{stop-color:#a9bdb3}#b-low .s1{stop-color:#e4dcc6}#b-low .w0{stop-color:#b7a98a}#b-low .w1{stop-color:#7a6c52}#b-low .rg{fill:#8fa89b}#b-low .rp{stroke:#6a5e46}#b-low .pd{fill:#9fb6ae}
 #b-hero .s1{stop-color:#e4dcc6}#b-hero .w0{stop-color:#b7a98a}#b-hero .w1{stop-color:#7a6c52}#b-hero .rg{fill:#8fa89b}#b-hero .rp{stroke:#6a5e46}#b-hero .pd{fill:#9fb6ae}
 #b-build .s0{stop-color:#5c7fa3}#b-build .s1{stop-color:#f2c98b}#b-build .w0{stop-color:#6a93a8}#b-build .w1{stop-color:#2a4f5e}#b-build .rg{fill:#3e6a6a}#b-build .orb,#b-build .gl{fill:#fff1cc}#b-build .hl{stop-color:#ffe9b8}
-#b-run .s0{stop-color:#2e6b66}#b-run .s1{stop-color:#e7b77a}#b-run .w0{stop-color:#3c7f78}#b-run .w1{stop-color:#15423a}#b-run .rg{fill:#2b6b5f}#b-run .orb,#b-run .gl{fill:#fff1cc}#b-run .hl{stop-color:#ffe9b8}
+:is(#b-run,#b-close) .s0{stop-color:#2e6b66}:is(#b-run,#b-close) .s1{stop-color:#e7b77a}:is(#b-run,#b-close) .w0{stop-color:#3c7f78}:is(#b-run,#b-close) .w1{stop-color:#15423a}:is(#b-run,#b-close) .rg{fill:#2b6b5f}:is(#b-run,#b-close) .orb,:is(#b-run,#b-close) .gl{fill:#fff1cc}:is(#b-run,#b-close) .hl{stop-color:#ffe9b8}
 .hl-low{stop-color:#ffe9b8}
 .roots{fill:#0f2b24}.roots path{stroke:#0f2b24}
 .stars{opacity:0}
-@media (prefers-color-scheme:dark){
-  #b-low .s0{stop-color:#10181e}#b-low .s1{stop-color:#2b3a3a}#b-low .w0{stop-color:#3a4a44}#b-low .w1{stop-color:#151d1a}#b-low .rg{fill:#2a3a36}#b-low .rp{stroke:#5e6e64}#b-low .pd{fill:#3f524a}
-  #b-hero .s0{stop-color:#10181e}#b-hero .s1{stop-color:#2b3a3a}#b-hero .w0{stop-color:#3a4a44}#b-hero .w1{stop-color:#151d1a}#b-hero .rg{fill:#2a3a36}#b-hero .rp{stroke:#5e6e64}#b-hero .pd{fill:#3f524a}
-  #b-build .s0{stop-color:#182640}#b-build .s1{stop-color:#8a6340}#b-build .w0{stop-color:#3b6378}#b-build .w1{stop-color:#0b1d2a}#b-build .rg{fill:#1f3b4a}#b-build .orb,#b-build .gl{fill:#f2c98b}#b-build .hl{stop-color:#f2c98b}
-  #b-run .s0{stop-color:#06202a}#b-run .s1{stop-color:#1f4a4a}#b-run .w0{stop-color:#1e5b58}#b-run .w1{stop-color:#061d1a}#b-run .rg{fill:#0e3a38}#b-run .orb{fill:#eaf2e1}#b-run .gl{fill:#bfe3dc}#b-run .hl{stop-color:#bfe3dc}
-  .hl-low{stop-color:#bfe3dc}
-  .roots{fill:#04100c}.roots path{stroke:#04100c}
-  .stars{opacity:.9}
+html[data-color-scheme="dark"] #b-low .s0{stop-color:#10181e}
+html[data-color-scheme="dark"] #b-low .s1{stop-color:#2b3a3a}
+html[data-color-scheme="dark"] #b-low .w0{stop-color:#3a4a44}
+html[data-color-scheme="dark"] #b-low .w1{stop-color:#151d1a}
+html[data-color-scheme="dark"] #b-low .rg{fill:#2a3a36}
+html[data-color-scheme="dark"] #b-low .rp{stroke:#5e6e64}
+html[data-color-scheme="dark"] #b-low .pd{fill:#3f524a}
+html[data-color-scheme="dark"] #b-hero .s0{stop-color:#10181e}
+html[data-color-scheme="dark"] #b-hero .s1{stop-color:#2b3a3a}
+html[data-color-scheme="dark"] #b-hero .w0{stop-color:#3a4a44}
+html[data-color-scheme="dark"] #b-hero .w1{stop-color:#151d1a}
+html[data-color-scheme="dark"] #b-hero .rg{fill:#2a3a36}
+html[data-color-scheme="dark"] #b-hero .rp{stroke:#5e6e64}
+html[data-color-scheme="dark"] #b-hero .pd{fill:#3f524a}
+html[data-color-scheme="dark"] #b-build .s0{stop-color:#182640}
+html[data-color-scheme="dark"] #b-build .s1{stop-color:#8a6340}
+html[data-color-scheme="dark"] #b-build .w0{stop-color:#3b6378}
+html[data-color-scheme="dark"] #b-build .w1{stop-color:#0b1d2a}
+html[data-color-scheme="dark"] #b-build .rg{fill:#1f3b4a}
+html[data-color-scheme="dark"] #b-build .orb,html[data-color-scheme="dark"] #b-build .gl{fill:#f2c98b}
+html[data-color-scheme="dark"] #b-build .hl{stop-color:#f2c98b}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .s0{stop-color:#06202a}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .s1{stop-color:#1f4a4a}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .w0{stop-color:#1e5b58}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .w1{stop-color:#061d1a}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .rg{fill:#0e3a38}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .orb{fill:#eaf2e1}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .gl{fill:#bfe3dc}
+html[data-color-scheme="dark"] :is(#b-run,#b-close) .hl{stop-color:#bfe3dc}
+html[data-color-scheme="dark"] .hl-low{stop-color:#bfe3dc}
+html[data-color-scheme="dark"] .roots{fill:#04100c}
+html[data-color-scheme="dark"] .roots path{stroke:#04100c}
+html[data-color-scheme="dark"] .stars{opacity:.9}
+@media (prefers-color-scheme: dark){
+html:not([data-color-scheme]) #b-low .s0{stop-color:#10181e}
+html:not([data-color-scheme]) #b-low .s1{stop-color:#2b3a3a}
+html:not([data-color-scheme]) #b-low .w0{stop-color:#3a4a44}
+html:not([data-color-scheme]) #b-low .w1{stop-color:#151d1a}
+html:not([data-color-scheme]) #b-low .rg{fill:#2a3a36}
+html:not([data-color-scheme]) #b-low .rp{stroke:#5e6e64}
+html:not([data-color-scheme]) #b-low .pd{fill:#3f524a}
+html:not([data-color-scheme]) #b-hero .s0{stop-color:#10181e}
+html:not([data-color-scheme]) #b-hero .s1{stop-color:#2b3a3a}
+html:not([data-color-scheme]) #b-hero .w0{stop-color:#3a4a44}
+html:not([data-color-scheme]) #b-hero .w1{stop-color:#151d1a}
+html:not([data-color-scheme]) #b-hero .rg{fill:#2a3a36}
+html:not([data-color-scheme]) #b-hero .rp{stroke:#5e6e64}
+html:not([data-color-scheme]) #b-hero .pd{fill:#3f524a}
+html:not([data-color-scheme]) #b-build .s0{stop-color:#182640}
+html:not([data-color-scheme]) #b-build .s1{stop-color:#8a6340}
+html:not([data-color-scheme]) #b-build .w0{stop-color:#3b6378}
+html:not([data-color-scheme]) #b-build .w1{stop-color:#0b1d2a}
+html:not([data-color-scheme]) #b-build .rg{fill:#1f3b4a}
+html:not([data-color-scheme]) #b-build .orb,html:not([data-color-scheme]) #b-build .gl{fill:#f2c98b}
+html:not([data-color-scheme]) #b-build .hl{stop-color:#f2c98b}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .s0{stop-color:#06202a}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .s1{stop-color:#1f4a4a}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .w0{stop-color:#1e5b58}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .w1{stop-color:#061d1a}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .rg{fill:#0e3a38}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .orb{fill:#eaf2e1}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .gl{fill:#bfe3dc}
+html:not([data-color-scheme]) :is(#b-run,#b-close) .hl{stop-color:#bfe3dc}
+html:not([data-color-scheme]) .hl-low{stop-color:#bfe3dc}
+html:not([data-color-scheme]) .roots{fill:#04100c}
+html:not([data-color-scheme]) .roots path{stroke:#04100c}
+html:not([data-color-scheme]) .stars{opacity:.9}
 }
 
 /* Top bar: the sidebar, laid flat */
@@ -155,6 +248,11 @@ code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 .top nav a.nav.on{background:rgba(255,255,255,.12);color:#fff;font-weight:600}
 .top :focus-visible{outline-color:var(--pale)}
 @media (max-width:560px){.top nav a.opt{display:none}}
+.look{display:flex;gap:2px;background:rgba(0,0,0,.22);border-radius:10px;padding:3px;margin:0 4px}
+.look button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:#a9c4b6}
+.look button:hover{color:#fff}
+.look button[aria-pressed="true"]{background:#f2f7f3;color:#173d31}
+html[data-color-scheme="dark"] .look button[aria-pressed="true"]{background:#2a7a5f;color:#fff}
 
 /* 1 · Claim: the first-run screen at page scale */
 .claim{padding-top:20px}
@@ -307,7 +405,7 @@ h2{font-size:clamp(28px,3.4vw,40px);line-height:1.08;letter-spacing:-.025em;font
 
 /* 7 · Close: the 404 board's card, at high tide */
 .close{margin-top:120px;overflow:hidden;text-align:center}
-.close-banner{height:200px}
+.close-banner{height:240px;overflow:hidden}
 .close-body{padding:34px 24px 40px}
 .close-body p{margin:10px auto 24px;color:var(--label);font-size:17px;max-width:54ch}
 .close-body code{font-size:15px}
@@ -359,20 +457,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <ellipse class="pd" cx="420" cy="116" rx="60" ry="5" opacity=".8"/>
     <use href="#roots" opacity=".9"/><rect width="800" height="132" fill="url(#vig)"/>
   </symbol>
-  <symbol id="b-hero" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMax slice">
-    <defs>
-      <linearGradient id="bh-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="s0"/><stop offset=".8" class="s1"/></linearGradient>
-      <linearGradient id="bh-w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="w0"/><stop offset="1" class="w1"/></linearGradient>
-      <radialGradient id="bh-h"><stop offset="0" class="hl-low" stop-opacity=".9"/><stop offset="1" class="hl-low" stop-opacity="0"/></radialGradient>
-    </defs>
-    <rect width="1200" height="380" fill="url(#bh-s)"/><use href="#stars" transform="scale(1.5)"/>
-    <circle cx="760" cy="230" r="120" fill="url(#bh-h)" opacity=".55"/>
-    <path class="rg" opacity=".5" d="M0 262Q180 236 390 252T780 248T1200 256V290H0z"/>
-    <rect y="282" width="1200" height="98" fill="url(#bh-w)"/>
-    <g fill="none" stroke-width="2" opacity=".5"><path class="rp" d="M300 318q45-6 90 0t90 0"/><path class="rp" d="M560 340q60-6 120 0t120 0"/><path class="rp" d="M840 312q45-6 90 0t90 0"/></g>
-    <ellipse class="pd" cx="640" cy="352" rx="110" ry="7" opacity=".8"/>
-    <use href="#roots" transform="translate(0 182) scale(1.5)" opacity=".9"/><rect width="1200" height="380" fill="url(#vig)" opacity=".8"/>
-  </symbol>
   <symbol id="b-build" viewBox="0 0 800 132" preserveAspectRatio="xMidYMid slice">
     <defs>
       <linearGradient id="bb-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="s0"/><stop offset=".8" class="s1"/></linearGradient>
@@ -405,6 +489,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 8.2v7.6M18 11.2c0 3.6-4 4.4-10 6.2"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
   <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></symbol>
 </svg>
 
@@ -414,6 +501,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <a class="brand" href="#top"><svg class="i" aria-hidden="true"><use href="#i-mark"/></svg>Mangrove</a>
       <a class="nav opt" href="#plant">How it works</a>
       <a class="nav opt" href="https://github.com/evanxdsouza/mangrove/tree/main/docs">Docs</a>
+      <div class="look" role="group" aria-label="Appearance">
+        <button type="button" data-look="light" aria-pressed="false" aria-label="Light" title="Light"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button type="button" data-look="dark" aria-pressed="false" aria-label="Dark" title="Dark"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg></button>
+        <button type="button" data-look="system" aria-pressed="false" aria-label="Match system" title="Match system"><svg class="i" aria-hidden="true"><use href="#i-monitor"/></svg></button>
+      </div>
       <a class="nav on" href="https://github.com/evanxdsouza/mangrove"><svg class="i" aria-hidden="true"><use href="#i-git"/></svg>GitHub</a>
     </nav>
   </div>
@@ -423,7 +515,24 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
   <!-- 1 · Claim -->
   <section class="claim wrap" id="top" aria-labelledby="h-claim">
-    <div class="claim-banner"><svg class="banner" aria-hidden="true"><use href="#b-hero"/></svg></div>
+    <div class="claim-banner">
+    <svg id="b-hero" class="banner" data-parallax="page" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="bh-s" x1="0" y1="0" x2="0" y2="1"><stop offset=".15" class="s0"/><stop offset=".85" class="s1"/></linearGradient>
+        <linearGradient id="bh-w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="w0"/><stop offset="1" class="w1"/></linearGradient>
+        <radialGradient id="bh-h"><stop offset="0" class="hl-low" stop-opacity=".9"/><stop offset="1" class="hl-low" stop-opacity="0"/></radialGradient>
+      </defs>
+      <g data-depth=".32"><rect y="-260" width="1200" height="640" fill="url(#bh-s)"/><use href="#stars" transform="scale(1.5)"/><circle cx="760" cy="230" r="120" fill="url(#bh-h)" opacity=".55"/></g>
+      <g data-depth=".18"><path class="rg" opacity=".5" d="M0 262Q180 236 390 252T780 248T1200 256V380H0z"/></g>
+      <g data-depth=".07">
+        <rect y="282" width="1200" height="140" fill="url(#bh-w)"/>
+        <g fill="none" stroke-width="2" opacity=".5"><path class="rp" d="M300 318q45-6 90 0t90 0"/><path class="rp" d="M560 340q60-6 120 0t120 0"/><path class="rp" d="M840 312q45-6 90 0t90 0"/></g>
+        <ellipse class="pd" cx="640" cy="352" rx="110" ry="7" opacity=".8"/>
+      </g>
+      <use href="#roots" transform="translate(0 182) scale(1.5)" opacity=".9"/>
+      <rect width="1200" height="380" fill="url(#vig)" opacity=".8"/>
+    </svg>
+    </div>
     <div class="claim-card" id="install">
       <div class="claim-mark" aria-hidden="true"><svg class="i"><use href="#i-mark"/></svg></div>
       <div class="claim-body">
@@ -702,7 +811,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <!-- 7 · Close -->
   <section class="wrap" aria-labelledby="h-close">
     <div class="card close">
-      <div class="close-banner"><svg class="banner" aria-hidden="true"><use href="#b-run"/></svg></div>
+      <div class="close-banner">
+        <svg id="b-close" class="banner" data-parallax="centre" viewBox="0 0 800 132" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="bc-s" x1="0" y1="0" x2="0" y2="1"><stop offset=".3" class="s0"/><stop offset=".8" class="s1"/></linearGradient>
+            <linearGradient id="bc-w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="w0"/><stop offset="1" class="w1"/></linearGradient>
+            <radialGradient id="bc-h"><stop offset="0" class="hl" stop-opacity=".9"/><stop offset="1" class="hl" stop-opacity="0"/></radialGradient>
+          </defs>
+          <g data-depth=".14"><rect y="-120" width="800" height="380" fill="url(#bc-s)"/><use href="#stars"/><circle cx="470" cy="76" r="60" fill="url(#bc-h)"/><circle class="orb" cx="470" cy="80" r="13"/></g>
+          <g data-depth=".08"><path class="rg" opacity=".5" d="M0 88Q90 70 180 82T360 79T540 84T800 76V180H0z"/></g>
+          <g data-depth=".03"><rect y="92" width="800" height="100" fill="url(#bc-w)"/><g class="gl" opacity=".5"><rect x="448" y="98" width="44" height="2.5" rx="1"/><rect x="456" y="105" width="30" height="2.5" rx="1"/><rect x="462" y="112" width="18" height="2.5" rx="1"/></g></g>
+          <use href="#roots"/><rect width="800" height="132" fill="url(#vig)"/>
+        </svg>
+      </div>
       <div class="close-body">
         <h2 id="h-close">Put down roots.</h2>
         <p>Clone it, run the installer, and your first deploy can be live in a few minutes. Then drive it from the dashboard, <code>mangrovectl</code>, a terminal UI with a live shell, the HTTP API, or an AI agent over MCP.</p>
@@ -729,6 +850,52 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script>
 (function () {
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Appearance: Light / Dark / System, stored per browser like the dashboard.
+  var root = document.documentElement;
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  var looks = document.querySelectorAll("[data-look]");
+  function applyLook(c) {
+    var dark = c === "dark" || (c === "system" && mq.matches);
+    root.setAttribute("data-color-scheme", dark ? "dark" : "light");
+    root.setAttribute("data-appearance", c);
+    looks.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.look === c ? "true" : "false"); });
+  }
+  applyLook(root.getAttribute("data-appearance") || "system");
+  looks.forEach(function (b) {
+    b.addEventListener("click", function () {
+      try { localStorage.setItem("mangrove-appearance", b.dataset.look); } catch (e) {}
+      applyLook(b.dataset.look);
+    });
+  });
+  mq.addEventListener("change", function () {
+    if (root.getAttribute("data-appearance") === "system") applyLook("system");
+  });
+
+  // Parallax: the scene's sky, ridge and water drift at different speeds.
+  var scenes = Array.prototype.slice.call(document.querySelectorAll("[data-parallax]")).map(function (svg) {
+    var vb = svg.viewBox.baseVal;
+    return { svg: svg, vb: vb, layers: Array.prototype.slice.call(svg.querySelectorAll("[data-depth]")) };
+  });
+  var ticking = false;
+  function drift() {
+    ticking = false;
+    var vh = window.innerHeight;
+    scenes.forEach(function (sc) {
+      var r = sc.svg.getBoundingClientRect();
+      if (r.bottom < -100 || r.top > vh + 100) return;
+      var scale = Math.max(r.width / sc.vb.width, r.height / sc.vb.height);
+      var d = sc.svg.dataset.parallax === "page" ? window.scrollY : (vh / 2 - (r.top + r.height / 2));
+      sc.layers.forEach(function (l) {
+        l.setAttribute("transform", "translate(0 " + (d * +l.dataset.depth / scale).toFixed(2) + ")");
+      });
+    });
+  }
+  if (!reduce && scenes.length) {
+    window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(drift); } }, { passive: true });
+    window.addEventListener("resize", drift);
+    drift();
+  }
 
   // Copy install commands
   var cmds = "git clone https://github.com/evanxdsouza/mangrove.git\ncd mangrove && sudo ./setup.sh\n";
