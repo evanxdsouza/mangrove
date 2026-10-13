@@ -49,9 +49,9 @@ func DetectBuildStrategy(ctx context.Context, src ContextSource, rootPath string
 	}
 	defer cleanup()
 
-	base := dir
-	if rootPath != "" && rootPath != "." {
-		base = filepath.Join(dir, rootPath)
+	base, err := resolveWithin(dir, rootPath, "root_path")
+	if err != nil {
+		return DetectionResult{}, err
 	}
 
 	result := detectStrategy(ctx, base)

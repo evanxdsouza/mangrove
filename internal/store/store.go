@@ -43,6 +43,23 @@ func isUniqueConstraintErr(err error) bool {
 	return false
 }
 
+// IsDuplicate reports whether err is ErrDuplicate or a raw UNIQUE
+// constraint violation -- "that already exists", not a server fault.
+func IsDuplicate(err error) bool {
+	return errors.Is(err, ErrDuplicate) || isUniqueConstraintErr(err)
+}
+
+// IsMissingReference reports whether err is a FOREIGN KEY violation, i.e.
+// the row being written points at a parent (workspace, project, ...) that
+// doesn't exist.
+func IsMissingReference(err error) bool {
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
+	}
+	return false
+}
+
 // ---- Workspaces ----
 
 // There is exactly one organization (id 1, seeded in 0001_init.sql) -- the
@@ -406,13 +423,28 @@ func (s *Store) CreateDeployment(ctx context.Context, p CreateDeploymentParams) 
 	if p.Environment == "" {
 		p.Environment = "production"
 	}
+	// The schema only makes slugs unique per project, but a slug names
+	// host-wide things -- the compose project ("mangrove-<slug>"), the
+	// container and image names, the <slug>.<base domain> hostname -- so two
+	// projects each with an "app" deployment would share (and tear down)
+	// one compose stack. Checked in the same statement as the insert.
 	res, err := s.DB.ExecContext(ctx,
 		`INSERT INTO deployments (project_id, name, slug, build_strategy, git_branch, image_ref, root_path, dockerfile_path, compose_path, static_build_command, static_output_dir, image_retention_count, replicas, environment, promotes_to_deployment_id, pr_number)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		 WHERE NOT EXISTS (SELECT 1 FROM deployments WHERE slug = ?)`,
 		p.ProjectID, p.Name, p.Slug, p.BuildStrategy, p.GitBranch, p.ImageRef, p.RootPath, p.DockerfilePath, p.ComposePath, p.StaticBuildCommand, p.StaticOutputDir, p.ImageRetentionCount, p.Replicas, p.Environment, p.PromotesToDeploymentID, p.PRNumber,
+		p.Slug,
 	)
+	if isUniqueConstraintErr(err) {
+		return models.Deployment{}, fmt.Errorf("deployment slug %q is already in use: %w", p.Slug, ErrDuplicate)
+	}
 	if err != nil {
 		return models.Deployment{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return models.Deployment{}, err
+	} else if n == 0 {
+		return models.Deployment{}, fmt.Errorf("deployment slug %q is already in use: %w", p.Slug, ErrDuplicate)
 	}
 	id, _ := res.LastInsertId()
 	return s.GetDeployment(ctx, id)
@@ -1211,6 +1243,34 @@ func (s *Store) UpdateDeployHistoryStatus(ctx context.Context, id int64, status 
 	return err
 }
 
+// ActiveDeploy is one deploy_history row still marked in progress.
+type ActiveDeploy struct {
+	HistoryID    int64
+	DeploymentID int64
+}
+
+// ListActiveDeploys returns every deploy_history row still marked
+// queued/building/healthchecking. At startup (before SweepStuckDeploys)
+// these are exactly the deploys a restart interrupted; while running, a
+// deployment with one has a deploy in flight.
+func (s *Store) ListActiveDeploys(ctx context.Context) ([]ActiveDeploy, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, deployment_id FROM deploy_history WHERE status IN ('queued', 'building', 'healthchecking')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ActiveDeploy
+	for rows.Next() {
+		var a ActiveDeploy
+		if err := rows.Scan(&a.HistoryID, &a.DeploymentID); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // SweepStuckDeploys marks any deploy_history row left in an in-progress
 // state (queued/building/healthchecking) as failed, and -- since a
 // deployment's own status is set to "building" at the start of the same
@@ -1629,6 +1689,34 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	var n int
 	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
+}
+
+// ErrSetupDone is returned by CreateFirstOwner when any user already exists.
+var ErrSetupDone = fmt.Errorf("setup has already been completed")
+
+// CreateFirstOwner creates the initial owner account, but only if the users
+// table is still empty -- checked and inserted in one statement, so two
+// concurrent first-run setup requests can't both win and leave a fresh
+// install with two owners (a separate count-then-insert can).
+func (s *Store) CreateFirstOwner(ctx context.Context, email, passwordHash string) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO users (org_id, email, password_hash, role)
+		SELECT 1, ?, ?, 'owner' WHERE NOT EXISTS (SELECT 1 FROM users)`, email, passwordHash)
+	if err != nil {
+		return 0, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return 0, err
+	} else if n == 0 {
+		return 0, ErrSetupDone
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (1, ?, 'editor')`, id); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // CreateUser creates a user with the given role ("owner" or "member").

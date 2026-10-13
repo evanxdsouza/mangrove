@@ -69,9 +69,9 @@ func (e *DockerExecutor) Build(ctx context.Context, spec BuildSpec, logs io.Writ
 	}
 	defer cleanup()
 
-	buildDir := dir
-	if spec.RootPath != "" && spec.RootPath != "." {
-		buildDir = filepath.Join(dir, spec.RootPath)
+	buildDir, err := resolveWithin(dir, spec.RootPath, "root_path")
+	if err != nil {
+		return BuildResult{}, err
 	}
 
 	switch spec.Strategy {
@@ -101,6 +101,11 @@ func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec 
 	if spec.StaticOutputName == "" {
 		return BuildResult{}, fmt.Errorf("static build: BuildSpec.StaticOutputName is required")
 	}
+	// It's derived from the deployment slug, and destDir is RemoveAll'd
+	// below -- it must be a single path element.
+	if !filepath.IsLocal(spec.StaticOutputName) || strings.ContainsRune(spec.StaticOutputName, os.PathSeparator) {
+		return BuildResult{}, fmt.Errorf("static build: invalid output name %q", spec.StaticOutputName)
+	}
 	destDir := filepath.Join(e.StaticSitesDir, spec.StaticOutputName)
 	if err := os.RemoveAll(destDir); err != nil {
 		return BuildResult{}, fmt.Errorf("clear static output dir: %w", err)
@@ -110,13 +115,16 @@ func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec 
 	}
 
 	if spec.StaticBuildCommand == "" {
-		srcDir := buildDir
-		if spec.StaticOutputDir != "" && spec.StaticOutputDir != "." {
-			srcDir = filepath.Join(buildDir, spec.StaticOutputDir)
+		srcDir, err := resolveWithin(buildDir, spec.StaticOutputDir, "static_output_dir")
+		if err != nil {
+			return BuildResult{}, err
 		}
 		out, err := exec.CommandContext(ctx, "cp", "-a", srcDir+"/.", destDir).CombinedOutput()
 		if err != nil {
 			return BuildResult{}, fmt.Errorf("copy static output: %w: %s", err, out)
+		}
+		if err := removeEscapingSymlinks(destDir); err != nil {
+			return BuildResult{}, fmt.Errorf("sanitize static output: %w", err)
 		}
 		return BuildResult{OutputPath: destDir}, nil
 	}
@@ -148,9 +156,15 @@ func (e *DockerExecutor) buildStatic(ctx context.Context, buildDir string, spec 
 	if outputDir == "" {
 		outputDir = "."
 	}
+	if !filepath.IsLocal(filepath.Clean(outputDir)) {
+		return BuildResult{}, fmt.Errorf("static_output_dir %q must be a relative path inside the repository", spec.StaticOutputDir)
+	}
 	srcInContainer := path.Join("/app", outputDir)
 	if out, err := exec.CommandContext(ctx, "docker", "cp", containerID+":"+srcInContainer+"/.", destDir).CombinedOutput(); err != nil {
 		return BuildResult{}, fmt.Errorf("docker cp build output: %w: %s", err, out)
+	}
+	if err := removeEscapingSymlinks(destDir); err != nil {
+		return BuildResult{}, fmt.Errorf("sanitize static output: %w", err)
 	}
 
 	return BuildResult{OutputPath: destDir}, nil
@@ -161,7 +175,11 @@ func (e *DockerExecutor) buildDockerfile(ctx context.Context, buildDir string, s
 	if dockerfile == "" {
 		dockerfile = "Dockerfile"
 	}
-	args := []string{"build", "-t", spec.ImageTag, "-f", filepath.Join(buildDir, dockerfile)}
+	dockerfilePath, err := resolveWithin(buildDir, dockerfile, "dockerfile_path")
+	if err != nil {
+		return BuildResult{}, err
+	}
+	args := []string{"build", "-t", spec.ImageTag, "-f", dockerfilePath}
 	for k, v := range spec.BuildArgs {
 		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
 	}

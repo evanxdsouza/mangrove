@@ -54,6 +54,10 @@ func (s *Server) setEnvVar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
+	if err := validateEnvVar(key, req.Value); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if !req.IsSecret {
 		if err := s.Store.CreatePlainEnvVar(r.Context(), serviceID, key, req.Value); err != nil {

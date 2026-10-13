@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/evanxdsouza/mangrove/internal/gateauth"
 )
@@ -36,6 +37,14 @@ func NewClient(adminAddr string) *Client {
 	if adminAddr == "" {
 		adminAddr = defaultAdminAddr
 	}
+	// Caddy's own docs and config write the admin address as a bare
+	// host:port ("localhost:2019"), so that's what people paste. Without a
+	// scheme every admin call failed to even parse as a URL and nothing
+	// was ever routed, with only a startup warning to show for it.
+	if !strings.Contains(adminAddr, "://") {
+		adminAddr = "http://" + adminAddr
+	}
+	adminAddr = strings.TrimRight(adminAddr, "/")
 	return &Client{AdminAddr: adminAddr, HTTP: &http.Client{}}
 }
 
@@ -235,6 +244,41 @@ func (c *Client) PutFileServerRoute(ctx context.Context, port int, rootDir strin
 	}
 
 	return c.upsertPath(ctx, fmt.Sprintf("/config/apps/http/servers/srv_%d", port), server)
+}
+
+// ServerNames returns the names of every HTTP server currently in Caddy's
+// running config (e.g. "srv_20001", "srv_public"). Mangrove's routes live
+// only in Caddy's in-memory config, so after Caddy restarts without
+// --resume they're all gone -- this is how the route reconciler notices.
+func (c *Client) ServerNames(ctx context.Context) (map[string]bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.AdminAddr+"/config/apps/http/servers", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("reach caddy admin API at %s: %w", c.AdminAddr, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET /config/apps/http/servers: %s: %s", resp.Status, body)
+	}
+	var servers map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
+		return nil, fmt.Errorf("decode caddy servers: %w", err)
+	}
+	names := make(map[string]bool, len(servers))
+	for name := range servers {
+		names[name] = true
+	}
+	return names, nil
+}
+
+// PortServerName is the Caddy server name a public port's route lives
+// under.
+func PortServerName(port int) string {
+	return fmt.Sprintf("srv_%d", port)
 }
 
 // upsertPath sets the value at path, whether or not it already exists.

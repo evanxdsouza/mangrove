@@ -108,6 +108,10 @@ func (s *Server) installTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "slug is required")
 		return
 	}
+	if err := validateSlug("slug", req.Slug, maxDeploymentSlugLen); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	result, err := s.Orchestrator.InstallTemplate(r.Context(), projectID, templateKey, req.Slug, req.MemoryOverridesMB, req.EnvOverrides)
 	if err != nil {

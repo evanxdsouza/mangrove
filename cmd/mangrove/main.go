@@ -93,6 +93,13 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	st := store.New(db)
+	// Read before the sweep marks them failed: these are the deploys this
+	// restart interrupted, whose half-started containers get cleaned up
+	// once the orchestrator exists (below).
+	interrupted, err := st.ListActiveDeploys(ctx)
+	if err != nil {
+		log.Warn("failed to list interrupted deploys", "error", err)
+	}
 	if n, err := st.SweepStuckDeploys(ctx); err != nil {
 		log.Warn("failed to sweep stuck deploys", "error", err)
 	} else if n > 0 {
@@ -119,6 +126,13 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Mountd: mountd.NewClient(cfg.MountdSocket),
 		Config: cfg,
 		Log:    log,
+	}
+
+	orch.RemoveInterruptedContainers(ctx, interrupted)
+	if n, err := orch.RestoreMissingRoutes(ctx); err != nil {
+		log.Warn("couldn't check caddy for missing routes at startup; the route keeper will retry", "error", err)
+	} else if n > 0 {
+		log.Info("restored routes caddy had lost", "deployments", n)
 	}
 
 	if !cfg.GithubOAuthEnabled() {
@@ -162,6 +176,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	healer := scheduler.NewHealer(orch, log)
 	go healer.Run(ctx)
+
+	routeKeeper := scheduler.NewRouteKeeper(orch, log)
+	go routeKeeper.Run(ctx)
 
 	// Home-server DDNS: only started when MANGROVE_DDNS_DOMAIN is set (a
 	// VPS/Nest install leaves it empty, see setup.sh's "home" vs "vps"

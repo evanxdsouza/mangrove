@@ -60,6 +60,11 @@ systemctl daemon-reload
 systemctl restart caddy
 ```
 
+Restarting Caddy is safe with deployments live: Mangrove's routes live only
+in Caddy's running config, and Mangrove re-pushes any that are missing at
+its own startup and within a minute of a Caddy restart (see
+`internal/orchestrator/recover.go`), so apps come back without a redeploy.
+
 ## Installing the service
 
 ```sh

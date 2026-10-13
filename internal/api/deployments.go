@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -122,6 +121,26 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name, slug, and build_strategy are required")
 		return
 	}
+	if err := validateSlug("slug", req.Slug, maxDeploymentSlugLen); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	switch req.BuildStrategy {
+	case "dockerfile", "nixpacks", "compose", "image", "static":
+	default:
+		writeError(w, http.StatusBadRequest, "build_strategy must be one of dockerfile, nixpacks, compose, image, static")
+		return
+	}
+	if req.BuildStrategy != "compose" {
+		if req.Service.Name == "" {
+			writeError(w, http.StatusBadRequest, "service is required for non-compose build strategies")
+			return
+		}
+		if err := validateServiceName(req.Service.Name); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 
 	replicas := req.Replicas
 	if replicas < 1 || req.BuildStrategy == "compose" || req.BuildStrategy == "static" {
@@ -144,7 +163,7 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 		Replicas:            replicas,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 
@@ -152,11 +171,6 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 	// first deploy; every other strategy needs exactly one pre-declared
 	// service for Deploy()'s single-container swap logic.
 	if req.BuildStrategy != "compose" {
-		if req.Service.Name == "" {
-			s.Store.DeleteDeployment(r.Context(), dep.ID)
-			writeError(w, http.StatusBadRequest, "service is required for non-compose build strategies")
-			return
-		}
 		containerName := "mangrove-" + dep.Slug + "-" + req.Service.Name
 		_, err := s.Store.CreateService(r.Context(), store.CreateServiceParams{
 			DeploymentID:         dep.ID,
@@ -172,7 +186,10 @@ func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
 			NoContainer:          req.BuildStrategy == "static",
 		})
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "deployment created but service creation failed: "+err.Error())
+			// Don't leave a service-less deployment behind that every
+			// later deploy would fail on.
+			s.Store.DeleteDeployment(r.Context(), dep.ID)
+			writeError(w, http.StatusInternalServerError, "create service: "+err.Error())
 			return
 		}
 	}
@@ -615,7 +632,7 @@ func (s *Server) cloneDeployment(ctx context.Context, source models.Deployment, 
 		if err == nil {
 			break
 		}
-		if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if !errors.Is(err, store.ErrDuplicate) {
 			return models.Deployment{}, err
 		}
 	}

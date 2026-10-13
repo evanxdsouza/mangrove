@@ -435,3 +435,15 @@ func getWithRetry(t *testing.T, url string, wantStatus int) string {
 	t.Fatalf("GET %s never succeeded: %v", url, lastErr)
 	return ""
 }
+
+func TestNewClientNormalizesAdminAddr(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                       "http://127.0.0.1:2019",
+		"localhost:2019":         "http://localhost:2019",
+		"http://127.0.0.1:2019/": "http://127.0.0.1:2019",
+	} {
+		if got := NewClient(in).AdminAddr; got != want {
+			t.Errorf("NewClient(%q).AdminAddr = %q, want %q", in, got, want)
+		}
+	}
+}

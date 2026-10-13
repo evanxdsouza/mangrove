@@ -40,10 +40,14 @@ func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
+	if err := validateSlug("slug", req.Slug, maxSlugLen); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	userID, _ := auth.UserIDFromContext(r.Context())
 	ws, err := s.Store.CreateWorkspace(r.Context(), req.Name, req.Slug, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, ws)

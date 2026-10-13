@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -52,13 +51,16 @@ func (c *ComposeExecutor) Up(ctx context.Context, spec ComposeSpec, logs io.Writ
 	}
 	defer cleanup()
 
-	workDir := dir
-	if spec.RootPath != "" && spec.RootPath != "." {
-		workDir = filepath.Join(dir, spec.RootPath)
+	workDir, err := resolveWithin(dir, spec.RootPath, "root_path")
+	if err != nil {
+		return nil, err
 	}
 	composeFile := spec.ComposePath
 	if composeFile == "" {
 		composeFile = "docker-compose.yml"
+	}
+	if _, err := resolveWithin(workDir, composeFile, "compose_path"); err != nil {
+		return nil, err
 	}
 
 	args := []string{"compose", "-p", spec.ProjectName, "-f", composeFile, "up", "-d", "--build"}

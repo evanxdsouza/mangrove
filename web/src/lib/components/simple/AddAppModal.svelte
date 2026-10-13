@@ -32,14 +32,16 @@
     installing = template.key;
     error = null;
     try {
-      const suffix = Math.random().toString(36).slice(2, 7);
+      // Deployment slugs are unique across the whole box, so the second
+      // install of the same app needs its own, same as the project.
+      const slug = `${slugify(copy.label)}-${Math.random().toString(36).slice(2, 7)}`;
       const project = await api.post<Project>("/api/projects", {
         name: copy.label,
-        slug: `${slugify(copy.label)}-${suffix}`,
+        slug,
         description: "",
       });
       const res = await api.post<TemplateInstallResult>(`/api/projects/${project.id}/templates/${template.key}/install`, {
-        slug: slugify(copy.label),
+        slug,
       });
       result = { templateKey: template.key, res, projectId: project.id };
     } catch (e) {

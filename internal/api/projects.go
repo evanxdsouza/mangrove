@@ -67,6 +67,10 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and slug are required")
 		return
 	}
+	if err := validateSlug("slug", req.Slug, maxSlugLen); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	workspaceID := req.WorkspaceID
 	if workspaceID < 1 {
 		workspaceID = 1
@@ -84,7 +88,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 
 	p, err := s.Store.CreateProject(r.Context(), workspaceID, req.Name, req.Slug, req.Description)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, p)

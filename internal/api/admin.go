@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/executor"
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/portregistry"
+	"github.com/evanxdsouza/mangrove/internal/store"
 	"github.com/evanxdsouza/mangrove/internal/sysinfo"
 )
 
@@ -87,8 +89,16 @@ func (s *Server) reservePort(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
+	if req.Port < 1 || req.Port > 65535 {
+		writeError(w, http.StatusBadRequest, "port must be between 1 and 65535")
+		return
+	}
 	userID, _ := auth.UserIDFromContext(r.Context())
 	if err := portregistry.ReserveManual(r.Context(), s.Store.DB, req.Port, req.Note, &userID); err != nil {
+		if store.IsDuplicate(err) {
+			writeError(w, http.StatusConflict, fmt.Sprintf("port %d is already registered", req.Port))
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

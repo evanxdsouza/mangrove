@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -58,8 +59,13 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	// The very first user (this endpoint refuses once any user exists,
 	// checked above) is always the owner -- there's no one else yet to
-	// have granted that role.
-	userID, err := s.Store.CreateUser(r.Context(), req.Email, hash, "owner")
+	// have granted that role. The count above is only a fast path; the
+	// insert re-checks atomically so concurrent setups can't both succeed.
+	userID, err := s.Store.CreateFirstOwner(r.Context(), req.Email, hash)
+	if errors.Is(err, store.ErrSetupDone) {
+		writeError(w, http.StatusConflict, "setup has already been completed")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

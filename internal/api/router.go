@@ -54,7 +54,7 @@ func (s *Server) GithubOAuthEnabled() bool {
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(clientIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Minute)) // generous; build/deploy calls can run long
 
@@ -87,6 +87,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(s.gateIntercept)
 
 	r.Route("/api", func(r chi.Router) {
+		r.Use(limitBody)
 		// Auth endpoints are the one part of /api that must work without an
 		// existing session -- there'd be no way to ever log in otherwise.
 		// setup/login are rate-limited (5 attempts per 5 minutes per IP) so

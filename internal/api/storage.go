@@ -113,6 +113,10 @@ func (s *Server) createNASShare(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
+	if err := validateSlug("slug", req.Slug, maxDeploymentSlugLen); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	dep, err := s.Orchestrator.CreateNASShare(r.Context(), orchestrator.CreateNASShareParams{
 		DriveUUID: req.DriveUUID,
 		Slug:      req.Slug,
