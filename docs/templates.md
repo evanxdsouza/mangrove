@@ -253,7 +253,7 @@ alias:
    at build/boot time, not silently at install time), so this alone
    catches most schema mistakes.
 3. If it's meant to be user-facing (not a bare backing database), add it
-   to `SIMPLE_TEMPLATES` in `web/src/pages/simple/plainCopy.ts` with a
+   to `SIMPLE_TEMPLATES` in `web/src/lib/plainCopy.ts` with a
    plain-language label and one-sentence blurb -- otherwise it only shows
    up in the technical dashboard's gallery. See
    [modes.md](modes.md) for why databases are deliberately left out of
@@ -261,3 +261,33 @@ alias:
 4. `go test ./...` -- `internal/orchestrator/templates_test.go` exercises
    the install path against a fake executor; add a case there for
    anything with new install-time behavior (e.g. a new `generate` kind).
+
+## Community template catalogs
+
+Operators can add catalogs from public GitHub repositories with
+`MANGROVE_TEMPLATE_REPOS`. Each entry must pin an exact commit:
+
+```sh
+MANGROVE_TEMPLATE_REPOS=acme/mangrove-templates@0123456789abcdef0123456789abcdef01234567
+```
+
+Branch names, tags, and arbitrary URLs are rejected. Mangrove fetches only
+`https://raw.githubusercontent.com/<owner>/<repo>/<commit>/mangrove-templates.json`
+with an 8 second timeout and a 1 MiB response limit. The manifest is
+`{"templates": [...]}`, using the same schema as the built-in files. Up to 20
+sources and 100 templates per source are loaded.
+
+Remote templates are namespaced as `community-<owner>-<repo>-<key>`, so they
+cannot replace a built-in key. Each source is validated as one unit: a bad
+template rejects that repository's whole manifest, not just one entry. A bad
+or unreachable source is logged and skipped. Built-ins still load.
+
+Catalogs load at startup only. To update one, pin a new commit and restart
+Mangrove. The gallery labels community templates with their repo and commit,
+and shows a trust warning before install. Simple mode doesn't show them,
+because only `SIMPLE_TEMPLATES` entries appear there.
+
+Trust matters here. A community template is not just metadata: its
+deployments can point at any image, build from a public Git URL, run
+commands through `post_deploy_commands`, and mount inline files. Install only
+from repositories you would trust to run code on this box.

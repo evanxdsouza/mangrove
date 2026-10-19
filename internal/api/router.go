@@ -17,12 +17,14 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/orchestrator"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
+	"github.com/evanxdsouza/mangrove/internal/templates"
 	"github.com/evanxdsouza/mangrove/internal/webui"
 )
 
 type Server struct {
 	Store           *store.Store
 	Orchestrator    *orchestrator.Orchestrator
+	Templates       *templates.Registry
 	Secrets         *secrets.Box
 	Log             *slog.Logger
 	DataDir         string // for disk-usage stats in the admin resource budget

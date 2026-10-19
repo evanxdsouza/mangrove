@@ -112,6 +112,11 @@
     {#snippet children()}
       {#if error}<div class="error-banner">{error}</div>{/if}
       <p class="text-dim" style="margin-top: 0">{template.description}</p>
+      {#if template.source_repo}
+        <div class="error-banner" role="note">
+          community template from {template.source_repo} at commit {template.source_commit}. Templates can run containers and commands on your server. Only install this if you trust the source.
+        </div>
+      {/if}
       <form onsubmit={submit}>
         <div class="field">
           <label for="template-slug">Slug</label>
@@ -191,6 +196,9 @@
               <div class="text-dim" style="font-size: 12px">
                 {t.category} &middot; ~{t.total_memory_mb}MB{t.deployments.length > 1 ? ` across ${t.deployments.length} deployments` : ""}
               </div>
+              {#if t.source_repo}
+                <div class="text-dim mono" style="font-size: 11px; margin-top: 6px">community · {t.source_repo} · {t.source_commit?.slice(0, 12)}</div>
+              {/if}
             </button>
           {/each}
         </div>

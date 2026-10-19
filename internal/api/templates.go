@@ -33,13 +33,22 @@ type templateSummary struct {
 	Category      string                      `json:"category"`
 	TotalMemoryMB int                         `json:"total_memory_mb"`
 	Deployments   []templateDeploymentSummary `json:"deployments"`
+	SourceRepo    string                      `json:"source_repo,omitempty"`
+	SourceCommit  string                      `json:"source_commit,omitempty"`
 }
 
 // listTemplates returns every built-in template for the gallery. There's
 // no DB round-trip here -- see internal/templates, which loads these from
 // JSON embedded in the binary at build time, not from any table.
+func (s *Server) templateRegistry() *templates.Registry {
+	if s.Templates != nil {
+		return s.Templates
+	}
+	return templates.DefaultRegistry()
+}
+
 func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
-	all := templates.List()
+	all := s.templateRegistry().List()
 	out := make([]templateSummary, 0, len(all))
 	for _, t := range all {
 		deps := make([]templateDeploymentSummary, 0, len(t.Deployments))
@@ -69,6 +78,7 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
 		out = append(out, templateSummary{
 			Key: t.Key, Name: t.Name, Description: t.Description, Category: t.Category,
 			TotalMemoryMB: t.TotalMemoryMB(), Deployments: deps,
+			SourceRepo: t.SourceRepo, SourceCommit: t.SourceCommit,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -94,7 +104,7 @@ func (s *Server) installTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	templateKey := chi.URLParam(r, "templateKey")
-	if _, ok := templates.Get(templateKey); !ok {
+	if _, ok := s.templateRegistry().Get(templateKey); !ok {
 		writeError(w, http.StatusNotFound, "unknown template")
 		return
 	}

@@ -74,7 +74,11 @@ var (
 // created and deployed so far are left running (not rolled back), and the
 // failure is reported in the result for whichever deployment hit it.
 func (o *Orchestrator) InstallTemplate(ctx context.Context, projectID int64, templateKey, baseSlug string, memoryOverridesMB map[string]int, envOverrides map[string]map[string]string) (TemplateInstallResult, error) {
-	tpl, ok := templates.Get(templateKey)
+	registry := o.Templates
+	if registry == nil {
+		registry = templates.DefaultRegistry()
+	}
+	tpl, ok := registry.Get(templateKey)
 	if !ok {
 		return TemplateInstallResult{}, fmt.Errorf("unknown template %q", templateKey)
 	}

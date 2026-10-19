@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 //go:embed data/*.json
@@ -138,11 +139,13 @@ type Deployment struct {
 
 // Template is one entry in the gallery.
 type Template struct {
-	Key         string       `json:"key"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Category    string       `json:"category"`
-	Deployments []Deployment `json:"deployments"`
+	Key          string       `json:"key"`
+	Name         string       `json:"name"`
+	Description  string       `json:"description"`
+	Category     string       `json:"category"`
+	Deployments  []Deployment `json:"deployments"`
+	SourceRepo   string       `json:"-"`
+	SourceCommit string       `json:"-"`
 }
 
 // TotalMemoryMB is the combined memory_limit_mb across every deployment
@@ -156,16 +159,118 @@ func (t Template) TotalMemoryMB() int {
 	return total
 }
 
-var registry map[string]Template
-var ordered []Template
+var defaultRegistry *Registry
+
+// Registry is an immutable-after-startup catalog of built-in and
+// operator-configured community templates.
+type Registry struct {
+	entries map[string]Template
+	ordered []Template
+}
+
+// DefaultRegistry returns the process-wide built-in catalog. Runtime
+// community catalogs should be constructed with LoadCommunitySources.
+func DefaultRegistry() *Registry { return defaultRegistry }
+
+func NewRegistry() *Registry {
+	entries := make(map[string]Template, len(defaultRegistry.entries))
+	ordered := make([]Template, len(defaultRegistry.ordered))
+	copy(ordered, defaultRegistry.ordered)
+	for key, value := range defaultRegistry.entries {
+		entries[key] = value
+	}
+	return &Registry{entries: entries, ordered: ordered}
+}
+
+// List returns every template sorted by display name, then key.
+func (r *Registry) List() []Template {
+	if r == nil {
+		return nil
+	}
+	out := make([]Template, len(r.ordered))
+	copy(out, r.ordered)
+	return out
+}
+
+// Get looks up a template by key.
+func (r *Registry) Get(key string) (Template, bool) {
+	if r == nil {
+		return Template{}, false
+	}
+	t, ok := r.entries[key]
+	return t, ok
+}
+
+// AddCommunity validates a repository's complete set before adding any of
+// it. Remote keys are namespaced to avoid collisions with built-ins and each
+// other; the original key is retained only in the source manifest.
+func (r *Registry) AddCommunity(owner, repo, commit string, incoming []Template) error {
+	if r == nil {
+		return fmt.Errorf("nil template registry")
+	}
+	if len(incoming) == 0 || len(incoming) > maxCommunityTemplates {
+		return fmt.Errorf("repository must provide between 1 and %d templates", maxCommunityTemplates)
+	}
+	prefix := "community-" + slugPart(owner) + "-" + slugPart(repo) + "-"
+	pending := make([]Template, 0, len(incoming))
+	seen := make(map[string]bool, len(incoming))
+	for _, t := range incoming {
+		if err := validate(t); err != nil {
+			return fmt.Errorf("template %q: %w", t.Key, err)
+		}
+		if !communityKeyRE.MatchString(t.Key) {
+			return fmt.Errorf("template key %q must contain only lowercase letters, digits, and hyphens", t.Key)
+		}
+		t.Key = prefix + t.Key
+		if len(t.Key) > 63 || !communityKeyRE.MatchString(t.Key) {
+			return fmt.Errorf("namespaced template key %q is invalid or exceeds 63 characters", t.Key)
+		}
+		if _, exists := r.entries[t.Key]; exists || seen[t.Key] {
+			return fmt.Errorf("duplicate template key %q", t.Key)
+		}
+		seen[t.Key] = true
+		t.SourceRepo = owner + "/" + repo
+		t.SourceCommit = strings.ToLower(commit)
+		pending = append(pending, t)
+	}
+	for _, t := range pending {
+		r.entries[t.Key] = t
+		r.ordered = append(r.ordered, t)
+	}
+	sort.Slice(r.ordered, func(i, j int) bool {
+		if r.ordered[i].Name == r.ordered[j].Name {
+			return r.ordered[i].Key < r.ordered[j].Key
+		}
+		return r.ordered[i].Name < r.ordered[j].Name
+	})
+	return nil
+}
+
+func slugPart(value string) string {
+	value = strings.ToLower(value)
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 func init() {
+	registry := make(map[string]Template)
+	ordered := make([]Template, 0)
+
 	entries, err := dataFS.ReadDir("data")
 	if err != nil {
 		panic(fmt.Sprintf("templates: read embedded data dir: %v", err))
 	}
 
-	registry = make(map[string]Template, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -189,6 +294,7 @@ func init() {
 	}
 
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
+	defaultRegistry = &Registry{entries: registry, ordered: ordered}
 }
 
 var generatedPlaceholderRe = regexp.MustCompile(`\{\{generated:([^}]+)\}\}`)
@@ -307,15 +413,8 @@ func validate(t Template) error {
 	return nil
 }
 
-// List returns every built-in template, sorted by name, for the gallery.
-func List() []Template {
-	out := make([]Template, len(ordered))
-	copy(out, ordered)
-	return out
-}
+// List returns every built-in template, sorted by name, for legacy callers.
+func List() []Template { return defaultRegistry.List() }
 
-// Get looks up a template by key.
-func Get(key string) (Template, bool) {
-	t, ok := registry[key]
-	return t, ok
-}
+// Get looks up a built-in template by key for legacy callers.
+func Get(key string) (Template, bool) { return defaultRegistry.Get(key) }

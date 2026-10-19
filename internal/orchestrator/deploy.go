@@ -22,6 +22,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/proxy"
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
+	"github.com/evanxdsouza/mangrove/internal/templates"
 )
 
 // ErrMemoryCeilingExceeded is returned by admission control when a deploy
@@ -46,9 +47,10 @@ type Orchestrator struct {
 	// Mountd talks to the privileged mangrove-mountd helper for the
 	// storage/NAS feature (see storage.go). Nil is valid: a box with no
 	// storage helper installed just has an empty Storage page.
-	Mountd MountdClient
-	Config config.Config
-	Log    *slog.Logger
+	Mountd    MountdClient
+	Config    config.Config
+	Templates *templates.Registry
+	Log       *slog.Logger
 
 	// inflight tracks deploys currently running, keyed by deployment ID, so
 	// a concurrent deploy is refused and an in-flight one can be cancelled
