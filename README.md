@@ -158,3 +158,9 @@ types the backend itself returns rather than each guessing at the JSON
 shape independently -- see [docs/clients.md](docs/clients.md) for why that
 matters, how auth/session-sharing works across all three, and how to wire
 `mangrove-mcp` into an MCP client's config.
+
+## License
+
+Mangrove is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0). If you run a modified version as a network service, you must offer
+its source to the users of that service.
