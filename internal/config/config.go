@@ -120,6 +120,11 @@ type Config struct {
 	// (long enough for a normal review cycle); 0 disables the sweep for
 	// anyone who wants previews to live as long as their PR does.
 	PreviewMaxAgeHours int
+
+	// CommunityTemplateRepos enables operator-configured GitHub catalogs.
+	// Entries must be public owner/repo@<full commit SHA> pins. Empty
+	// disables community templates.
+	CommunityTemplateRepos []string
 }
 
 // CustomDomainPortMode reports whether MANGROVE_CUSTOM_DOMAIN_MODE=port is
@@ -159,7 +164,22 @@ func Load() Config {
 		PublicURL:                 strings.TrimRight(os.Getenv("MANGROVE_PUBLIC_URL"), "/"),
 		CustomDomainMode:          getEnv("MANGROVE_CUSTOM_DOMAIN_MODE", "auto_tls"),
 		PreviewMaxAgeHours:        getEnvInt("MANGROVE_PREVIEW_MAX_AGE_HOURS", 168),
+		CommunityTemplateRepos:    splitList(os.Getenv("MANGROVE_TEMPLATE_REPOS")),
 	}
+}
+
+func splitList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func getEnv(key, def string) string {

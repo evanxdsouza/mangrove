@@ -228,6 +228,8 @@ export interface TemplateSummary {
   category: string;
   total_memory_mb: number;
   deployments: TemplateDeploymentSummary[];
+  source_repo?: string;
+  source_commit?: string;
 }
 
 export interface GithubCredential {

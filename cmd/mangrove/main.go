@@ -30,6 +30,7 @@ import (
 	"github.com/evanxdsouza/mangrove/internal/secrets"
 	"github.com/evanxdsouza/mangrove/internal/store"
 	"github.com/evanxdsouza/mangrove/internal/sysinfo"
+	"github.com/evanxdsouza/mangrove/internal/templates"
 )
 
 func main() {
@@ -45,6 +46,11 @@ func main() {
 func run(cfg config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	templateRegistry, templateWarnings := templates.LoadCommunitySources(ctx, cfg.CommunityTemplateRepos)
+	for _, warning := range templateWarnings {
+		log.Warn("community template source skipped", "error", warning)
+	}
 
 	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
@@ -123,9 +129,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 		// ErrUnavailable, not a connection error here, is how "not
 		// installed" surfaces the first time something actually tries to
 		// use it.
-		Mountd: mountd.NewClient(cfg.MountdSocket),
-		Config: cfg,
-		Log:    log,
+		Mountd:    mountd.NewClient(cfg.MountdSocket),
+		Config:    cfg,
+		Templates: templateRegistry,
+		Log:       log,
 	}
 
 	orch.RemoveInterruptedContainers(ctx, interrupted)
@@ -142,6 +149,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	server := &api.Server{
 		Store:                   st,
 		Orchestrator:            orch,
+		Templates:               templateRegistry,
 		Secrets:                 box,
 		Log:                     log,
 		DataDir:                 cfg.DataDir,

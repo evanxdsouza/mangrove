@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/evanxdsouza/mangrove/internal/templates"
 )
 
 // newAPITestServer returns a bare Server with no DB/Docker/secrets wiring,
@@ -145,4 +147,40 @@ func TestInstallTemplateRejectsMissingSlug(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing slug, got %d: %s", rec.Code, rec.Body.String())
 	}
+}
+
+// TestListTemplatesIncludesCommunityProvenance checks that an operator-pinned
+// community catalog appears beside built-ins with its repo and commit, so the
+// gallery can show where a template came from before install.
+func TestListTemplatesIncludesCommunityProvenance(t *testing.T) {
+	registry := templates.NewRegistry()
+	err := registry.AddCommunity("acme", "templates", "0123456789abcdef0123456789abcdef01234567", []templates.Template{{
+		Key:         "app",
+		Name:        "Community App",
+		Description: "test",
+		Category:    "test",
+		Deployments: []templates.Deployment{{SlugSuffix: "", ImageRef: "example/app:1", InternalPort: 80, MemoryLimitMB: 64}},
+	}})
+	if err != nil {
+		t.Fatalf("add community template: %v", err)
+	}
+	server := &Server{Templates: registry, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/templates", nil)
+	rec := httptest.NewRecorder()
+	server.listTemplates(rec, req)
+
+	var out []templateSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, tpl := range out {
+		if tpl.Key == "community-acme-templates-app" {
+			if tpl.SourceRepo != "acme/templates" || tpl.SourceCommit != "0123456789abcdef0123456789abcdef01234567" {
+				t.Fatalf("expected provenance, got repo=%q commit=%q", tpl.SourceRepo, tpl.SourceCommit)
+			}
+			return
+		}
+	}
+	t.Fatal("expected community template in response")
 }
